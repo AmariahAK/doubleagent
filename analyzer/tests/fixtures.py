@@ -3355,6 +3355,146 @@ def build_qwen_injected(home: Path) -> None:
     _jsonl(home / QWEN_INJECTED_REL, qwen_injected_records())
 
 
+# Permission, approval-mode and usage records (#187), shapes from
+# QwenLM/qwen-code at 5dcf7c7cb162e825d95d531081f67ee60da3c0e1 (0.25.3):
+# ChatRecord.executionContext (chatRecordingService.ts:475-479),
+# SessionApprovalModeRecordPayload (749-754), the `ui_telemetry` record of
+# logToolCall (telemetry/loggers.ts:317-331, event name
+# telemetry/constants.ts:11), settings.json `permissions` and
+# `tools.approvalMode` (cli/src/config/settingsSchema.ts) and
+# UsageSummaryRecord (services/usageHistoryService.ts:37-77). Built only by
+# the tests that need it, as build_qwen_injected is.
+QWEN_PERM_SESSION = "e5f6a7b8-4444-4000-8000-000000000044"
+QWEN_DELETED_SESSION = "e5f6a7b8-4444-4000-8000-000000000055"
+QWEN_PERM_REL = ".qwen/projects/-srv-proj/chats/%s.jsonl" % QWEN_PERM_SESSION
+QWEN_USAGE_REL = ".qwen/usage_record.jsonl"
+QWEN_SETTINGS_MTIME = 1790863200  # 2026-10-01T14:00:00Z
+
+
+def qwen_permission_records():
+    common = dict(sessionId=QWEN_PERM_SESSION, cwd="/srv/proj", version="0.25.3", gitBranch="main")
+    ctx = {"modelId": "qwen3-coder-plus", "authType": "qwen-oauth", "approvalMode": "default"}
+    return [
+        dict(
+            common,
+            uuid="p1",
+            parentUuid=None,
+            timestamp="2026-10-03T09:00:00.000Z",
+            type="user",
+            provenance="real_user",
+            executionContext=ctx,
+            message={"role": "user", "parts": [{"text": "clean the build"}]},
+        ),
+        dict(
+            common,
+            uuid="p2",
+            parentUuid="p1",
+            timestamp="2026-10-03T09:00:02.000Z",
+            type="assistant",
+            model="qwen3-coder-plus",
+            message={
+                "role": "model",
+                "parts": [
+                    {
+                        "functionCall": {
+                            "id": "call_p1",
+                            "name": "run_shell_command",
+                            "args": {"command": "rm -rf build"},
+                        }
+                    }
+                ],
+            },
+        ),
+        dict(
+            common,
+            uuid="p3",
+            parentUuid="p2",
+            timestamp="2026-10-03T09:00:09.000Z",
+            type="system",
+            subtype="ui_telemetry",
+            systemPayload={
+                "uiEvent": {
+                    "event.name": "qwen-code.tool_call",
+                    "event.timestamp": "2026-10-03T09:00:09.000Z",
+                    "call_id": "call_p1",
+                    "function_name": "run_shell_command",
+                    "status": "success",
+                    "decision": "auto_accept",
+                    "prompt_id": "p#1",
+                }
+            },
+        ),
+        # The same mode again: no row; then a daemon mode change.
+        dict(
+            common,
+            uuid="p4",
+            parentUuid="p3",
+            timestamp="2026-10-03T09:01:00.000Z",
+            type="system",
+            subtype="session_approval_mode",
+            systemPayload={"mode": "plan", "prePlanMode": "default"},
+        ),
+        dict(
+            common,
+            uuid="p5",
+            parentUuid="p4",
+            timestamp="2026-10-03T09:02:00.000Z",
+            type="user",
+            provenance="real_user",
+            executionContext=dict(ctx, modelId="qwen3-max", approvalMode="yolo"),
+            message={"role": "user", "parts": [{"text": "now ship it"}]},
+        ),
+    ]
+
+
+def qwen_usage_records():
+    return [
+        {
+            "version": 1,
+            "sessionId": QWEN_DELETED_SESSION,
+            "timestamp": 1790935200000,
+            "startTime": 1790931600000,
+            "project": "/srv/proj",
+            "durationMs": 3600000,
+            "models": {
+                "qwen3-coder-plus": {
+                    "requests": 4,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "cachedTokens": 0,
+                    "thoughtsTokens": 0,
+                    "totalTokens": 120,
+                }
+            },
+            "tools": {
+                "totalCalls": 3,
+                "totalSuccess": 3,
+                "totalFail": 0,
+                "byName": {
+                    "run_shell_command": {"count": 2, "success": 2, "fail": 0},
+                    "read_file": {"count": 1, "success": 1, "fail": 0},
+                },
+            },
+            "files": {"linesAdded": 4, "linesRemoved": 1},
+        }
+    ]
+
+
+def build_qwen_permissions(home: Path) -> None:
+    _jsonl(home / QWEN_PERM_REL, qwen_permission_records())
+    _jsonl(home / QWEN_USAGE_REL, qwen_usage_records())
+    settings = home / ".qwen/settings.json"
+    settings.write_text(
+        "\ufeff{\n  // written by an allow-always answer\n"
+        '  "permissions": {"allow": ["Bash(git *)", "ReadFileTool"], "deny": ["Bash(rm *)"],\n'
+        '                  "autoMode": {"hints": []}},\n'
+        '  "tools": {"approvalMode": "auto-edit"},\n'
+        '  "modelProviders": [{"apiKey": "secret"}]\n}\n',
+        encoding="utf-8",
+    )
+    os.utime(settings, (QWEN_SETTINGS_MTIME, QWEN_SETTINGS_MTIME))
+
+
 KIRO_SESSION = "3f2b8c1e-9d7a-4e6b-b1c2-0a9f8e7d6c5b"
 KIRO_EXPORT_SESSION = "7c1d2e3f-4a5b-4c6d-8e7f-901234567890"
 KIRO_SHELL_SESSION = "fig-shell-1"

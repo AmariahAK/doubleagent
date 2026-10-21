@@ -3349,6 +3349,7 @@ class QwenCodeTests(ParserBase):
                 self.LOGS,
                 ".qwen/projects/-srv-proj/chats/archive/%s.jsonl" % QWEN_ARCHIVED,
                 ".qwen/trustedFolders.json",
+                ".qwen/settings.json",
                 self.CHANNELS,
                 self.ROUTES,
             },
@@ -3419,6 +3420,155 @@ class QwenCodeTests(ParserBase):
         self.assertEqual(args_summary({"command": "ls"}), "ls")
         self.assertEqual(args_summary({"other": 1}), '{"other":1}')
         self.assertEqual(args_summary(None), "")
+
+    def permission_rows(self, rel):
+        """Rows of `rel` after building the permission, approval-mode and
+        usage fixture (#187) and reopening the collection."""
+        from fixtures import build_qwen_permissions
+
+        build_qwen_permissions(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(QwenCodeParser(), rel)
+
+    def test_execution_context_and_decision_rows(self):
+        # executionContext model and approval mode on change, the daemon's
+        # session_approval_mode record, and the ui_telemetry decision (#187).
+        from fixtures import QWEN_PERM_REL, QWEN_PERM_SESSION
+
+        rows = self.permission_rows(QWEN_PERM_REL)
+        others = [r for r in rows if r.turn_type != "tool_use"]
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in others],
+            [
+                (1, "system", "model: qwen3-coder-plus auth=qwen-oauth", "qwen3-coder-plus"),
+                (1, "system", "permission mode: default", ""),
+                (1, "user", "clean the build", ""),
+                (3, "system", others[3].text, ""),
+                (3, "system", "permission decision: auto_accept (tool_call ui_telemetry)", ""),
+                (4, "system", "permission mode: default -> plan prePlanMode=default", ""),
+                (
+                    5,
+                    "system",
+                    "model: qwen3-coder-plus -> qwen3-max auth=qwen-oauth",
+                    "qwen3-max",
+                ),
+                (5, "system", "permission mode: plan -> yolo", ""),
+                (5, "user", "now ship it", ""),
+            ],
+        )
+        self.assertTrue(others[3].text.startswith("ui_telemetry: "), others[3].text)
+        use = next(r for r in rows if r.turn_type == "tool_use")
+        decision = others[4]
+        self.assertEqual(
+            (decision.tool_name, decision.tool_use_id, decision.timestamp_utc),
+            ("run_shell_command", use.tool_use_id, "2026-10-03T09:00:09.000Z"),
+        )
+        self.assertEqual(use.tool_use_id, "call_p1")
+        self.assertEqual({r.session_id for r in rows}, {QWEN_PERM_SESSION})
+
+    def test_settings_permission_rows(self):
+        # Standing rules and the approval mode of settings.json, read as
+        # JSONC; nothing else in the file is read (#187).
+        from fixtures import QWEN_SETTINGS_MTIME
+
+        rel = ".qwen/settings.json"
+        rows = self.permission_rows(rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: permissions.%s (from .qwen/settings.json, file mtime)"
+                    % entry,
+                    "",
+                    1,
+                )
+                for entry in (
+                    "allow=Bash(git *)",
+                    "allow=ReadFileTool",
+                    "deny=Bash(rm *)",
+                )
+            ]
+            + [
+                (
+                    "system",
+                    "permission setting: tools.approvalMode=auto-edit"
+                    " (from .qwen/settings.json, file mtime)",
+                    "",
+                    1,
+                )
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(QWEN_SETTINGS_MTIME)})
+        self.assertFalse([r for r in rows if "secret" in r.text])
+        self.assertFalse(QwenCodeParser().secondary(self.artifact(rel)))
+        (self.home / rel).write_text("[1]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(QwenCodeParser(), rel)],
+            ["parser: .qwen/settings.json is not a JSON object"],
+        )
+        # The fixture home's empty settings file yields nothing.
+        (self.home / rel).write_text("{}", encoding="utf-8")
+        self.assertEqual(self.rows_for(QwenCodeParser(), rel), [])
+
+    def test_usage_record(self):
+        # usage_record.jsonl is a secondary source that keeps a deleted
+        # session's summary (#187).
+        from fixtures import QWEN_DELETED_SESSION, QWEN_USAGE_REL
+
+        rows = self.permission_rows(QWEN_USAGE_REL)
+        self.assertTrue(QwenCodeParser().secondary(self.artifact(QWEN_USAGE_REL)))
+        self.assertEqual(
+            [
+                (r.source_line, r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    1,
+                    "system",
+                    "2026-10-02T09:00:00.000Z",
+                    QWEN_DELETED_SESSION,
+                    "/srv/proj",
+                    "session usage: project /srv/proj duration 3600000ms models"
+                    " qwen3-coder-plus tools run_shell_command=2,read_file=1"
+                    " (from usage_record.jsonl, startTime)",
+                )
+            ],
+        )
+
+    def test_usage_record_truncated_line(self):
+        # Issue 136: the cut line is its own row; the lines before and after
+        # it are still read.
+        from fixtures import QWEN_USAGE_REL, qwen_usage_records
+
+        self.permission_rows(QWEN_USAGE_REL)
+        path = self.home / QWEN_USAGE_REL
+        write_bad_line(path)
+        after = dict(qwen_usage_records()[0], sessionId="after-cut", models={}, tools={})
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = self.rows_for(QwenCodeParser(), QWEN_USAGE_REL)
+        self.assertEqual(
+            [(r.source_line, r.session_id) for r in rows],
+            [(1, rows[0].session_id), (3, "after-cut"), (2, "")],
+        )
+        self.assertTrue(
+            rows[1].text.endswith("models - tools - (from usage_record.jsonl, startTime)")
+        )
+        self.assertEqual(rows[2].text, bad_line_text())
+
+    def test_usage_and_settings_wanted_registry_not(self):
+        p = QwenCodeParser()
+        self.permission_rows(".qwen/settings.json")
+        reg = self.home / ".qwen/sessions/4242.json"
+        reg.parent.mkdir(parents=True, exist_ok=True)
+        reg.write_text('{"sessionId": "x", "ipcToken": "x"}', encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        self.assertTrue(p.wants(self.artifact(".qwen/usage_record.jsonl")))
+        self.assertTrue(p.wants(self.artifact(".qwen/settings.json")))
+        self.assertFalse(p.wants(self.artifact(".qwen/sessions/4242.json")))
+        self.assertFalse(p.wants(self.artifact(".qwen/oauth_creds.json")))
 
     CHANNELS = ".qwen/channels/sessions.json"
     ROUTES = ".qwen/channels/daemon/%s/routes.json" % QWEN_DAEMON_HASH
