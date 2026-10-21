@@ -1230,7 +1230,22 @@ being `Success`, `Unexpected response`, `Auth required`, `Failed`,
 requested, skipped (from logs/cn.log, log line time, host-local)`, both
 with an empty `session_id` and the log's host-local time written as if
 it were UTC. `roo-code`,
-`aider`, `shellgpt` and `tabby` record no model and write no such row.
+`aider` and `tabby` record no model and write no such row.
+
+The `shellgpt` chat files record no model, permission or time. From
+`.config/shell_gpt/.sgptrc` the parser reads four keys and no other,
+since the file also holds the API key: `DEFAULT_MODEL` is `model:
+<value> (configured default, from .config/shell_gpt/.sgptrc, file
+mtime)`, with the value in the `model` column, and
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD` and
+`SHELL_INTERACTION` are each `permission setting: <key>=<value> (from
+.config/shell_gpt/.sgptrc, file mtime)`, in file order. A line of that
+file with no `=` is `parser: unparseable line <n> (no "=" separator; not
+shown, the file holds the API key)`, without the line. Each file in the
+function store is `permission setting: function <file name> (from
+.config/shell_gpt/functions, file mtime)`; the function calls in the
+chat files ran with no confirmation. All of these rows carry the file's
+modification time and an empty `session_id`.
 
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
@@ -1554,6 +1569,7 @@ beside its `session synced: server conversation` row.
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
+| `shellgpt` | the response cache `AppData/Local/Temp/shell_gpt/cache/<md5>`, one answer per file (no timestamp, session or project: matches on text alone; the answer after a function call is cached without the chat file's `> @FunctionCall` marker, so it never pairs and is kept) | the chat files `chat_cache/<id>` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
