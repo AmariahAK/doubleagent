@@ -4,7 +4,8 @@ Tabby, from [TabbyML/tabby](https://github.com/TabbyML/tabby), is a self-hosted 
 chat server with a `tabby-agent` language server and VS Code, IntelliJ, Vim and Eclipse
 plugins. The editor plugins talk to the server and keep no transcripts: chat history is
 server-side, in the server host's SQLite database and a daily event log. The `tabby` parser
-reads that database, its pre-migration backups and the event log.
+reads that database, its pre-migration backups, the event log, the server's configured models and
+the two editor plugins' inline-edit command histories.
 
 ## Source and evidence
 
@@ -22,6 +23,13 @@ source except the JetBrains settings directory, which is from JetBrains document
 
 ### Source reviews
 
+- 2026-10-21: TabbyML/tabby at
+  [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f):
+  the parser now reads the pages, the source-host integrations, the configured models, both
+  command histories and the Docker-volume layout, so the Parser plan says what it writes; added
+  [Source-host integrations](#source-host-integrations), the page section attachment and the
+  serialised form of the two command histories, and the
+  [Source host rows](#source-host-rows) statement.
 - 2026-10-19: the repository's HEAD is still
   [`21b2904`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f),
   the commit this document cites, so every citation holds. It added the AI-written pages and the
@@ -149,9 +157,10 @@ which is why the catalog lines name Tabby's `intellij-tabby*.xml` files rather t
   ([config.rs:300-316](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L300-L316)).
 - `~/.tabby-client/agent/config.toml`: `server.token`, the user's Tabby API token
   ([configFile.ts:20-23](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/config/configFile.ts#L20-L23)).
-- `~/.tabby/ee/db.sqlite` (and backups): credential columns in plain text, the password a hash
-  ([Secrets](#secrets)). The same file holds the chats, so collect it unflagged and redact by
-  column.
+- `~/.tabby/ee/db.sqlite` (and backups): credential columns in plain text, the password a hash,
+  among them the GitHub or GitLab access token of each source-host integration
+  ([Secrets](#secrets); [Source-host integrations](#source-host-integrations)). The same file holds
+  the chats, so collect it unflagged and redact by column.
 - VS Code: endpoint tokens in `globalState` (`state.vscdb`), see
   [VS Code extension](#vs-code-extension).
 - Keychain: not used by any component.
@@ -229,8 +238,13 @@ the event log repeat the live database's records and outlive its deletes
 ([Pre-migration backups](#pre-migration-backups);
 [Event log against `user_events`](#event-log-against-user_events)).
 
-The analyzer reads the live database as primary and the backups and the event log as secondary
-sources ([Past use and secondary sources](#past-use-rows-and-secondary-sources); see
+The editor command histories ([Editor command histories](#editor-command-histories)) live on the
+developer's machine, not the server, and survive every server-side delete; the user removes an
+entry from the quick pick or IntelliJ's history list.
+
+The analyzer reads the live database, its pages included, as primary and the backups, the event
+log and the two command histories as secondary sources
+([Past use and secondary sources](#past-use-rows-and-secondary-sources); see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 #### SQLite specifics
@@ -346,8 +360,13 @@ Timestamps: SQLite columns are `DATETIME('now')` defaults or `%F %X` strings, bo
 `pages` and `page_sections`
 ([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288))
 are AI-written documents: `pages(author_id, title, content, created_at, updated_at, code_source_id)`
-and `page_sections(page_id, title, content, position, attachment)`. A page is generated from a
-thread's messages (`convertThreadToPage`) or from a title prompt the user typed (`createPageRun`)
+and `page_sections(page_id, title, content, position, created_at, updated_at, attachment)`. A
+section's `attachment` is the same JSON as a thread message's (`code[]`, `doc[]`,
+`code_file_list`), filled by `JSON_SET` as the page run retrieves code and documents
+([ee/tabby-db/src/pages.rs:20-29](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/pages.rs#L20-L29),
+[:263-310](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/pages.rs#L263-L310)).
+A page is generated from a thread's messages (`convertThreadToPage`) or from a title prompt the
+user typed (`createPageRun`)
 ([ee/tabby-webserver/src/service/page.rs:92-133](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/page.rs#L92-L133),
 [:135-150](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/page.rs#L135-L150)),
 and is a row of its own, so it outlives the thread it came from; it is removed only by `delete_page`
@@ -361,15 +380,52 @@ without times:
 
 - IntelliJ: `intellij-tabby-command-history.xml`, state `CommandHistoryState.history`, a list of up
   to 30 strings, newest first
-  ([clients/intellij/.../inlineChat/CommandHistory.kt:5-31](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/CommandHistory.kt#L5-L31)).
-  Where the IDE writes the file is in [IntelliJ plugin](#intellij-plugin).
+  ([clients/intellij/.../inlineChat/CommandHistory.kt:5-31](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/CommandHistory.kt#L5-L31)),
+  stored under the component name `com.tabbyml.intellijtabby.inlineChat.CommandHistory`. The XML
+  layout inside the file (a `<component name=...>` holding `<option name="history">` and a list of
+  `<option value=...>` elements) is the IntelliJ platform's serialisation of a `BaseState` list, not
+  something Tabby's source spells out. Where the IDE writes the file is in
+  [IntelliJ plugin](#intellij-plugin).
 - VS Code: `edit.recentlyCommand` in the extension's global state, the `TabbyML.vscode-tabby` row of
   `state.vscdb`, a list of JSON-encoded commands, newest first, capped by the `chatEdit.history`
-  advanced setting (default 20)
+  advanced setting (default 20). Each entry is `JSON.stringify` of `{command, context}`, `context`
+  a list of `ChatEditFileContext` (`referrer`, `uri`, optional `range`), and the reader also accepts
+  an entry that is a bare command string
+  ([clients/tabby-agent/src/protocol.ts:434-449](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/protocol.ts#L434-L449);
+  [quickPick.ts:322-341](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/inline-edit/quickPick.ts#L322-L341))
   ([clients/vscode/src/Config.ts:115-118](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L115-L118),
   [:139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145),
   [clients/vscode/src/inline-edit/quickPick.ts:344-351](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/inline-edit/quickPick.ts#L344-L351)).
   The catalog attributes `state.vscdb` to `vscode`, so a Tabby reader of it needs `reads_agents`.
+
+#### Source-host integrations
+
+An administrator connects GitHub or GitLab to the server so that it can index repositories and
+their issues and pull requests. `integrations(id, kind, display_name, access_token, api_base,
+error, created_at, updated_at, synced)` holds each connection and `provided_repositories(id,
+integration_id, vendor_id, name, git_url, active, created_at, updated_at, refs)` the repositories
+listed from it
+([ee/tabby-db/schema/schema.sql:142-165](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L142-L165)).
+`kind` is `github`, `gitlab`, `github_self_hosted` or `gitlab_self_hosted`
+([ee/tabby-schema/src/dao.rs:621-635](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/dao.rs#L621-L635)); the
+two hosted kinds talk to `https://api.github.com` and `https://gitlab.com`, the self-hosted kinds to
+their `api_base`
+([ee/tabby-schema/src/schema/integration.rs:79-93](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/integration.rs#L79-L93)).
+The token is a personal access token typed into the server, stored in plain text and put into the
+clone URL
+([integration.rs:17-30](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/integration.rs#L17-L30));
+no column names the account it belongs to, only the administrator's `display_name`.
+
+The repository list is a cache of what the token can reach: each sync fetches every repository the
+token lists, upserts it with `updated_at = DATETIME('now')` and deletes the rows not seen in that
+sync
+([ee/tabby-webserver/src/service/repository/third_party.rs:173-201](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/repository/third_party.rs#L173-L201),
+[:278-300](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/repository/third_party.rs#L278-L300);
+[ee/tabby-db/src/provided_repositories.rs:22-38](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/provided_repositories.rs#L22-L38)).
+`active` marks a repository the administrator chose to index
+([provided_repositories.rs:119-138](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/provided_repositories.rs#L119-L138)).
+Chat threads are not bound to a repository row: a message names the repository only through its
+attachment's `git_url` ([thread_messages](#thread_messages)).
 
 #### Pre-migration backups
 
@@ -464,7 +520,13 @@ Redact those columns. Completion prompts and `clipboard` segments can carry past
 ### Parser plan
 
 Globs: `.tabby/ee/db.sqlite`, `.tabby/ee/db.backup-*.sqlite`,
-`.tabby/ee/dev-db.sqlite`, `.tabby/events/*.json`.
+`.tabby/ee/dev-db.sqlite`, `.tabby/events/*.json`, `.tabby/config.toml`,
+`JetBrains/*/options/intellij-tabby-command-history.xml` under the three IDE configuration roots,
+and `User/globalStorage/state.vscdb` of VS Code and its forks (the parser's `reads_agents`). In a
+Docker or Podman volume matching `*tabby*`, collected with its `_data` directory as the base, the
+server root is the base itself, so the same files arrive without the leading `.tabby/`
+([Server root `~/.tabby`](#server-root-tabby)); the parser takes both forms. The volume form is
+source-derived; not observed on any real install.
 
 | Column | Source |
 | --- | --- |
@@ -502,9 +564,14 @@ The configured models are in `.tabby/config.toml`: `[model.completion]`, `[model
 `[model.embedding]`, each `http` with `model_name` and `supported_models` or `local` with `model_id`
 ([crates/tabby-common/src/config.rs:259-263](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L259-L263),
 [:302-342](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L302-L342)).
-A `system` row per configured model, `model configured: <kind> <model_name or model_id>`, at the
-file's modification time and saying so, is the most the files support; it says which models the
-server could use, not which one answered.
+The parser yields one `system` row per configured model at the file's modification time, which
+says which models the server could use, not which one answered:
+`model configured: <group> <model_name or model_id> via <http|local>[ kind=<kind>][
+endpoint=<api_endpoint>][ supported_models=<a,b>] (from config.toml [model.<group>.<http|local>],
+file mtime)`, `<group>` being `completion`, `chat` or `embedding`; `api_key` never reaches a row.
+The tables are read with Python's `tomllib`, so on Python 3.10 the parser yields one row
+`parser: config.toml model tables not read: Python 3.11 or later needed` instead. These rows are
+source-derived; not observed on any real install.
 
 #### Past-use rows and secondary sources
 
@@ -517,9 +584,18 @@ Sources, primary or secondary (see [Pre-migration backups](#pre-migration-backup
 | `.tabby/ee/db.backup-*.sqlite`, `dev-db.backup-*.sqlite` | secondary, one leading `system` row naming the file | own `created_at`, identical to the live copy; default 2-second window |
 | `.tabby/events/YYYY-MM-DD.json` | secondary | own `ts` in milliseconds, under a second after `user_events.created_at`; default 2-second window |
 
-Also read: `pages` and `page_sections` ([Pages](#pages)), primary (their own `created_at`,
-`session_id` `page:<id>`), and the two command histories
-([Editor command histories](#editor-command-histories)), secondary with an empty timestamp.
+Also read, source-derived; not observed on any real install:
+
+| File | Role | Rows |
+| --- | --- | --- |
+| `pages`, `page_sections` in the database files ([Pages](#pages)) | primary in `db.sqlite`, secondary in a backup (the role is per file) | `page start \| title <title> \| author <email (name)> \| code_source <id>` as `system`, then the page `content` and each section (`<title>`, a blank line, `<content>`, the attachment summary) as `assistant`, in `position` order; `session_id` `page:<id>`, `project_path` the first `code[].git_url` of the sections, times the page's and each section's `created_at` |
+| `intellij-tabby-command-history.xml` ([Editor command histories](#editor-command-histories)) | secondary | `inline edit command history: <N> commands, newest first (from intellij-tabby-command-history.xml, no times)`, then one `user` row per command, `source_line` its position, empty timestamp |
+| `state.vscdb`, row `TabbyML.vscode-tabby`, key `edit.recentlyCommand` | secondary | the same leading row `(from state.vscdb TabbyML.vscode-tabby edit.recentlyCommand, no times)`, then one `user` row per command with ` [context: <uri>; ...]` appended when the entry names files |
+
+A page has no thread id, so it does not pair with the thread it came from. The command histories
+pair with nothing, since the server logs an inline edit only as an empty `chat_completion` event,
+and are kept. Only the history key of the VS Code row is read: the row also holds the endpoint
+tokens ([VS Code extension](#vs-code-extension)).
 
 #### Sync, relay and origin rows
 
@@ -583,7 +659,10 @@ in a backup; the backups are already read. See [What survives a delete](#what-su
 #### Bad-line rows
 
 The event log, the one line-oriented source, is read through `iter_jsonl` and its bad lines are
-reported through `error_rows`; the SQLite stores have no lines to lose.
+reported through `error_rows`; the SQLite stores have no lines to lose. A `config.toml` that does
+not parse gives one row `parser: config.toml is not valid TOML (<reason>)` and an IntelliJ history
+that does not parse one row `parser: not a readable XML document (<reason>)`, neither carrying the
+file's text.
 
 #### Fixtures
 
@@ -600,6 +679,62 @@ INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,atta
 {"user":"1","ts":1759312801500,"event":{"select":{"completion_id":"cmpl-7f3a","choice_index":0,"view_id":"view-1","elapsed":1377}}}
 ```
 
+```sql
+INSERT INTO pages(id,author_id,title,content,created_at,updated_at,code_source_id) VALUES(4,1,'Cache invalidation','How the cache is cleared.','2026-10-01 11:00:00','2026-10-01 11:00:30','acme-app');
+INSERT INTO page_sections(id,page_id,title,content,position,created_at,attachment) VALUES(9,4,'Clearing','Call `clear()`.',0,'2026-10-01 11:00:10','{"code":[{"git_url":"https://github.com/acme/app","filepath":"src/cache.rs","start_line":10}]}');
+INSERT INTO integrations(id,kind,display_name,access_token,created_at,updated_at) VALUES(1,'github','acme','ghp_REDACT','2026-09-01 09:00:00','2026-09-01 09:00:00');
+INSERT INTO provided_repositories(id,integration_id,vendor_id,name,git_url,active,created_at,updated_at) VALUES(3,1,'101','acme/app','https://github.com/acme/app',1,'2026-09-01 09:05:00','2026-09-02 09:05:00');
+```
+
+```toml
+[model.chat.http]
+kind = "openai/chat"
+model_name = "gpt-4o"
+api_endpoint = "https://api.openai.com/v1"
+api_key = "sk-REDACT"
+supported_models = ["gpt-4o", "gpt-4o-mini"]
+
+[model.completion.local]
+model_id = "StarCoder-1B"
+```
+
+```xml
+<application>
+  <component name="com.tabbyml.intellijtabby.inlineChat.CommandHistory">
+    <option name="history">
+      <list>
+        <option value="add docstrings" />
+      </list>
+    </option>
+  </component>
+</application>
+```
+
+```json
+{"server.serverRecords":{"http://localhost:8080":{"token":"auth_REDACT"}},"edit.recentlyCommand":["{\"command\":\"rename @file to snake case\",\"context\":[{\"referrer\":\"@file\",\"uri\":\"file:///srv/proj/app/math.py\"}]}","fix the typo"]}
+```
+
+#### Source host rows
+
+Tabby records a source-host integration server-side, in the database it already collects
+([Source-host integrations](#source-host-integrations)): the connection's kind, its display name,
+its API base and its token, and the cached list of repositories the token reaches. No column names
+the connected account, and no thread is bound to a repository row. The token is a column of
+`db.sqlite` and its backups, never selected ([Secrets](#secrets)); no editor client holds a
+source-host token. The parser yields, at the record's own time and source-derived; not observed on
+any real install:
+
+- per integration, `source host: <host> integration <display_name> kind=<kind>
+  api_base=<api_base or -> (account not recorded; from integrations table, created_at)`, `<host>`
+  `github.com` or `gitlab.com` for the hosted kinds and the host of `api_base` for the self-hosted
+  ones;
+- per cached repository, `source host repository: <git_url> type=<kind> name=<name>
+  active=<yes|no> (integration <display_name>; from provided_repositories table, updated_at)`.
+
+The rows from a backup repeat the live database's and pair with them. The administrator's sign-in
+through GitHub or GitLab OAuth (`oauth_credential`) is the server's own login for its users, not an
+integration the agent acts through; it yields no row.
+
 ## Confidence
 
 - High (source): the `~/.tabby` layout, env overrides, database file names, WAL, pre-migration
@@ -609,10 +744,9 @@ INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,atta
   behaviour, not re-read here); the JetBrains `options/` location (vendor docs); the exact form of
   `user` in the event log (the Hashids-encoded user row id the database logger decodes, see
   [Event log against `user_events`](#event-log-against-user_events); how a request's user reaches
-  the entry was not traced through the auth middleware).
+  the entry was not traced through the auth middleware); the XML layout of
+  `intellij-tabby-command-history.xml` ([Editor command histories](#editor-command-histories)).
 - Not determined: Eclipse plugin storage; the size of `events/` on a busy server (no retention in
-  the writer, so it grows without bound); `pages` and `page_sections` content shape beyond
-  `title`/`content`
-  ([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288));
-  whether the IntelliJ command history is stored in `options/` or the project's `.idea/`
-  ([IntelliJ plugin](#intellij-plugin)).
+  the writer, so it grows without bound); whether the IntelliJ command history is stored in
+  `options/`, where the catalog collects it, or the project's `.idea/`, which no catalog line
+  reaches ([IntelliJ plugin](#intellij-plugin)).

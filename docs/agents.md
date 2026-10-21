@@ -1038,14 +1038,26 @@ Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commi
 ### `tabby`
 
 Files read: Server-side: `.tabby/ee/db.sqlite` or `dev-db.sqlite` (SQLite
-with WAL sidecars; `threads`, `thread_messages`, `user_events`, thread
-owner from `users.email`; secret columns never read), the pre-migration
-backups `ee/db.backup-YYYYMMDD.sqlite` (may hold threads since deleted;
-secondary), and the completion event log `.tabby/events/YYYY-MM-DD.json`
-(full prompt and generated text; secondary, pairs with `user_events`).
+with WAL sidecars; `threads`, `thread_messages`, `user_events`, the
+AI-written `pages` and `page_sections`, the source-host `integrations` and
+their cached `provided_repositories`, thread owner from `users.email`;
+secret columns never read), the pre-migration backups
+`ee/db.backup-YYYYMMDD.sqlite` (may hold threads since deleted;
+secondary), the completion event log `.tabby/events/YYYY-MM-DD.json`
+(full prompt and generated text; secondary, pairs with `user_events`) and
+the configured models in `.tabby/config.toml` (`[model.*]`, with Python
+3.11 or later). The same files at the root of a Docker or Podman volume
+matching `*tabby*`, without the leading `.tabby/`. Client-side, the
+inline-edit command histories: the IntelliJ plugin's
+`JetBrains/<product>/options/intellij-tabby-command-history.xml` and the
+`edit.recentlyCommand` key of the `TabbyML.vscode-tabby` row of a VS Code
+or fork `User/globalStorage/state.vscdb` (both secondary, no times).
 Project is the attached repository URL; no local path is recorded.
 
-Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f), synthetic fixture.
+Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f), synthetic fixture; the
+pages, source-host, model, command-history and volume rows were added from
+the same commit on 2026-10-21, source-derived and not observed on any real
+install.
 
 ### `twinny`
 
