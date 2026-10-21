@@ -714,6 +714,10 @@ nanobot|HEARTBEAT.md
 nanobot|memory/MEMORY.md
 nanobot|memory/history.jsonl
 nanobot|memory/HISTORY.md
+nanobot|cron/jobs.json
+nanobot|cron/runs
+nanobot|triggers/triggers.json
+nanobot|triggers/runs
 '
 
 # Paths (globs relative to home, project dir or Docker volume _data) skipped

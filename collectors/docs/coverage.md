@@ -543,6 +543,15 @@ and the user whose state referenced it (the first one, when several did). `-p`
 directories join the same list. Each gets as its user the owner of the home
 it sits under, or none.
 
+A nanobot workspace outside `.nanobot*` keeps its scheduled jobs
+(`cron/jobs.json`) and local triggers (`triggers/triggers.json`) beside
+one run record per scheduled or triggered run (`cron/runs/`,
+`triggers/runs/`), each with the session key, the prompt and the reply,
+which outlives the session it ran in; those four entries are collected from
+the workspace, and the trigger delivery queue (`triggers/inbox/`,
+`processing/`, `failed/`) is not. The default workspace under `.nanobot/` is
+collected whole by the home catalog.
+
 Aider's transcript (`.aider.chat.history.md`, with its input and LLM
 histories beside it) and Crush's session database (`.crush/crush.db`) live
 only inside the project, so a project deleted before collection leaves

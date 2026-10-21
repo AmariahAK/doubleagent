@@ -1158,6 +1158,21 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+# nanobot (HKUDS/nanobot at 909b277, source only) keeps its cron jobs and
+# local triggers in the workspace, with one run record per run (session
+# key, prompt, reply) that outlives the session. The project catalog
+# collects the job and trigger files and the runs directories of a
+# discovered workspace; the trigger queue (inbox/) is left. Checks follow
+# the default run below; the same files are in smoke.ps1 under nanows.
+N220="$ROOT/srv/nanows"
+mkdir -p "$N220/cron/runs" "$N220/triggers/runs" "$N220/triggers/inbox"
+printf '{"jobs":[]}\n' >"$N220/cron/jobs.json"
+printf '{"job_id":"j1","status":"ok"}\n' >"$N220/cron/runs/j1_1_ab.json"
+printf '{"triggers":[]}\n' >"$N220/triggers/triggers.json"
+printf '{"trigger_id":"t1","status":"ok"}\n' >"$N220/triggers/runs/d1.json"
+printf '{"id":"d2"}\n' >"$N220/triggers/inbox/d2.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1540,6 +1555,11 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+check "#220 nanobot workspace cron jobs and runs collected" "row \"$N220/cron/jobs.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/cron/runs/j1_1_ab.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot workspace triggers and runs collected" "row \"$N220/triggers/triggers.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/triggers/runs/d1.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot trigger queue not collected" "! grep -qF 'nanows/triggers/inbox' \"\$M\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
