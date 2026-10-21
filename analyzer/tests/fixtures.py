@@ -3550,6 +3550,11 @@ QWEN_PERM_SESSION = "e5f6a7b8-4444-4000-8000-000000000044"
 QWEN_DELETED_SESSION = "e5f6a7b8-4444-4000-8000-000000000055"
 QWEN_PERM_REL = ".qwen/projects/-srv-proj/chats/%s.jsonl" % QWEN_PERM_SESSION
 QWEN_USAGE_REL = ".qwen/usage_record.jsonl"
+# A session whose ui_telemetry tool-call event carries the ToolCallEvent
+# class's bare default name `tool_call` (telemetry/types.ts:214) instead of
+# the `qwen-code.tool_call` that logToolCall records at 5dcf7c7.
+QWEN_BARE_SESSION = "e5f6a7b8-4444-4000-8000-000000000066"
+QWEN_BARE_REL = ".qwen/projects/-srv-proj/chats/%s.jsonl" % QWEN_BARE_SESSION
 QWEN_SETTINGS_MTIME = 1790863200  # 2026-10-01T14:00:00Z
 
 
@@ -3662,8 +3667,54 @@ def qwen_usage_records():
     ]
 
 
+def qwen_bare_event_records():
+    common = dict(sessionId=QWEN_BARE_SESSION, cwd="/srv/proj", version="0.25.3")
+    return [
+        dict(
+            common,
+            uuid="b1",
+            parentUuid=None,
+            timestamp="2026-10-03T10:00:00.000Z",
+            type="assistant",
+            model="qwen3-coder-plus",
+            message={
+                "role": "model",
+                "parts": [
+                    {
+                        "functionCall": {
+                            "id": "call_b1",
+                            "name": "write_file",
+                            "args": {"file_path": "/srv/proj/a.txt"},
+                        }
+                    }
+                ],
+            },
+        ),
+        dict(
+            common,
+            uuid="b2",
+            parentUuid="b1",
+            timestamp="2026-10-03T10:00:05.000Z",
+            type="system",
+            subtype="ui_telemetry",
+            systemPayload={
+                "uiEvent": {
+                    "event.name": "tool_call",
+                    "event.timestamp": "2026-10-03T10:00:05.000Z",
+                    "call_id": "call_b1",
+                    "function_name": "write_file",
+                    "status": "cancelled",
+                    "decision": "reject",
+                    "prompt_id": "b#1",
+                }
+            },
+        ),
+    ]
+
+
 def build_qwen_permissions(home: Path) -> None:
     _jsonl(home / QWEN_PERM_REL, qwen_permission_records())
+    _jsonl(home / QWEN_BARE_REL, qwen_bare_event_records())
     _jsonl(home / QWEN_USAGE_REL, qwen_usage_records())
     settings = home / ".qwen/settings.json"
     settings.write_text(

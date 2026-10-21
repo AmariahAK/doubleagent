@@ -724,9 +724,14 @@ The following rows are source-derived; not observed on any real install (shapes 
 [Permission lists in settings.json](#permission-lists-in-settingsjson)):
 
 - Per call: a `ui_telemetry` record keeps its `ui_telemetry: <JSON>` row; when its `uiEvent` has
-  `event.name` `qwen-code.tool_call` and a `decision`, it is followed by
+  `event.name` `qwen-code.tool_call` or `tool_call` and a `decision`, it is followed by
   `permission decision: <decision> (tool_call ui_telemetry)` with `tool_name` the event's
-  `function_name` and `tool_use_id` its `call_id`, which join the call's `tool_use` row. The
+  `function_name` and `tool_use_id` its `call_id`, which join the call's `tool_use` row. Both
+  spellings are matched: `logToolCall` records `qwen-code.tool_call`
+  ([`core/src/telemetry/loggers.ts:317-331`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/loggers.ts#L317-L331)),
+  while the `ToolCallEvent` class's own default is the bare `tool_call`
+  ([`core/src/telemetry/types.ts:214`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/types.ts#L214)),
+  which an older build that recorded the event without the rename may have written. The
   record is written when the call completes, so the row follows the result. No separate record of
   the AUTO classifier's verdict was found (`classifier` and `denial` do not occur in `CRS`); a
   call it blocks shows only as the tool result.

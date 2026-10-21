@@ -120,10 +120,14 @@ record (`systemPayload {mode, prePlanMode?, planExecutionMode?}`) is the row
 `permission mode: <mode>` or `permission mode: <old> -> <mode>`, followed by
 ` prePlanMode=<p>` and ` planExecutionMode=<e>` when recorded. A
 `ui_telemetry` record whose `systemPayload.uiEvent` has `event.name`
-`qwen-code.tool_call` and a `decision` (`accept`, `reject`, `modify`,
-`auto_accept`) keeps its `ui_telemetry: <JSON>` row and is followed by
+`qwen-code.tool_call` or `tool_call` and a `decision` (`accept`, `reject`,
+`modify`, `auto_accept`) keeps its `ui_telemetry: <JSON>` row and is followed by
 `permission decision: <decision> (tool_call ui_telemetry)` with `tool_name`
-the event's `function_name` and `tool_use_id` its `call_id`.
+the event's `function_name` and `tool_use_id` its `call_id`. Both event
+names are matched: `logToolCall` records `qwen-code.tool_call` at 5dcf7c7
+(telemetry/loggers.ts:317-331, constants.ts:11), while the `ToolCallEvent`
+class's own default is the bare `tool_call` (telemetry/types.ts:214), which
+a build that recorded the event without the rename would have written.
 
 Not parsed: `checkpoint-<tag>.json` (a raw `Content[]` without timestamps)
 and `shell_history`.
@@ -160,8 +164,9 @@ CHANNELS_RX = re.compile(r"^\.qwen/(channels/(?:sessions\.json|daemon/[^/]+/rout
 SETTINGS_RX = re.compile(r"^\.qwen/settings\.json$")
 USAGE_RX = re.compile(r"^\.qwen/usage_record\.jsonl$")
 PERMISSION_LISTS = ("allow", "ask", "deny")
-# `ToolCallEvent` as `logToolCall` records it in a `ui_telemetry` record.
-TOOL_CALL_EVENT = "qwen-code.tool_call"
+# `ToolCallEvent` as `logToolCall` records it in a `ui_telemetry` record,
+# and the class's own default name, which an older build may have written.
+TOOL_CALL_EVENTS = ("qwen-code.tool_call", "tool_call")
 DECISION_STATUSES = ("cancelled", "awaiting_approval")
 SIDECAR_SUFFIX = ".ledger.jsonl"
 # `type: user` subtypes that never hold a prompt the user typed (#172).
@@ -555,7 +560,7 @@ class QwenCodeParser(Parser):
                 if (
                     subtype == "ui_telemetry"
                     and isinstance(event, dict)
-                    and event.get("event.name") == TOOL_CALL_EVENT
+                    and event.get("event.name") in TOOL_CALL_EVENTS
                     and event.get("decision")
                 ):
                     dec = base(

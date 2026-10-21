@@ -3693,6 +3693,26 @@ class QwenCodeTests(ParserBase):
         self.assertEqual(use.tool_use_id, "call_p1")
         self.assertEqual({r.session_id for r in rows}, {QWEN_PERM_SESSION})
 
+    def test_decision_row_bare_event_name(self):
+        # The ToolCallEvent class's bare default name `tool_call` is matched
+        # as well as `qwen-code.tool_call` (#187).
+        from fixtures import QWEN_BARE_REL, QWEN_BARE_SESSION
+
+        rows = self.permission_rows(QWEN_BARE_REL)
+        decisions = [r for r in rows if r.text.startswith("permission decision:")]
+        self.assertEqual(
+            [(r.text, r.tool_name, r.tool_use_id, r.timestamp_utc) for r in decisions],
+            [
+                (
+                    "permission decision: reject (tool_call ui_telemetry)",
+                    "write_file",
+                    "call_b1",
+                    "2026-10-03T10:00:05.000Z",
+                )
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {QWEN_BARE_SESSION})
+
     def test_settings_permission_rows(self):
         # Standing rules and the approval mode of settings.json, read as
         # JSONC; nothing else in the file is read (#187).
