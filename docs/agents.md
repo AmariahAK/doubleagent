@@ -331,8 +331,23 @@ organisation's bucket and object (fixture only), and each item of the
 VS Code extension's upload queue
 `<editor>/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json`
 one with its status, task file and retries (fixture only).
+The SDK's hook audit log `.cline/data/logs/hooks.jsonl` (a secondary
+source: the prompts, tool calls, results and final replies it repeats,
+paired with the transcript on the call id, and a `hook audit:` row for
+each run start, abort, error and stale-session shutdown); the standing
+permission settings in `.cline/data/globalState.json`
+(`autoApprovalSettings`, `mode`), `.cline/data/settings/global-settings.json`
+and each server's `autoApprove` and `disabled` in
+`settings/cline_mcp_settings.json`, one `permission setting:` row each;
+a `permission decision:` row beside each SDK tool result the user
+rejected or the policy blocked; the Cline Cloud sessions in
+`globalState.json` `cloudSessionStatuses` and
+`.cline/data/cloud-pending-starts/*.json` (`session origin: remote` and
+`session synced:` rows) and the `cloudTaskTarget`; and an imported
+session's source agent, session and path on its start row (all fixture
+only).
 
-Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture.
+Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture; the hook audit log, the permission rows, the Cline Cloud rows and the import marker from source at [41e75efc](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33), synthetic fixture.
 
 ### `codex-cli`
 
