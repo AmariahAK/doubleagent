@@ -8061,8 +8061,13 @@ from fixtures import (
     LC_SESSION,
     LETTA_AGENT,
     LETTA_CONV,
+    LETTA_LEGACY_SETTINGS_MTIME,
+    LETTA_LISTENER_FILE,
+    LETTA_LISTENER_HASH,
+    LETTA_LISTENER_MTIME,
     LETTA_LOCAL_CONV,
     LETTA_LOCAL_DIR,
+    LETTA_TASK,
     PI_DIR,
     PI_EXPERIMENTAL,
     PI_FILE,
@@ -8071,6 +8076,7 @@ from fixtures import (
     PI_SESSION,
     PI_TRUST,
     _jsonl,
+    letta_sessions_records,
     pi_session_records,
 )
 
@@ -8517,6 +8523,8 @@ class LettaTests(ParserBase):
         self.assertEqual(dropped["letta"], 1)
 
     def test_sessions_history(self):
+        # One exit line per CLI session (issue 158), each followed by the
+        # session's model row.
         rows = self.rows_for(LettaParser(), ".letta/sessions.jsonl")
         self.assertEqual(
             [(r.turn_type, r.session_id, r.project_path) for r in rows],
@@ -8525,22 +8533,158 @@ class LettaTests(ParserBase):
                 ("system", "s-0", "/srv/old"),
                 ("system", "s-1", "/srv/proj"),
                 ("system", "s-1", "/srv/proj"),
-                ("system", "s-1", "/srv/proj"),
             ],
         )
-        self.assertIn("exit_reason=user_exit messages=4 tool_calls=1", rows[4].text)
+        self.assertEqual(
+            rows[2].text,
+            "letta session end: agent=%s exit_reason=exit_command messages=4 tool_calls=1 "
+            "wall_ms=60000" % LETTA_AGENT,
+        )
+        self.assertIn("exit_reason=logout", rows[0].text)
         self.assertEqual(rows[2].model, "claude-sonnet-4-5")
-        # One model row per CLI session, after its start line; the exit
-        # line names the same model and adds none.
         self.assertEqual(
             (rows[3].text, rows[3].model, rows[3].timestamp_utc, rows[3].source_line),
             (
                 "model: claude-sonnet-4-5 provider=anthropic",
                 "claude-sonnet-4-5",
-                "2026-10-01T12:00:00.000Z",
+                "2026-10-01T12:01:00.000Z",
                 2,
             ),
         )
+
+    def test_sessions_start_line(self):
+        # No caller writes recordSessionStart's line; one is still read.
+        rec = dict(letta_sessions_records()[1], timestamp=1790856000000)
+        for key in ("message_count", "tool_call_count", "exit_reason"):
+            del rec[key]
+        _jsonl(self.home / ".letta/sessions.jsonl", [rec])
+        rows = self.rows_for(LettaParser(), ".letta/sessions.jsonl")
+        self.assertEqual(
+            rows[0].text,
+            "letta session start: agent=%s provider=anthropic model=claude-sonnet-4-5 "
+            "project=/srv/proj" % LETTA_AGENT,
+        )
+
+    def test_transcript_project_from_exit_line(self):
+        # The exit line after the turn names its project; with no later
+        # line, the latest earlier one does.
+        f = self.home / ".letta/sessions.jsonl"
+        older, end = letta_sessions_records()
+        _jsonl(f, [older, dict(end, project="/srv/other")])
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/other"})
+        _jsonl(f, [older])
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/old"})
+
+    def test_permission_settings(self):
+        rel = ".config/letta/settings.json"
+        rows = self.rows_for(LettaParser(), rel)
+        src = "(from .config/letta/settings.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                ("system", "", to_utc(LETTA_LEGACY_SETTINGS_MTIME), t)
+                for t in (
+                    "permission setting: permissions.mode=acceptEdits " + src,
+                    "permission setting: permissions.allow=Bash(npm test) " + src,
+                    "permission setting: permissions.deny=Bash(rm -rf:*) " + src,
+                    "permission setting: permissions.additionalDirectories=/srv/shared " + src,
+                )
+            ],
+        )
+
+    def test_routing_relay_rows(self):
+        self.assertTrue(LettaParser.records_relay)
+        rel = ".letta/channels/telegram/routing.json"
+        rows = self.rows_for(LettaParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    LETTA_CONV,
+                    "2026-10-01T12:20:00.000Z",
+                    "session relayed: telegram chat 123456789 type direct thread - account "
+                    "bot-1 agent %s enabled=true outbound=true detached=- "
+                    "updated=2026-10-01T12:21:00.000Z (from %s, createdAt)" % (LETTA_AGENT, rel),
+                )
+            ],
+        )
+        (self.home / rel).write_text("[]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(LettaParser(), rel)],
+            ["parser: %s is not a JSON object with a routes list" % rel],
+        )
+
+    def test_scheduled_task_rows(self):
+        rows = self.rows_for(LettaParser(), ".letta/crons.json")
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    LETTA_CONV,
+                    "2026-10-01T12:10:00.000Z",
+                    "scheduled task: %s name=nightly tests status=active cron=0 2 * * * "
+                    "timezone=UTC recurring=true scheduled_for=- agent=%s conversation=%s "
+                    "fire_count=1 last_fired=2026-10-02T02:00:00.000Z "
+                    "last_run=2026-10-02T02:00:00.000Z outcome=queued "
+                    "reason=scheduled_time_matched error=- cancel_reason=- "
+                    "(from .letta/crons.json, created_at) description: run the suite "
+                    "prompt: run the test suite and report failures"
+                    % (LETTA_TASK, LETTA_AGENT, LETTA_CONV),
+                )
+            ],
+        )
+        rel = ".letta/runs/%s.jsonl" % LETTA_TASK
+        rows = self.rows_for(LettaParser(), rel)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                (LETTA_CONV, "2026-10-02T02:00:00.000Z", 1),
+                (LETTA_CONV, "2026-10-03T02:00:00.000Z", 2),
+            ],
+        )
+        self.assertEqual(
+            rows[1].text,
+            "scheduled task run: %s action=finished status=skipped outcome=missed "
+            "reason=scheduler_inactive agent=%s conversation=%s run=- scheduled_for=- "
+            "fired=- missed=1 summary=missed error=- (from %s, ts)"
+            % (LETTA_TASK, LETTA_AGENT, LETTA_CONV, rel),
+        )
+        self.assertFalse(LettaParser().secondary(self.artifact(rel)))
+        self.assertFalse(LettaParser().secondary(self.artifact(".letta/crons.json")))
+
+    def test_interrupted_turn_rows(self):
+        rel = ".letta/listener-state/%s/%s" % (LETTA_LISTENER_HASH, LETTA_LISTENER_FILE)
+        rows = self.rows_for(LettaParser(), rel)
+        ts = to_utc(LETTA_LISTENER_MTIME)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "interrupted turn: agent %s conversation %s run run-2 "
+                    "tool_calls=call_7,call_8 unstarted=call_8 results=2 "
+                    "working_directory=/srv/proj acting_user=user-1 (from %s, file mtime)"
+                    % (LETTA_AGENT, LETTA_CONV, rel),
+                ),
+                ("tool_result", "call_7", "[error] permission denied"),
+                (
+                    "system",
+                    "call_8",
+                    "permission decision: deny reason=not on main "
+                    "(from %s, interrupted turn, file mtime)" % rel,
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.timestamp_utc), (LETTA_CONV, "/srv/proj", ts)
+            )
+        self.assertFalse(LettaParser().secondary(self.artifact(rel)))
 
     def test_schema_1_bare_messages(self):
         path = self.home / self.LOCAL
@@ -8583,21 +8727,32 @@ class LettaTests(ParserBase):
             ".letta/transcripts/%s/%s/state.json" % (LETTA_AGENT, LETTA_CONV),
             ".letta/lc-local-backend/conversations/%s/manifest.json" % LETTA_LOCAL_DIR,
             ".letta/transcripts/%s/%s/payload-auto-a1b2c3.json" % (LETTA_AGENT, LETTA_LOCAL_CONV),
+            ".letta/channels/telegram/accounts.json",
+            ".letta/listener-state/%s/%s.recovery-%s"
+            % (LETTA_LISTENER_HASH, LETTA_LISTENER_FILE, "ab" * 12),
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(LettaParser().wants(art), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
-        for rel, n in ((self.TRANSCRIPT, 5), (self.TWIN, 7), (self.LOCAL, 7)):
+        runs = ".letta/runs/%s.jsonl" % LETTA_TASK
+        for rel, n in (
+            (self.TRANSCRIPT, 5),
+            (self.TWIN, 7),
+            (self.LOCAL, 7),
+            (".letta/sessions.jsonl", 4),
+            (runs, 2),
+        ):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
             self.assertEqual((rows[-1].turn_type, rows[-1].text), ("system", bad_line_text()), rel)
 
     def test_bad_line_mid_file_keeps_the_rows_around_it(self):
-        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL):
+        runs = ".letta/runs/%s.jsonl" % LETTA_TASK
+        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL, ".letta/sessions.jsonl", runs):
             with self.subTest(rel=rel):
-                CodexTests.check_bad_line(self, LettaParser, rel, 2)
+                CodexTests.check_bad_line(self, LettaParser, rel, 1)
         row = CodexTests.check_bad_line(self, LettaParser, self.LOCAL, 3)
         self.assertEqual((row.session_id, row.project_path), (LETTA_LOCAL_CONV, "/srv/proj"))
 
@@ -8774,7 +8929,16 @@ class LettaSyncTests(ParserBase):
                     "/srv/proj/" + rel,
                     "session synced: last session on localhost:8283 agent agent-selfhost "
                     "conversation conv-sh1 (from .letta/settings.local.json, file mtime)",
-                )
+                ),
+                # The project's standing rule (issue 202).
+                (
+                    "",
+                    "/srv/proj",
+                    to_utc(LETTA_LOCAL_SETTINGS_MTIME),
+                    "/srv/proj/" + rel,
+                    "permission setting: permissions.allow=Bash(ls) "
+                    "(from .letta/settings.local.json, file mtime)",
+                ),
             ],
         )
 

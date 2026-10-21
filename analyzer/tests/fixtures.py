@@ -7450,27 +7450,26 @@ def letta_sessions_records(project="/srv/proj"):
         "reasoning_tokens": 0,
         "steps": 0,
     }
-    start = {
+    # Only recordSessionEnd writes the file (issue 158): one line per CLI
+    # session that ended with /exit or /logout, at the time of exit.
+    end = {
         "agent_id": LETTA_AGENT,
         "session_id": "s-1",
-        "timestamp": 1790856000000,
+        "timestamp": 1790856060000,
         "project": project,
         "model": "claude-sonnet-4-5",
         "provider": "anthropic",
         "usage": usage,
-        "duration": {"api_ms": 0, "wall_ms": 0},
+        "duration": {"api_ms": 900, "wall_ms": 60000},
         "cost": {"type": "hosted"},
+        "message_count": 4,
+        "tool_call_count": 1,
+        "exit_reason": "exit_command",
     }
-    older = dict(start, session_id="s-0", timestamp=1790766000000, project="/srv/old")
-    end = dict(
-        start,
-        timestamp=1790856060000,
-        duration={"api_ms": 900, "wall_ms": 60000},
-        message_count=4,
-        tool_call_count=1,
-        exit_reason="user_exit",
+    older = dict(
+        end, session_id="s-0", timestamp=1790766000000, project="/srv/old", exit_reason="logout"
     )
-    return [older, start, end]
+    return [older, end]
 
 
 def build_letta(home: Path) -> None:
@@ -7494,6 +7493,161 @@ def build_letta(home: Path) -> None:
     _json(letta / "settings.json", {"env": {"LETTA_API_KEY": "sk-not-real"}})
     _json(letta / "transcripts" / LETTA_AGENT / LETTA_LOCAL_CONV / "payload-auto-a1b2c3.json", [])
     build_letta_sync(home)
+    build_letta_stores(home)
+
+
+# Issue 202: the stores of the Parser plan of research/letta.md read since
+# the 2026-10-21 review of letta-code 2a46615d (permissions, channel
+# routing, scheduled tasks and their runs, an interrupted listener turn),
+# all on the server conversation LETTA_CONV so they add no session.
+LETTA_LEGACY_SETTINGS_MTIME = 1790856060  # 2026-10-01T12:01:00Z
+LETTA_LISTENER_MTIME = 1790856240  # 2026-10-01T12:04:00Z
+LETTA_TASK = "a1b2c3d4"
+LETTA_LISTENER_HASH = "0123456789abcdef01234567"
+LETTA_LISTENER_FILE = "%s_%s.json" % (LETTA_AGENT, LETTA_CONV)
+
+
+def letta_cron_task():
+    return {
+        "id": LETTA_TASK,
+        "agent_id": LETTA_AGENT,
+        "conversation_id": LETTA_CONV,
+        "name": "nightly tests",
+        "description": "run the suite",
+        "cron": "0 2 * * *",
+        "timezone": "UTC",
+        "recurring": True,
+        "prompt": "run the test suite and report failures",
+        "status": "active",
+        "created_at": "2026-10-01T12:10:00.000Z",
+        "expires_at": None,
+        "last_fired_at": "2026-10-02T02:00:00.000Z",
+        "fire_count": 1,
+        "cancel_reason": None,
+        "jitter_offset_ms": 0,
+        "last_run_at": "2026-10-02T02:00:00.000Z",
+        "last_run_outcome": "queued",
+        "last_run_reason": "scheduled_time_matched",
+        "last_run_error": None,
+        "last_missed_at": None,
+        "missed_count": 0,
+        "failed_count": 0,
+        "scheduled_for": None,
+        "fired_at": None,
+        "missed_at": None,
+    }
+
+
+def letta_run_records():
+    base = {"jobId": LETTA_TASK, "action": "finished", "agentId": LETTA_AGENT}
+    return [
+        dict(
+            base,
+            ts=1790906400000,  # 2026-10-02T02:00:00Z
+            status="ok",
+            outcome="queued",
+            reason="scheduled_time_matched",
+            summary="nightly tests",
+            conversationId=LETTA_CONV,
+            runId="run-1",
+            firedAt="2026-10-02T02:00:00.000Z",
+        ),
+        dict(
+            base,
+            ts=1790992800000,  # 2026-10-03T02:00:00Z
+            status="skipped",
+            outcome="missed",
+            reason="scheduler_inactive",
+            summary="missed",
+            conversationId=LETTA_CONV,
+            missedCount=1,
+        ),
+    ]
+
+
+def letta_interrupted_record():
+    return {
+        "agentId": LETTA_AGENT,
+        "conversationId": LETTA_CONV,
+        "runId": "run-2",
+        "toolCallIds": ["call_7", "call_8"],
+        "unstartedToolCallIds": ["call_8"],
+        "results": [
+            {
+                "type": "tool",
+                "status": "error",
+                "tool_call_id": "call_7",
+                "tool_return": "permission denied",
+                "stdout": [],
+                "stderr": [],
+            },
+            {
+                "type": "approval",
+                "approve": False,
+                "tool_call_id": "call_8",
+                "reason": "not on main",
+            },
+        ],
+        "requestOtid": "otid-1",
+        "workingDirectory": "/srv/proj",
+        "actingUserId": "user-1",
+    }
+
+
+def build_letta_stores(home: Path) -> None:
+    letta = home / ".letta"
+    legacy = home / ".config/letta/settings.json"
+    _json(
+        legacy,
+        {
+            "permissions": {
+                "mode": "acceptEdits",
+                "allow": ["Bash(npm test)"],
+                "deny": ["Bash(rm -rf:*)"],
+                "additionalDirectories": ["/srv/shared"],
+            },
+            # Not read from the legacy file: Letta reads only permissions.
+            "sessionsByServer": {"api.letta.com": {"agentId": "a", "conversationId": "c"}},
+        },
+    )
+    os.utime(legacy, (LETTA_LEGACY_SETTINGS_MTIME, LETTA_LEGACY_SETTINGS_MTIME))
+    channel = letta / "channels" / "telegram"
+    _json(
+        channel / "routing.json",
+        {
+            "routes": [
+                {
+                    "accountId": "bot-1",
+                    "chatId": "123456789",
+                    "chatType": "direct",
+                    "threadId": None,
+                    "agentId": LETTA_AGENT,
+                    "conversationId": LETTA_CONV,
+                    "enabled": True,
+                    "outboundEnabled": True,
+                    "createdAt": "2026-10-01T12:20:00.000Z",
+                    "updatedAt": "2026-10-01T12:21:00.000Z",
+                }
+            ]
+        },
+    )
+    # A credential file the parser must not want.
+    _json(channel / "accounts.json", {"accounts": [{"id": "bot-1", "token": "not-real"}]})
+    _json(
+        letta / "crons.json",
+        {
+            "version": 1,
+            "scheduler_owner": None,
+            "scheduler_owners": {},
+            "tasks": [letta_cron_task()],
+        },
+    )
+    _jsonl(letta / "runs" / (LETTA_TASK + ".jsonl"), letta_run_records())
+    state = letta / "listener-state" / LETTA_LISTENER_HASH
+    _json(state / LETTA_LISTENER_FILE, letta_interrupted_record())
+    os.utime(state / LETTA_LISTENER_FILE, (LETTA_LISTENER_MTIME, LETTA_LISTENER_MTIME))
+    # A recovery sidecar beside the record, not wanted.
+    _json(state / (LETTA_LISTENER_FILE + ".recovery-" + "ab" * 12), {})
 
 
 # Session sync (issue 153): the server-side session markers of
