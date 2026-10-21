@@ -658,6 +658,16 @@ their state must be copied by hand.
   No catalog entry reaches it; when a `roo --ephemeral` process was
   killed, copy any `roo-cli-*` directory in the temp directory by hand
   ([CLI ephemeral storage in `research/roo-code.md`](../../research/roo-code.md#cli-ephemeral-storage)).
+- **Zed** on macOS gives an agent thread whose terminal runs in the OS
+  sandbox its own temp directory, `$TMPDIR/zed-agent-terminal-<random>`
+  (under `/private/var/folders/.../T/`), kept until the thread is deleted.
+  It is outside every home and is not collected; copy it by hand when it
+  exists. The thread's record in `threads.db`, which is collected, names
+  it ([Scratch directories in `research/zed.md`](../../research/zed.md#scratch-directories)).
+  The linked git worktrees Zed creates for a thread sit beside the
+  project (`<project parent>/worktrees/<name>/<project>`) and are recorded
+  only in SQLite, so their project files are collected only when another
+  source or `-p` names them.
 - **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
   exports or a log to a directory the user chooses or works in; see
   [Files written where the user chooses](#files-written-where-the-user-chooses).

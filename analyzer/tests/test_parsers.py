@@ -7009,7 +7009,10 @@ from fixtures import (
     VSCODE_SESSION,
     VSCODE_WS,
     ZED_EXTERNAL,
+    ZED_TEMP_DIR,
     ZED_THREAD,
+    ZED_WORKTREE,
+    ZED_WORKTREE_THREAD,
 )
 
 
@@ -7037,10 +7040,25 @@ class ZedTests(ParserBase):
         con.close()
 
     def test_rows(self):
-        rows = [r for r in self.rows_for(ZedParser(), self.REL) if not model_or_permission_row(r)]
+        rows = [
+            r
+            for r in self.rows_for(ZedParser(), self.REL)
+            if not model_or_permission_row(r) and not r.text.startswith("scratch directory:")
+        ]
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "system", "system"],
+            [
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "tool_use",
+                "tool_result",
+                "assistant",
+                "system",
+                "system",
+                "system",
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -7051,7 +7069,10 @@ class ZedTests(ParserBase):
                 ("/srv/proj", "main", "anthropic/claude-sonnet-4-5"),
             )
             self.assertEqual(r.source_line, 1)
-        start, user, use, result, asst, resume, compaction = rows
+        start, user, use, result, _use2, _result2, asst, resume, compaction, draft = rows
+        # the blob's draft_prompt (source-derived, 9cd14da) follows the messages
+        self.assertEqual(draft.text, "unsent draft: and then lint (thread blob, as of updated_at)")
+        self.assertEqual(draft.timestamp_utc, "2026-10-03T09:01:05.000Z")
         self.assertEqual(start.timestamp_utc, "2026-10-03T09:00:00.000Z")  # project snapshot time
         self.assertEqual(start.text, "thread start: Fix flaky test version=0.3.0")
         self.assertEqual(
@@ -7074,8 +7095,8 @@ class ZedTests(ParserBase):
         self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["use pytest"])
 
     def test_sidebar_external_threads(self):
-        rows = self.rows_for(ZedParser(), self.SIDEBAR)
-        self.assertEqual(len(rows), 1)  # the native thread is skipped
+        rows = [r for r in self.rows_for(ZedParser(), self.SIDEBAR) if "agent=" in r.text]
+        self.assertEqual(len(rows), 1)
         r = rows[0]
         self.assertEqual(
             (r.turn_type, r.session_id, r.project_path), ("system", ZED_EXTERNAL, "/srv/proj")
@@ -7083,16 +7104,260 @@ class ZedTests(ParserBase):
         self.assertEqual(r.timestamp_utc, "2026-10-03T10:00:00.000Z")
         self.assertIn("agent=claude-code", r.text)
 
-    def test_settings_not_wanted(self):
-        art = next(a for a in self.col.artifacts if a.rel == ".config/zed/settings.json")
+    def test_db_sqlite_stores(self):
+        # Source-derived (zed-industries/zed at 9cd14da): the native sidebar
+        # state, project trust, draft prompts, the worktree registry, the
+        # archived worktrees and the sidebar terminals of db.sqlite.
+        art = self.artifact(self.SIDEBAR)
+        mtime = file_mtime(art)
+        rows = list(ZedParser().parse(art, Options()))
+        rel = self.SIDEBAR
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "2026-10-03T09:01:05.000Z",
+                    ZED_THREAD,
+                    "/srv/proj",
+                    "sidebar thread: title=Fix flaky test archived=false interacted_at=-"
+                    " main_worktree=-",
+                ),
+                (
+                    "2026-10-03T10:00:00.000Z",
+                    ZED_EXTERNAL,
+                    "/srv/proj",
+                    "external agent thread (no transcript in threads.db): agent=claude-code"
+                    " title=External thread",
+                ),
+                (
+                    "2026-10-03T12:00:00.000Z",
+                    ZED_WORKTREE_THREAD,
+                    ZED_WORKTREE,
+                    "sidebar thread: title=Fix tests in a worktree archived=true"
+                    " interacted_at=2026-10-03T11:59:00.000Z main_worktree=/srv/proj",
+                ),
+                (
+                    mtime,
+                    "",
+                    "/srv/proj",
+                    "permission setting: trusted_worktrees./srv/proj=true (from %s"
+                    " trusted_worktrees, file mtime)" % rel,
+                ),
+                (
+                    mtime,
+                    "",
+                    "/home/alice/remote",
+                    "permission setting: trusted_worktrees./home/alice/remote=true"
+                    " host=alice@build.example (from %s trusted_worktrees, file mtime)" % rel,
+                ),
+                (
+                    "2026-10-03T11:00:00.000Z",
+                    "",
+                    "/srv/proj",
+                    "unsent draft: refactor the parser\n[mention] file:///srv/proj/main.py",
+                ),
+                (
+                    mtime,
+                    "",
+                    "",
+                    "unsent draft: an orphan draft (from %s agent_draft_prompts, file mtime)" % rel,
+                ),
+                (
+                    "2026-10-03T11:00:00.500Z",
+                    "",
+                    ZED_WORKTREE,
+                    "scratch directory: %s (Zed-created git worktree of /srv/proj) (from %s"
+                    " created_git_worktrees, created_at)" % (ZED_WORKTREE, rel),
+                ),
+                (
+                    mtime,
+                    ZED_WORKTREE_THREAD,
+                    "/srv/proj",
+                    "archived worktree: %s of /srv/proj branch=fix-tests staged=a1b2c3"
+                    " unstaged=d4e5f6 original=0a0b0c ref=refs/archived-worktrees/1 (from %s"
+                    " archived_git_worktrees, file mtime)" % (ZED_WORKTREE, rel),
+                ),
+                (
+                    "2026-10-03T10:30:00.000Z",
+                    "",
+                    "/srv/proj",
+                    "sidebar terminal: zsh cwd=/srv/proj",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(r.turn_type, "system")
+        self.assertFalse(ZedParser().secondary(art))
+
+    def test_bad_kv_value_is_reported_not_fatal(self):
+        # A scoped_kv_store value that does not decode is its own parser:
+        # row, carried in full, after the file's other rows.
+        con = sqlite3.connect(str(self.home / self.SIDEBAR))
+        con.execute(
+            "INSERT INTO scoped_kv_store(namespace,key,value) VALUES (?,?,?)",
+            ("agent_draft_prompts", "cut-draft", '[{"type":"text","text":"cut'),
+        )
+        con.execute(
+            "INSERT INTO scoped_kv_store(namespace,key,value) VALUES (?,?,?)",
+            ("created_git_worktrees", "local\n/srv/wt2", '{"created_at_nanos":1}'),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(ZedParser(), self.SIDEBAR)
+        self.assertEqual(len(rows), 12)
+        self.assertTrue(rows[9].text.startswith("sidebar terminal: "))
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.text) for r in rows[10:]],
+            [
+                (
+                    "system",
+                    5,
+                    "",
+                    "parser: unparseable record 5 (agent_draft_prompts cut-draft: JSONDecodeError:"
+                    " Unterminated string starting at: line 1 column 24 (char 23)):"
+                    ' [{"type":"text","text":"cut',
+                ),
+                (
+                    "system",
+                    6,
+                    "",
+                    "parser: unparseable record 6 (created_git_worktrees: KeyError:"
+                    " 'created_at_seconds'):"
+                    ' {"created_at_nanos":1}',
+                ),
+            ],
+        )
+
+    def test_settings_rows(self):
+        # Source-derived (zed-industries/zed at 9cd14da): standing
+        # permission entries of the user settings file, JSONC.
+        rel = ".config/zed/settings.json"
+        art = self.artifact(rel)
+        rows = list(ZedParser().parse(art, Options()))
+        tail = " (from %s, file mtime)" % rel
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: agent.tool_permissions.default=confirm" + tail,
+                "permission setting: agent.tool_permissions.tools.terminal.always_allow="
+                '{"pattern":"^cargo test"}' + tail,
+                "permission setting: agent.tool_permissions.tools.terminal.always_deny="
+                '{"case_sensitive":false,"pattern":"^rm -rf"}' + tail,
+                "permission setting: agent.sandbox_permissions.network_hosts=*.npmjs.org" + tail,
+                "permission setting: agent.sandbox_permissions.allow_unsandboxed=false" + tail,
+                "permission setting: agent_servers.claude-acp.default_mode=plan" + tail,
+                "permission setting: session.trust_all_worktrees=false" + tail,
+                "permission setting: stable.agent.tool_permissions.default=allow" + tail,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "", file_mtime(art)),
+            )
+
+    def test_settings_not_object_and_empty(self):
+        rel = ".config/zed/settings.json"
+        (self.home / rel).write_text('{"agent": ', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(ZedParser(), rel)],
+            ["parser: %s is not a JSON object" % rel],
+        )
+        (self.home / rel).write_text("\n", encoding="utf-8")
+        self.assertEqual(self.rows_for(ZedParser(), rel), [])
+
+    def test_permission_decisions(self):
+        rows = self.rows_for(ZedParser(), self.REL)
+        i = next(n for n, r in enumerate(rows) if r.text == "permission decision: denied")
+        self.assertEqual(
+            (rows[i - 1].turn_type, rows[i - 1].tool_use_id), ("tool_result", "toolu_02")
+        )
+        self.assertEqual(
+            (rows[i].turn_type, rows[i].tool_name, rows[i].tool_use_id, rows[i].session_id),
+            ("system", "terminal", "toolu_02", ZED_THREAD),
+        )
+        # the approved call has no decision row
+        self.assertEqual(
+            [r.tool_use_id for r in rows if r.text.startswith("permission decision")], ["toolu_02"]
+        )
+        results = {
+            "t1": "Blocked by global default: deny",
+            "t2": "Command blocked by security rule for terminal tool",
+            "t3": "fetch tool is disabled",
+            "t4": "No such file or directory",
+        }
+        thread = {
+            "version": "0.3.0",
+            "messages": [
+                {
+                    "Agent": {
+                        "content": [],
+                        "tool_results": {
+                            k: {
+                                "tool_use_id": k,
+                                "tool_name": "terminal",
+                                "is_error": True,
+                                "content": [{"Text": v}],
+                            }
+                            for k, v in results.items()
+                        },
+                    }
+                }
+            ],
+        }
+        self._insert("auto", "json", json.dumps(thread).encode("utf-8"))
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "auto"]
+        self.assertEqual(
+            [(r.tool_use_id, r.text) for r in rows if r.turn_type == "system"][1:],
+            [
+                ("t1", "permission decision: auto_denied reason=Blocked by global default: deny"),
+                (
+                    "t2",
+                    "permission decision: auto_denied reason=Command blocked by security rule"
+                    " for terminal tool",
+                ),
+                ("t3", "permission decision: auto_denied reason=fetch tool is disabled"),
+            ],
+        )
+
+    def test_scratch_rows(self):
+        rows = [
+            r
+            for r in self.rows_for(ZedParser(), self.REL)
+            if r.text.startswith("scratch directory:")
+        ]
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "",
+                    ZED_TEMP_DIR,
+                    "2026-10-03T09:01:05.000Z",
+                    "scratch directory: %s (sandboxed terminal temp directory of thread %s)"
+                    " (thread blob, as of updated_at)" % (ZED_TEMP_DIR, ZED_THREAD),
+                )
+            ],
+        )
+
+    def test_wanted_files(self):
+        art = next(a for a in self.col.artifacts if a.rel == ".config/zed/keymap.json")
         self.assertFalse(ZedParser().wants(art))
         for rel in (
             "AppData/Local/Zed/threads/threads.db",
             "Library/Application Support/Zed/db/0-preview/db.sqlite",
             ".var/app/dev.zed.Zed/data/zed/threads/threads.db",
+            ".config/zed/settings.json",
+            ".config/zed/global_settings.json",
+            "AppData/Roaming/Zed/settings.json",
+            ".var/app/dev.zed.ZedPreview/config/zed/settings.json",
         ):
             self.assertTrue(ZedParser().wants(rel_only(rel)), rel)
-        for rel in (self.REL + "-journal", self.SIDEBAR + "-wal"):
+        for rel in (
+            self.REL + "-journal",
+            self.SIDEBAR + "-wal",
+            ".config/zed/settings_backup.json",
+            ".zed/settings.json",
+        ):
             self.assertFalse(ZedParser().wants(rel_only(rel)), rel)
 
     def test_corrupt_blob_is_reported_not_fatal(self):
@@ -7100,7 +7365,7 @@ class ZedTests(ParserBase):
         cut = blob[: len(blob) // 2]
         self._insert("bad-thread", "zstd", cut)
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
         bad = [r for r in rows if r.session_id == "bad-thread"]
         self.assertEqual(len(bad), 1)
         self.assertEqual(
@@ -7157,7 +7422,11 @@ class ZedTests(ParserBase):
 
     def test_model_and_thread_grant_rows(self):
         rows = self.rows_for(ZedParser(), self.REL)
-        state = [r for r in rows if model_or_permission_row(r)]
+        state = [
+            r
+            for r in rows
+            if model_or_permission_row(r) and not r.text.startswith("permission decision")
+        ]
         self.assertEqual(
             [r.text for r in state],
             [
@@ -7186,7 +7455,9 @@ class ZedTests(ParserBase):
             self.assertEqual(r.model, "anthropic/claude-sonnet-4-5")
         for r in state[1:]:
             self.assertEqual(r.timestamp_utc, "2026-10-03T09:01:05.000Z")
-        self.assertEqual(rows[len(state) + 1].turn_type, "user")
+        # then the sandbox temp directory row, then the first message
+        self.assertTrue(rows[len(state) + 1].text.startswith("scratch directory:"))
+        self.assertEqual(rows[len(state) + 2].turn_type, "user")
 
     def test_thread_without_model_or_grants_has_no_state_rows(self):
         self._insert("bare", "json", b'{"version":"0.3.0","messages":[]}')
@@ -7212,7 +7483,7 @@ class ZedTests(ParserBase):
         self._insert("list-thread", "json", b'["not", "an", "object"]')
         self._insert("cut-thread", "json", b'{"version":"0.3.0","messages":[{"User"')
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
         by_session = {r.session_id: r for r in rows if r.session_id != ZED_THREAD}
         self.assertEqual(
             by_session["list-thread"].text,

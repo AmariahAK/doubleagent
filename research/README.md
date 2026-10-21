@@ -236,7 +236,7 @@ is the design that shows each event once across them.
 | `tabby` | home `~/.tabby/ee/db.sqlite` | yes | editor inline-edit command histories (IntelliJ XML, VS Code `state.vscdb`), no times; secondary | none (`git_url` only) | `db.backup-*.sqlite` copies and the `events/*.json` log, secondary; AI-written pages parsed. [what survives](tabby.md#what-survives-a-delete) |
 | `twinny` | the editor's `state.vscdb` | yes | none | none in the chats; since 4.3.5 the `agent-changes/` records carry the workspace `root` | The `agent-changes/` records (newest 50) and the log channel survive a delete; secondary. [what survives](twinny.md#what-survives-a-delete) |
 | `vscode` | user data `workspaceStorage/<hash>/chatSessions/` | yes | none | `workspace.json` per hash; `workingDirectory` | `chatEditingSessions/` edit states survive a delete, secondary; Copilot Chat's `session-store.db`, hook transcripts and debug logs too, not parsed. [what survives](vscode.md#what-survives-a-delete) |
-| `zed` | data directory `threads/threads.db` | yes | none | per thread `folder_paths` | `sidebar_threads` (metadata only); a thread's `created_git_worktrees` entry survives a delete, not parsed. [what survives](zed.md#what-survives-a-delete) |
+| `zed` | data directory `threads/threads.db` | yes | none | per thread `folder_paths` | `sidebar_threads` (metadata only); a thread's `created_git_worktrees` entry survives a delete, parsed. [what survives](zed.md#what-survives-a-delete) |
 
 What the table shows:
 
