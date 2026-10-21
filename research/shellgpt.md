@@ -8,7 +8,8 @@ plug-in. Its configuration lives under the home, but its chat history lives in
 the system temporary directory. It stores a named chat or REPL session as the raw OpenAI `messages`
 array it sends to the API, one JSON file per session, with no timestamps, model or working
 directory. Paths cited are relative to the clone. The agent is parsed: the `shellgpt` parser
-reads the chat files ([Parser plan](#parser-plan)).
+reads the chat files, four keys of the settings file, the function store and the response cache
+([Parser plan](#parser-plan)).
 
 ## Source and evidence
 
@@ -28,6 +29,13 @@ All claims from source. The older temp-directory layout is cited from the histor
 
 ### Source reviews
 
+- 2026-10-21: TheR1D/shell_gpt at
+  [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
+  (1.5.1): the parser now reads the `.sgptrc` permission and model keys, the function store and
+  the response cache, so the Parser plan states those rows instead of proposing them; it added
+  that the answer after a function call is cached on its own
+  ([Response cache](#response-cache)) and the source-host statement
+  ([Source host rows](#source-host-rows)).
 - 2026-10-19: the head of the default branch is still
   [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
   the commit above, so every path here stands. It added the finding that the response cache also
@@ -186,8 +194,9 @@ stated. The response cache ([Response cache](#response-cache)) keeps the answers
 that the cut dropped, and to one-shot prompts that never had a chat file, as text with no prompt,
 time or session, the newest 100 files kept; its current Windows path is named by no catalog line
 ([Chat history and response cache](#chat-history-and-response-cache)). Deletion markers are not
-stated. The analyzer reads the chat files and not the response cache, a secondary source joined
-on text only (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+stated. The analyzer reads the chat files and, where it was collected, the response cache, a
+secondary source joined on text only (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -253,7 +262,7 @@ No SQLite or binary store.
 
 `<CACHE_PATH>/<md5>` files hold only a response string with no prompt
 ([`sgpt/cache.py:30-41`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L41)).
-Not a transcript, and not parsed; because it also holds chat answers it is a secondary source
+Not a transcript; because it also holds chat answers it is a secondary source
 ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)). `get_completion` of
 every handler, the chat handler included, is wrapped by the cache decorator, which writes the full
 response text to `<CACHE_PATH>/<md5 of the request>` unless it contains a function call
@@ -263,6 +272,13 @@ So the answers to chat turns that the 100-message cut dropped, and to one-shot p
 chat file, survive there as text with no prompt, time or session; they join on text only. The newest
 100 files are kept
 ([`cache.py:46-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L46-L61)).
+When the model calls a function, the handler runs it and calls the cached `get_completion` again
+with `caching=False`, which skips the cache read but not the write
+([`handler.py:155-166`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L155-L166);
+[`cache.py:33-41`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L33-L41)). So the answer after a function call is
+cached on its own, while the chat file stores it behind the `> @FunctionCall` marker
+([Record schema](#record-schema)); the outer call's text holds the marker and is not cached. An
+empty response is written as an empty file.
 
 #### Settings file and function store
 
@@ -280,7 +296,14 @@ The environment override of `SHELL_INTERACTION` reads the variable `"SHELL_INTER
 trailing space, so only the file value takes effect in practice. The functions the model may call
 are the `*.py` files in `~/.config/shell_gpt/functions/`, which `--install-functions` fills with
 `execute_shell.py`
-([`sgpt/llm_functions/init_functions.py:13-22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/llm_functions/init_functions.py#L13-L22)).
+([`sgpt/llm_functions/init_functions.py:13-22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/llm_functions/init_functions.py#L13-L22)),
+and on macOS also `apple_script.py`
+([`init_functions.py:29-35`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/llm_functions/init_functions.py#L29-L35)).
+Every `*.py` file in that directory is loaded at start and offered to the model
+([`sgpt/function.py:54-56`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/function.py#L54-L56)).
+ShellGPT reads the file line by line, skipping blank lines and lines that start with `#`, and
+splits each other line on its first `=`; a line with no `=` stops it with an error
+([`config.py:82-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L82-L87)).
 
 `.sgptrc` `DEFAULT_MODEL` (default `gpt-5.4-mini`,
 [`config.py:25`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L25))
@@ -305,7 +328,9 @@ messages.
 ### Secrets
 
 The API key is never written into chat files; it is in `.sgptrc`
-([`config.py:63-69`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L63-L69)).
+([`config.py:63-69`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L63-L69)), beside
+the settings the parser reads ([Permission rows](#permission-rows)), so the parser reads only
+those named keys and never puts another key, value or line of that file in a row.
 Tool messages contain raw shell output and can contain anything the commands printed.
 
 ### Parser plan
@@ -338,25 +363,35 @@ answer is written and records the choice nowhere
 nor does the REPL's `e` in the shell role
 ([`sgpt/handlers/repl_handler.py:56-59`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/repl_handler.py#L56-L59)).
 
-Standing: not read. The `.sgptrc` switches and the function store described in
-[Settings file and function store](#settings-file-and-function-store).
-Proposed: one `permission setting: <key>=<value> (from .sgptrc, file
-mtime)` row per key and one `permission setting: function <file name>
-(from .config/shell_gpt/functions, file mtime)` row per installed
-function, the API key never read. `.sgptrc` is a secret glob, so a
-`--no-secrets` collection lacks it.
+Standing: the `.sgptrc` switches and the function store described in
+[Settings file and function store](#settings-file-and-function-store). The parser yields one
+`permission setting: <key>=<value> (from .config/shell_gpt/.sgptrc, file mtime)` row for each of
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD` and `SHELL_INTERACTION` present in the file, in
+file order, and one `permission setting: function <file name> (from .config/shell_gpt/functions,
+file mtime)` row per file in the function store, without reading the code; each at its file's
+modification time with an empty `session_id`. Source-derived; not observed on any real install.
+`.sgptrc` is a secret glob, so a `--no-secrets` collection lacks it, and an environment variable
+that overrode a key at run time leaves no trace in the file.
 
 #### Model rows
 
-ShellGPT records no model in the chat cache, so the parser yields no
-`model:` rows. The configured default is `DEFAULT_MODEL` in `.sgptrc`
-([Settings file and function store](#settings-file-and-function-store)). Proposed: one
-`model: <DEFAULT_MODEL> (configured default, from .sgptrc, file mtime)` row; not a per-session
-model.
+ShellGPT records no model in the chat cache, so no chat row names one. The configured default is
+`DEFAULT_MODEL` in `.sgptrc`
+([Settings file and function store](#settings-file-and-function-store)). The parser yields one
+`model: <DEFAULT_MODEL> (configured default, from .config/shell_gpt/.sgptrc, file mtime)` row at
+the file's modification time, with the value in the `model` column; it is the default, not a
+per-session model, since `--model` is recorded nowhere. Source-derived; not observed on any real
+install.
 
 #### Past-use rows and secondary sources
 
-The response cache ([Response cache](#response-cache)) is secondary and not read.
+The chat files are the primary store. The response cache ([Response cache](#response-cache)) is
+secondary: the parser reads every `shell_gpt/cache/<md5>` file the catalog collects (the pre-0.9.0
+Windows `AppData/Local/Temp/shell_gpt/cache/`; the current `AppData/Local/Temp/cache` is no
+catalog line) and yields each non-empty one as an `assistant` row with no timestamp, session or
+project, so it matches a chat row on text alone and is kept as recovered when no chat row holds
+it. The answer after a function call never matches, because the chat file stores it behind the
+marker, and is shown twice. Source-derived; not observed on any real install.
 
 #### Sync, relay and origin rows
 
@@ -401,8 +436,10 @@ for the truncation. The parser yields no deletion rows.
 
 #### Bad-line rows
 
-A truncated array yields the messages before the cut and one `system` row. The response cache, if
-read, is one text per file with nothing to cut.
+A truncated array yields the messages before the cut and one `system` row. A line of `.sgptrc`
+with no `=` yields `parser: unparseable line <n> (no "=" separator; not shown, the file holds the
+API key)`, the line itself left out because the file holds the key; the other lines are still
+read. The response cache is one text per file with nothing to cut.
 
 #### Fixtures
 
@@ -415,6 +452,30 @@ Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
  {"role": "tool", "content": "Exit code: 0, Output:\nLISTEN 0 4096 0.0.0.0:8080 0.0.0.0:* users:((\"python3\",pid=4242,fd=3))\n", "tool_call_id": "call_Q1w2e3r4"},
  {"role": "assistant", "content": "\n> @FunctionCall `execute_shell_command(shell_command=\"ss -ltnp | grep 8080\")` \n\nA python3 process (PID 4242) is listening on 8080."}]
 ```
+
+Fixture (`.config/shell_gpt/.sgptrc`, a shortened file in the order of `DEFAULT_CONFIG`, with a
+placeholder key):
+
+```text
+CHAT_CACHE_PATH=/tmp/chat_cache
+CACHE_PATH=/tmp/cache
+DEFAULT_MODEL=gpt-5.4-mini
+DEFAULT_EXECUTE_SHELL_CMD=true
+OPENAI_USE_FUNCTIONS=true
+API_BASE_URL=default
+SHELL_INTERACTION=false
+OPENAI_API_KEY=sk-not-real
+```
+
+Fixture (`shell_gpt/cache/<md5>`, the whole file): `30G is free on /.`
+
+#### Source host rows
+
+The agent records no source-host integration. `github`, `gitlab`, `bitbucket`, `oauth`,
+`installation`, `repositor`, `pull request` and `clone` match nothing in `sgpt/` at
+[a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
+and the only matches in `pyproject.toml` are the project's own homepage and repository links
+([`pyproject.toml:58-60`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/pyproject.toml#L58-L60)).
 
 ## Confidence
 
