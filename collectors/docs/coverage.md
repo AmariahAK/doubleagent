@@ -704,6 +704,21 @@ whole, so a Docker Ollama volume's `models/manifests` is not collected;
 when the pulled models matter, copy `models/manifests` from the volume's
 `_data` by hand, or pass `--full` (`-Full`), which also takes the weights.
 
+OpenClaw's exclusions under its state directory, `.openclaw*/dev`, `git`,
+`npm`, `tmp` and `tools` (managed checkouts, packages, temporary files and
+downloaded runtimes, the directories `openclaw backup` also skips), match a
+directory of that name at any depth below `~/.openclaw` or a profile's
+`~/.openclaw-<profile>`, since `*` crosses `/`. Besides the top-level
+directories and each agent's `agents/<id>/agent/tmp`, they prune a `tmp`,
+`tools`, `git`, `dev` or `npm` directory inside an agent workspace
+(`workspace/`, `workspace-<agentId>/`) or a skill, which then has only the
+directory's `skipped_excluded` row; pass `--full` (`-Full`) to collect it.
+The Gateway's clones of repositories added from a remote URL,
+`projects/<16 hex>/<name>`, are excluded by the clone directory's name
+alone, so anything else under `projects/` is collected; which repository
+each clone is stays in the `projects` table of the collected
+`state/openclaw.sqlite`.
+
 ## Credentials
 
 Credential files are collected by default and flagged `secret: true`, since

@@ -1158,6 +1158,34 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 OpenClaw source review (#219)
+# OpenClaw 2026.10.5 (source, openclaw/openclaw at 146284a) keeps the
+# approvals socket token in the legacy exec-approvals.json, and the Docker
+# install's ~/.openclaw-auth-profile-secrets holds gateway.env: both are
+# flagged, and so is a volume-relative exec-approvals.json. A Gateway clone
+# under projects/<16 hex>/<name> is excluded while another projects entry is
+# collected, and the volume-relative forms of the clone, plugin-skills and
+# agent tmp exclusions prune the same names in a volume (the a0_usr one
+# here), whose own projects/<name> stays collected. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1
+# under alice.
+O219="$H/.openclaw"
+C219=0123456789abcdef
+V219="$DV/a0_usr/_data"
+mkdir -p "$O219/projects/$C219/repo" "$O219/projects/notes" "$H/.openclaw-auth-profile-secrets" \
+  "$V219/projects/$C219/repo" "$V219/projects/p219" "$V219/plugin-skills" \
+  "$V219/agents/main/agent/tmp" "$V219/agents/main/agent/.tmp"
+printf '{"socket":{"token":"x"}}\n' >"$O219/exec-approvals.json"
+printf 'OPENAI_API_KEY=x\n' >"$H/.openclaw-auth-profile-secrets/gateway.env"
+printf 'clone\n' >"$O219/projects/$C219/repo/README.md"
+printf 'notes\n' >"$O219/projects/notes/todo.md"
+printf '{"socket":{"token":"x"}}\n' >"$V219/exec-approvals.json"
+printf 'clone\n' >"$V219/projects/$C219/repo/README.md"
+printf 'project\n' >"$V219/projects/p219/notes.md"
+printf 'link\n' >"$V219/plugin-skills/s"
+printf 'tmp\n' >"$V219/agents/main/agent/tmp/t"
+printf 'tmp\n' >"$V219/agents/main/agent/.tmp/t"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1541,6 +1569,15 @@ check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
+# 2026-10-21 OpenClaw source review (#219)
+check "#219 OpenClaw exec-approvals.json flagged secret" "row \"$O219/exec-approvals.json\" | grep -q '\"agent\":\"openclaw\".*$SEC153'"
+check "#219 OpenClaw auth-profile secrets directory flagged secret" "row \"$H/.openclaw-auth-profile-secrets/gateway.env\" | grep -q '\"agent\":\"openclaw\".*$SEC153'"
+check "#219 OpenClaw volume exec-approvals.json flagged secret" "row \"$V219/exec-approvals.json\" | grep -q '\"user\":\"docker\".*$SEC153'"
+check "#219 OpenClaw Gateway clone excluded" "[ \"\$(status_of \"$O219/projects/$C219\")\" = skipped_excluded ] && ! grep -qF '$C219/repo/README.md' \"\$M\""
+check "#219 OpenClaw projects entry that is no clone collected" "row \"$O219/projects/notes/todo.md\" | grep -q '\"agent\":\"openclaw\".*\"status\":\"collected\"'"
+check "#219 OpenClaw volume clone, plugin-skills and agent tmp excluded" "[ \"\$(status_of \"$V219/projects/$C219\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/plugin-skills\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/agents/main/agent/tmp\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/agents/main/agent/.tmp\")\" = skipped_excluded ]"
+check "#219 volume projects entry that is no clone collected" "row \"$V219/projects/p219/notes.md\" | grep -q '\"user\":\"docker\".*\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1567,6 +1604,8 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 OpenClaw source review (#219)
+check "#219 OpenClaw credentials skipped without secrets" "[ \"\$(status_of \"$O219/exec-approvals.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.openclaw-auth-profile-secrets/gateway.env\")\" = skipped_secret ] && [ \"\$(status_of \"$V219/exec-approvals.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -1687,7 +1726,7 @@ check "inventory nested entry claimed from the enclosing agent" "agent_line inve
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"
 check "inventory: no agent line has zero files" "! grep -q '\"files\":0,' \"$OUT/inventory.stdout\""
 check "inventory projects counted per user" "agent_line inventory alice claude-code | grep -q '\"projects\":[1-9]'"
-check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":4,\"bytes\":91,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
+check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":6,\"bytes\":124,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
 check "inventory rootless docker volume line" "agent_line inventory docker tabby | grep -q '\"files\":1,\"bytes\":23,.*\"evidence\":\"\\*tabby\\*\"}\$'"
 check "inventory shared not inventoried" "! grep -q '\"agent\":\"\\(shared\\|project\\|live\\)\"' \"$OUT/inventory.stdout\""
 check "inventory prints no path below a home" "! grep -q '$ROOT' \"$OUT/inventory.stdout\""

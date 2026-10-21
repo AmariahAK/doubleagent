@@ -1085,6 +1085,31 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 OpenClaw source review (#219)
+# OpenClaw 2026.10.5 (source, openclaw/openclaw at 146284a) keeps the
+# approvals socket token in the legacy exec-approvals.json, and the Docker
+# install's ~/.openclaw-auth-profile-secrets holds gateway.env: both are
+# flagged, and so is a volume-relative exec-approvals.json. A Gateway clone
+# under projects/<16 hex>/<name> is excluded while another projects entry is
+# collected, and the volume-relative forms of the clone, plugin-skills and
+# agent tmp exclusions prune the same names in a volume (the a0_usr one
+# here), whose own projects/<name> stays collected. Checks follow the
+# default and -NoSecrets runs below; the same files are in smoke.sh under
+# alice.
+$o219 = 'Users/alice/.openclaw'
+$c219 = '0123456789abcdef'
+$v219 = 'var/lib/docker/volumes/a0_usr/_data'
+Mk "$o219/exec-approvals.json" "{`"socket`":{`"token`":`"x`"}}`n"
+Mk 'Users/alice/.openclaw-auth-profile-secrets/gateway.env' "OPENAI_API_KEY=x`n"
+Mk "$o219/projects/$c219/repo/README.md" "clone`n"
+Mk "$o219/projects/notes/todo.md" "notes`n"
+Mk "$v219/exec-approvals.json" "{`"socket`":{`"token`":`"x`"}}`n"
+Mk "$v219/projects/$c219/repo/README.md" "clone`n"
+Mk "$v219/projects/p219/notes.md" "project`n"
+Mk "$v219/plugin-skills/s" "link`n"
+Mk "$v219/agents/main/agent/tmp/t" "tmp`n"
+Mk "$v219/agents/main/agent/.tmp/t" "tmp`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1627,6 +1652,15 @@ Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
+# 2026-10-21 OpenClaw source review (#219)
+Check '#219 OpenClaw exec-approvals.json flagged secret' { Is113 "$o219/exec-approvals.json" 'openclaw' $true }
+Check '#219 OpenClaw auth-profile secrets directory flagged secret' { Is113 'Users/alice/.openclaw-auth-profile-secrets/gateway.env' 'openclaw' $true }
+Check '#219 OpenClaw volume exec-approvals.json flagged secret' { $r = Row "$v219/exec-approvals.json"; $r -and $r.user -eq 'docker' -and $r.secret -eq $true -and $r.status -eq 'collected' }
+Check '#219 OpenClaw Gateway clone excluded' { (StatusOf "$o219/projects/$c219") -eq 'skipped_excluded' -and (NoRow6 "$c219/repo/README.md") }
+Check '#219 OpenClaw projects entry that is no clone collected' { Is113 "$o219/projects/notes/todo.md" 'openclaw' $false }
+Check '#219 OpenClaw volume clone, plugin-skills and agent tmp excluded' { (StatusOf "$v219/projects/$c219") -eq 'skipped_excluded' -and (StatusOf "$v219/plugin-skills") -eq 'skipped_excluded' -and (StatusOf "$v219/agents/main/agent/tmp") -eq 'skipped_excluded' -and (StatusOf "$v219/agents/main/agent/.tmp") -eq 'skipped_excluded' }
+Check '#219 volume projects entry that is no clone collected' { $r = Row "$v219/projects/p219/notes.md"; $r -and $r.user -eq 'docker' -and $r.status -eq 'collected' }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1832,6 +1866,8 @@ Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf '
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
+# 2026-10-21 OpenClaw source review (#219)
+Check '#219 OpenClaw credentials skipped without secrets' { (StatusOf "$o219/exec-approvals.json") -eq 'skipped_secret' -and (StatusOf 'Users/alice/.openclaw-auth-profile-secrets/gateway.env') -eq 'skipped_secret' -and (StatusOf "$v219/exec-approvals.json") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
@@ -1962,7 +1998,7 @@ $files107 = -1
 $r = InvAgent 'alice' 'muse-code'
 if ($r) { $files107 = $r.files }
 $r = InvAgent 'docker' 'agent-zero'
-Check 'Inventory docker volume line' { $r -and $r.files -eq 4 -and $r.bytes -eq 87 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
+Check 'Inventory docker volume line' { $r -and $r.files -eq 6 -and $r.bytes -eq 120 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
 $r = InvAgent 'docker' 'tabby'
 Check 'Inventory rootless docker volume line' { $r -and $r.files -eq 1 -and $r.bytes -eq 22 -and $r.evidence -eq '*tabby*' }
 Check 'Inventory shared not inventoried' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { @('shared', 'project', 'live') -contains $_.agent }) }
