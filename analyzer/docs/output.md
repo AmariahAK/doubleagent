@@ -1617,8 +1617,8 @@ an hour of turn); a WebUI row kept because no session row matched
 carries true UTC, unlike every other nanobot row. nanobot's cron and
 trigger run records stamp in true UTC as well and use the same window;
 their prompt row carries the text the session stores for the turn,
-rebuilt from the record, and a prompt or reply longer than the record's
-limit, which nanobot truncates there, is shown twice.
+rebuilt from the record, and a trigger's content or reply longer than
+the 4,000 characters nanobot keeps in its record is shown twice.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's

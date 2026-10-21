@@ -130,8 +130,8 @@ install (issue 207):
   `session_key`, `project_path` the workspace holding `cron/` or
   `triggers/`. Every time is true UTC while the session's are local time
   emitted as if UTC, so the window is `WEBUI_TOLERANCE_SECONDS`, as for the
-  WebUI transcript. Content and response longer than nanobot's record
-  limit are truncated in the record and then match nothing.
+  WebUI transcript. A trigger's content and response longer than 4,000
+  characters are cut in the record and then match nothing.
 * `sessions/<workspace-id>/.webui_session_index.json`, the WebUI sidebar's
   rebuildable cache `{version, sessions: [...]}` of the WebUI transcripts
   that have no session row (a chat whose session is gone among them): one
