@@ -4059,6 +4059,133 @@ def build_gemini_cli(base: Path) -> None:
     os.utime(trust, (GEMINI_TRUST_MTIME, GEMINI_TRUST_MTIME))
 
 
+# Standing permission files and past-use copies of Gemini CLI, in the shapes
+# of google-gemini/gemini-cli at 3be3d44 (issues 155 and 186): settingsSchema.ts,
+# policy/config.ts (createTomlRule), hooks/trustedHooks.ts,
+# agents/acknowledgedAgents.ts, useShellHistory.ts, core/logger.ts
+# (saveCheckpoint) and bugCommand.ts with historyExportUtils.ts. Not wired
+# into build_home, so the shared timeline counts stay as they are.
+GEMINI_SOURCES_MTIME = 1790859600  # 2026-10-01T13:00:00Z
+GEMINI_BUG_MS = 1790856000000  # 2026-10-01T12:00:00Z, in the file name
+GEMINI_CHECKPOINT_REL = ".gemini/tmp/proj/checkpoint-my%20tag.json"
+GEMINI_BUG_REL = ".gemini/tmp/proj/bug-report-history-%d.json" % GEMINI_BUG_MS
+
+
+def gemini_settings():
+    """`settings.json` with the permission, sandbox and retention keys, and
+    an MCP server environment the parser must not read."""
+    return {
+        "general": {
+            "defaultApprovalMode": "auto_edit",
+            "sessionRetention": {"enabled": True, "maxAge": "7d"},
+        },
+        "tools": {
+            "sandbox": "docker",
+            "allowed": ["run_shell_command(git)", "run_shell_command(npm test)"],
+            "exclude": ["web_fetch"],
+        },
+        "security": {
+            "disableYoloMode": True,
+            "folderTrust": {"enabled": True},
+            "environmentVariableRedaction": {"enabled": True},
+        },
+        "mcpServers": {"x": {"command": "x", "env": {"API_KEY": "secret"}}},
+        "model": {"name": "gemini-2.5-pro"},
+    }
+
+
+# Two "Allow for all future sessions" grants as @iarna/toml writes them.
+GEMINI_POLICY_TOML = """[[rule]]
+decision = "allow"
+priority = 2.95
+toolName = "run_shell_command"
+commandPrefix = [ "git", "status" ]
+
+[[rule]]
+decision = "allow"
+priority = 2.95
+toolName = "search"
+mcpName = "docs"
+modes = [ "autoEdit" ]
+"""
+
+
+def gemini_history_contents():
+    """`Content[]` as chat.getHistory() returns it: a prompt, a reply with a
+    function call, its response, a prompt the session rewound, and a reply
+    with a thought part."""
+    return [
+        {"role": "user", "parts": [{"text": "list files in src"}]},
+        {
+            "role": "model",
+            "parts": [
+                {"text": "Listing now."},
+                {
+                    "functionCall": {
+                        "id": "list_directory-1759309207000",
+                        "name": "list_directory",
+                        "args": {"path": "/srv/proj/src"},
+                    }
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "functionResponse": {
+                        "id": "list_directory-1759309207000",
+                        "name": "list_directory",
+                        "response": {"output": "main.ts\nutil.ts"},
+                    }
+                }
+            ],
+        },
+        {"role": "user", "parts": [{"text": "delete everything in /srv/proj"}]},
+        {"role": "model", "parts": [{"text": "weighing it", "thought": True}, {"text": "No."}]},
+    ]
+
+
+def build_gemini_cli_sources(base: Path) -> None:
+    """The standing permission files and the past-use copies under the
+    `.gemini` directory `base`, with noise the parser must not want."""
+    (base / "settings.json").write_text(json.dumps(gemini_settings()), encoding="utf-8")
+    (base / "policies").mkdir(parents=True, exist_ok=True)
+    (base / "policies/auto-saved.toml").write_text(GEMINI_POLICY_TOML, encoding="utf-8")
+    (base / "trusted_hooks.json").write_text(
+        json.dumps({"/srv/proj": ["lint:npm run lint"]}, indent=2), encoding="utf-8"
+    )
+    (base / "acknowledgments").mkdir(exist_ok=True)
+    (base / "acknowledgments/agents.json").write_text(
+        json.dumps({"/srv/proj": {"reviewer": "0123abcd"}}, indent=2), encoding="utf-8"
+    )
+    slug = base / "tmp/proj"
+    # Oldest first, joined with "\n" and no final newline; "make\" continues.
+    (slug / "shell_history").write_bytes(b"ls -la\ngit status\nmake\\\ntest")
+    (slug / "checkpoint-my%20tag.json").write_text(
+        json.dumps({"history": gemini_history_contents(), "authType": "oauth-personal"}, indent=2),
+        encoding="utf-8",
+    )
+    (slug / ("bug-report-history-%d.json" % GEMINI_BUG_MS)).write_text(
+        json.dumps(gemini_history_contents()[:2], indent=2), encoding="utf-8"
+    )
+    # Noise: the policy integrity hashes, a tool checkpoint and a heap snapshot.
+    (base / "policy_integrity.json").write_text("{}", encoding="utf-8")
+    (slug / "checkpoints").mkdir(exist_ok=True)
+    (slug / "checkpoints/2026-10-01T09_00_07_100Z-util.ts-write_file.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (slug / "bug-memory-1790856000000.heapsnapshot").write_text("{}", encoding="utf-8")
+    for rel in (
+        "settings.json",
+        "policies/auto-saved.toml",
+        "trusted_hooks.json",
+        "acknowledgments/agents.json",
+        "tmp/proj/checkpoint-my%20tag.json",
+    ):
+        os.utime(base / rel, (GEMINI_SOURCES_MTIME, GEMINI_SOURCES_MTIME))
+
+
 # A trustedFolders.json that Qwen Code's `parseJsoncObject` accepts and
 # `json.loads` does not (#173): a byte-order mark, a comment and trailing
 # commas (QwenLM/qwen-code at 5dcf7c7cb162e825d95d531081f67ee60da3c0e1,

@@ -4011,7 +4011,15 @@ class KiroTests(ParserBase):
         self.assertEqual(salvage("garbage")[0], None)
 
 
-from fixtures import GEMINI_TRUST_MTIME, TRUST_JSONC
+from fixtures import (
+    GEMINI_BUG_MS,
+    GEMINI_BUG_REL,
+    GEMINI_CHECKPOINT_REL,
+    GEMINI_SOURCES_MTIME,
+    GEMINI_TRUST_MTIME,
+    TRUST_JSONC,
+    build_gemini_cli_sources,
+)
 
 
 class GeminiCliTests(ParserBase):
@@ -4256,15 +4264,23 @@ class GeminiCliTests(ParserBase):
 
     def test_noise_not_wanted(self):
         p = GeminiCliParser()
+        self.sources()
         for rel in (
             ".gemini/oauth_creds.json",
-            ".gemini/settings.json",
             ".gemini/projects.json",
             ".gemini/tmp/proj/.project_root",
-            ".gemini/tmp/proj/shell_history",
             ".gemini/antigravity-cli/history.jsonl",
+            ".gemini/policy_integrity.json",
+            ".gemini/tmp/proj/checkpoints/2026-10-01T09_00_07_100Z-util.ts-write_file.json",
+            ".gemini/tmp/proj/bug-memory-1790856000000.heapsnapshot",
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
+            self.assertFalse(p.wants(art), rel)
+        # trusted_hooks.json and the acknowledged agents live in the home only.
+        proj = self.tmp / "srv" / "proj"
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        for rel in (".gemini/trusted_hooks.json", ".gemini/acknowledgments/agents.json"):
+            art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
             self.assertFalse(p.wants(art), rel)
 
     def test_truncated_last_line_is_reported_not_fatal(self):
@@ -4353,6 +4369,309 @@ class GeminiCliTests(ParserBase):
         self.assertEqual(
             [(r.turn_type, r.text, r.source_line) for r in self.rows_for(GeminiCliParser(), rel)],
             [("system", "parser: .gemini/trustedFolders.json is not a JSON object", 1)],
+        )
+
+    # -- standing permission files and past-use copies (#155, #186) --
+
+    def sources(self):
+        """Write the permission files and history copies and reopen the input."""
+        build_gemini_cli_sources(self.home / ".gemini")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_new_secondary_sources(self):
+        self.sources()
+        p = GeminiCliParser()
+        for rel in (".gemini/tmp/proj/shell_history", GEMINI_CHECKPOINT_REL, GEMINI_BUG_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        for rel in (
+            ".gemini/settings.json",
+            ".gemini/policies/auto-saved.toml",
+            ".gemini/trusted_hooks.json",
+            ".gemini/acknowledgments/agents.json",
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
+    def test_settings_rows(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), ".gemini/settings.json")
+        src = " (from .gemini/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tools.allowed=run_shell_command(git)" + src,
+                "permission setting: tools.allowed=run_shell_command(npm test)" + src,
+                "permission setting: tools.exclude=web_fetch" + src,
+                "permission setting: general.defaultApprovalMode=auto_edit" + src,
+                "permission setting: tools.sandbox=docker" + src,
+                "permission setting: security.disableYoloMode=true" + src,
+                "permission setting: security.folderTrust.enabled=true" + src,
+                "session retention: general.sessionRetention.enabled=true" + src,
+                "session retention: general.sessionRetention.maxAge=7d" + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line),
+                ("system", to_utc(GEMINI_SOURCES_MTIME), "", "", 1),
+            )
+        self.assertNotIn("secret", " ".join(r.text for r in rows))
+        # The empty settings file build_home writes yields nothing; a broken
+        # one is one row.
+        (self.home / ".gemini/settings.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(self.rows_for(GeminiCliParser(), ".gemini/settings.json"), [])
+        (self.home / ".gemini/settings.json").write_text('{"tools": ', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(GeminiCliParser(), ".gemini/settings.json")],
+            ["parser: .gemini/settings.json is not a JSON object"],
+        )
+
+    def test_policy_rows(self):
+        self.sources()
+        rel = ".gemini/policies/auto-saved.toml"
+        rows = self.rows_for(GeminiCliParser(), rel)
+        src = " (from .gemini/policies/auto-saved.toml, file mtime)"
+        if sys.version_info < (3, 11):
+            self.assertEqual(
+                [r.text for r in rows],
+                [
+                    "parser: .gemini/policies/auto-saved.toml not read: its [[rule]] tables "
+                    "need Python 3.11 or later (tomllib)"
+                ],
+            )
+            return
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: policy allow run_shell_command priority=2.95 "
+                'commandPrefix=["git","status"]' + src,
+                "permission setting: policy allow search priority=2.95 mcpName=docs "
+                'modes=["autoEdit"]' + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                ("system", to_utc(GEMINI_SOURCES_MTIME), "", ""),
+            )
+        # A corrupt file (the CLI then copies it to auto-saved.toml.bak) is one row.
+        (self.home / rel).write_text("[[rule]\n", encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith("parser: unreadable .gemini/policies/auto-saved.toml: "),
+            rows[0].text,
+        )
+
+    def test_project_settings_and_policy(self):
+        # A project's .gemini/settings.json and workspace policy file: the
+        # rows carry the project directory.
+        proj = self.tmp / "srv" / "proj"
+        (proj / ".gemini/policies").mkdir(parents=True)
+        (proj / ".gemini/settings.json").write_text(
+            json.dumps({"tools": {"confirmationRequired": ["write_file"]}}), encoding="utf-8"
+        )
+        (proj / ".gemini/policies/auto-saved.toml").write_text(
+            '[[rule]]\ndecision = "allow"\npriority = 2.95\ntoolName = "write_file"\n',
+            encoding="utf-8",
+        )
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        p = GeminiCliParser()
+        rel = ".gemini/settings.json"
+        art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
+        self.assertTrue(p.wants(art))
+        self.assertEqual(
+            [(r.text, r.project_path) for r in p.parse(art, Options())],
+            [
+                (
+                    "permission setting: tools.confirmationRequired=write_file "
+                    "(from .gemini/settings.json, file mtime)",
+                    "/srv/proj",
+                )
+            ],
+        )
+        if sys.version_info >= (3, 11):
+            rel = ".gemini/policies/auto-saved.toml"
+            art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
+            self.assertEqual(
+                [(r.text, r.project_path) for r in p.parse(art, Options())],
+                [
+                    (
+                        "permission setting: policy allow write_file priority=2.95 "
+                        "(from .gemini/policies/auto-saved.toml, file mtime)",
+                        "/srv/proj",
+                    )
+                ],
+            )
+
+    def test_trusted_hooks_and_acknowledged_agents(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), ".gemini/trusted_hooks.json")
+        self.assertEqual(
+            [(r.text, r.project_path, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "permission setting: trustedHooks=lint:npm run lint "
+                    "(from .gemini/trusted_hooks.json, file mtime)",
+                    "/srv/proj",
+                    to_utc(GEMINI_SOURCES_MTIME),
+                )
+            ],
+        )
+        rows = self.rows_for(GeminiCliParser(), ".gemini/acknowledgments/agents.json")
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: acknowledgedAgents.reviewer=0123abcd "
+                    "(from .gemini/acknowledgments/agents.json, file mtime)",
+                    "/srv/proj",
+                )
+            ],
+        )
+        (self.home / ".gemini/trusted_hooks.json").write_text("[]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(GeminiCliParser(), ".gemini/trusted_hooks.json")],
+            ["parser: .gemini/trusted_hooks.json is not a JSON object"],
+        )
+
+    def test_shell_history(self):
+        self.sources()
+        rel = ".gemini/tmp/proj/shell_history"
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(1, "user", "ls -la"), (2, "user", "git status"), (3, "user", "make test")],
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", "/srv/proj"))
+
+    def test_shell_history_bad_line(self):
+        # A line that is not UTF-8 is its own row, in full; the commands
+        # before and after it are kept.
+        self.sources()
+        rel = ".gemini/tmp/proj/shell_history"
+        (self.home / rel).write_bytes(b"ls -la\nbad \xff line\ngit status")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "ls -la"),
+                (3, "user", "git status"),
+                (2, "system", "parser: unparseable line (not valid UTF-8): bad � line"),
+            ],
+        )
+        self.assertEqual((rows[-1].project_path, rows[-1].timestamp_utc), ("/srv/proj", ""))
+
+    CHECKPOINT_ROWS: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "user", "list files in src"),
+        (2, "assistant", "Listing now."),
+        (2, "tool_use", '{"path":"/srv/proj/src"}'),
+        (3, "tool_result", "main.ts\nutil.ts"),
+        (4, "user", "delete everything in /srv/proj"),
+        (5, "assistant", "No."),
+    ]
+
+    def test_chat_checkpoint(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        head, rest = rows[0], rows[1:]
+        self.assertEqual(
+            (head.turn_type, head.text, head.timestamp_utc, head.source_line, head.project_path),
+            (
+                "system",
+                "chat checkpoint: tag my tag authType=oauth-personal "
+                "(from .gemini/tmp/proj/checkpoint-my%20tag.json, file mtime)",
+                to_utc(GEMINI_SOURCES_MTIME),
+                0,
+                "/srv/proj",
+            ),
+        )
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rest], self.CHECKPOINT_ROWS)
+        for r in rest:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", "/srv/proj"))
+        call, result = rest[2], rest[3]
+        self.assertEqual(
+            (call.tool_name, call.tool_use_id, result.tool_name, result.tool_use_id),
+            ("list_directory", "list_directory-1759309207000") * 2,
+        )
+        thinking = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL, include_thinking=True)
+        self.assertEqual(
+            [(r.source_line, r.text) for r in thinking if r.turn_type == "thinking"],
+            [(5, "weighing it")],
+        )
+        # Deduplicated against the session file: the prompt, the reply and
+        # the tool call and result it also holds are dropped; the rewound
+        # prompt and the last reply, which only the checkpoint keeps, stay.
+        primary = self.rows_for(GeminiCliParser(), self.REL)
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in rest])
+        self.assertEqual(dropped["gemini-cli"], 4)
+        self.assertEqual(
+            [r.text for r in kept[len(primary) :]], ["delete everything in /srv/proj", "No."]
+        )
+
+    def test_chat_checkpoint_cut_and_legacy(self):
+        self.sources()
+        path = self.home / GEMINI_CHECKPOINT_REL
+        text = path.read_text(encoding="utf-8")
+        cut = text.index('"delete everything')
+        path.write_text(text[:cut], encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        # The three complete items before the cut survive; the cut item is
+        # one row carrying the text from its start to the end of the file.
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:-1]], self.CHECKPOINT_ROWS[:4]
+        )
+        self.assertEqual(rows[0].text.split(" authType=")[1].split(" ")[0], "-")
+        last = rows[-1]
+        self.assertEqual((last.source_line, last.turn_type), (4, "system"))
+        self.assertTrue(last.text.startswith("parser: unparseable record 4 ("), last.text)
+        self.assertTrue(last.text.endswith('"text": '), last.text)
+        # The legacy form, a bare array, with a record that is not an object.
+        path.write_text(json.dumps([{"role": "user", "parts": [{"text": "hi"}]}, 7]), "utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]],
+            [
+                (1, "user", "hi"),
+                (2, "system", "parser: unparseable record 2 (not a JSON object): 7"),
+            ],
+        )
+        path.write_text('"neither"', encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        self.assertEqual(
+            [r.text for r in rows[1:]],
+            ["parser: not a chat history: neither a JSON array nor an object with history"],
+        )
+
+    def test_bug_report_history(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), GEMINI_BUG_REL)
+        head = rows[0]
+        self.assertEqual(
+            (head.turn_type, head.text, head.timestamp_utc, head.source_line),
+            (
+                "system",
+                "bug report history: exported (from %s, time in the file name)" % GEMINI_BUG_REL,
+                to_utc(GEMINI_BUG_MS),
+                0,
+            ),
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]], self.CHECKPOINT_ROWS[:3]
+        )
+        # Cut between records: the items before the cut and one row.
+        path = self.home / GEMINI_BUG_REL
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text[: text.index("},\n") + 2], encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_BUG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]],
+            [
+                (1, "user", "list files in src"),
+                (2, "system", "parser: array cut off after record 1"),
+            ],
         )
 
 

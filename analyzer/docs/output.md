@@ -1117,7 +1117,47 @@ the entry's `sessionId` as `session_id` and its `cwd` as
 `project_path`, at `startedAt`, or at the file's modification time with
 the text ending `file mtime)`; the daemon form names its `routes.json`.
 Since 0.19.0 both parsers read a `trustedFolders.json` with a byte-order
-mark, comments or trailing commas, as Qwen Code does. A Qwen Code `user`
+mark, comments or trailing commas, as Qwen Code does. The `gemini-cli`
+parser also reads Gemini CLI's other standing permission files, one
+`system` row per entry at the file's modification time with an empty
+`session_id`: from `.gemini/settings.json` in the home or a project,
+`permission setting: <key>=<value> (from <file>, file mtime)` for each
+entry of `tools.sandboxAllowedPaths`, `tools.core`, `tools.allowed`,
+`tools.confirmationRequired`, `tools.exclude`, `mcp.allowed`,
+`mcp.excluded` and `security.allowedExtensions` and each set value of
+`general.defaultApprovalMode`, `tools.sandbox`,
+`tools.sandboxNetworkAccess`, `security.toolSandboxing`,
+`security.disableYoloMode`, `security.disableAlwaysAllow`,
+`security.enablePermanentToolApproval`,
+`security.autoAddToPolicyByDefault`, `security.blockGitExtensions`,
+`security.folderTrust.enabled` and `security.enableConseca`, and
+`session retention: general.sessionRetention.<key>=<value> (from <file>,
+file mtime)` for each of `enabled`, `maxAge`, `maxCount` and
+`minRetention` that is set; from each `.gemini/policies/*.toml` (and
+`auto-saved.toml.bak`) in the home or a project, `permission setting:
+policy <decision> <toolName> <key>=<value> ... (from <file>, file
+mtime)` per rule, its other keys in file order; from
+`.gemini/trusted_hooks.json`, `permission setting:
+trustedHooks=<name>:<command> (from <file>, file mtime)`; and from
+`.gemini/acknowledgments/agents.json`, `permission setting:
+acknowledgedAgents.<agent>=<hash> (from <file>, file mtime)`. A
+project's file carries the project as `project_path`, and the last two
+files the project each entry names. Policy files are read with Python's
+`tomllib`, so under Python 3.10 each is one row `parser: <file> not
+read: its [[rule]] tables need Python 3.11 or later (tomllib)`. No
+`session retention:` row means the defaults: Gemini CLI deletes a
+project's sessions older than 30 days each time it starts there, so a
+session missing from `chats/` may have expired rather than been deleted,
+and its prompts remain in `logs.json`. Gemini CLI's `shell_history`
+yields one `user` row per shell-mode command, and a `/chat save`
+checkpoint or a `/bug` history export yields a `system` row naming it
+(`chat checkpoint: tag <tag> authType=<authType> (from <file>, file
+mtime)` at the file's modification time, or `bug report history:
+exported (from <file>, time in the file name)` at the time in its name)
+and then, for each saved turn, its text as one `user` or `assistant` row
+and a `thinking` (when asked for), `tool_use` or `tool_result` row per
+thought, call or response part, with no timestamp; all three are
+secondary sources (see [Secondary sources](#secondary-sources)). A Qwen Code `user`
 record the user did not type is a `system` row `<subtype>
 (provenance=<provenance> agent=<agentName> agentId=<agentId>): <text>`,
 the parts the record lacks left out: a `cron` or `notification` record
@@ -1739,7 +1779,7 @@ beside its `session synced: server conversation` row.
 | `continue` | `.continue/input_history.json` (the CLI's prompt history, no session or project: matches on text at any distance in time); `.continue/dev_data/<schema>/chatFeedback.jsonl` (a rated reply's prompt and completion, stamped at the click: matches within the session at any distance in time) | `.continue/sessions/<id>.json` and the `dev_data` `chatInteraction.jsonl` lines |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
-| `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
+| `gemini-cli` | `.gemini/tmp/<slug>/logs.json`; `shell_history` (no timestamp or session: matches on text and project, and pairs with the `logs.json` copy of the command), `checkpoint-<tag>.json` from `/chat save` and `bug-report-history-<ms>.json` from `/bug` (no timestamp or session: match on text and project, tool rows on `tool_use_id`) in the same directory; each also under `.cache/.gemini` | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |

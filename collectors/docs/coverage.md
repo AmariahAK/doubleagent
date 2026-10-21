@@ -715,7 +715,10 @@ by default:
 - extension and daemon binaries
 - embedding indexes
 - shadow git checkpoints
-- agent worktrees
+- agent worktrees, in a home and inside a project: `.claude/worktrees`,
+  `.codex/worktrees`, `.gemini/worktrees` (Gemini CLI's `--worktree`),
+  `.qwen/worktrees` (Qwen Code's `enter_worktree`), `.kilo/worktrees` and
+  the others `--list` prints
 - git clones of plugin marketplaces
 - Claude Desktop's Cowork VM disk bundle (see [Cowork VM disks](#cowork-vm-disks))
 

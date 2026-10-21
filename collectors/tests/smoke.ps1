@@ -1154,6 +1154,19 @@ Mk 'Users/alice/.sourcegraph/cody_settings.json' "{}`n"
 Mk 'proj/.idea/cody_history.xml' "<project version=`"4`" />`n"
 Mk 'proj/.idea/.sourcegraph/cody_settings.json' "{}`n"
 
+# 2026-10-21 agent worktrees inside a project (#216)
+# Gemini CLI's --worktree creates <project>/.gemini/worktrees/<name>
+# (google-gemini/gemini-cli 3be3d44, worktreeService.ts) and Qwen Code's
+# enter_worktree <project>/.qwen/worktrees/<slug> (QwenLM/qwen-code 5dcf7c7,
+# worktreeSessionService.ts): full git checkouts that the project entries
+# collected whole. Both are excluded, as .claude/worktrees and
+# .kilo/worktrees are; the project's .gemini/settings.json beside them stays
+# collected. Checks follow the default run below; the same files are in
+# smoke.sh under /srv/gem.
+Mk 'gem/.gemini/worktrees/w1/f' "wt`n"
+Mk 'gem/.qwen/worktrees/w1/f' "wt`n"
+Mk 'gem/.gemini/settings.json' "{}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1722,6 +1735,10 @@ Check '#214 Cody cody_accounts.xml flagged secret' { Is113 "$o214/cody_accounts.
 Check '#214 Cody cody_accounts_settings.xml not flagged' { Is113 "$o214/cody_accounts_settings.xml" 'cody' $false }
 Check '#214 Cody home .sourcegraph collected' { Is113 'Users/alice/.sourcegraph/cody_settings.json' 'cody' $false }
 Check '#214 Cody project .idea files collected' { (Is113 'proj/.idea/cody_history.xml' 'cody' $false) -and (Is113 'proj/.idea/.sourcegraph/cody_settings.json' 'cody' $false) }
+
+# 2026-10-21 agent worktrees inside a project (#216)
+Check '#216 Gemini CLI and Qwen Code project worktrees excluded' { (StatusOf 'gem/.gemini/worktrees') -eq 'skipped_excluded' -and (StatusOf 'gem/.qwen/worktrees') -eq 'skipped_excluded' -and $null -eq (Row 'gem/.gemini/worktrees/w1/f') -and $null -eq (Row 'gem/.qwen/worktrees/w1/f') }
+Check '#216 Gemini CLI project settings beside the worktrees collected' { ($r = Row 'gem/.gemini/settings.json') -and $r.agent -eq 'gemini-cli' -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

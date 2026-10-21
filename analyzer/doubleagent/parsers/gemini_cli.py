@@ -55,6 +55,60 @@ under `~/.gemini` or the macOS sandbox base `~/.cache/.gemini`:
   time and no session id. A file that is not a JSON object is one
   `system` row.
 
+Source-derived, not observed on any real install (google-gemini/gemini-cli
+at 3be3d44, 0.66.0-nightly, issues 155 and 186):
+
+* Standing permission files, one `system` row per entry at the file's
+  modification time, saying so, `session_id` empty, `project_path` the
+  project directory for a project's file (an artifact whose `home.project`
+  is set) or the entry's project key:
+  - `.gemini/settings.json` in the home or a project (read with comments
+    stripped): one `permission setting: <key>=<value> (from <file>, file
+    mtime)` row per entry of the lists `tools.sandboxAllowedPaths`,
+    `tools.core`, `tools.allowed`, `tools.confirmationRequired`,
+    `tools.exclude`, `mcp.allowed`, `mcp.excluded` and
+    `security.allowedExtensions`, and per scalar
+    `general.defaultApprovalMode`, `tools.sandbox`,
+    `tools.sandboxNetworkAccess`, `security.toolSandboxing`, `security.disableYoloMode`,
+    `security.disableAlwaysAllow`, `security.enablePermanentToolApproval`,
+    `security.autoAddToPolicyByDefault`, `security.blockGitExtensions`,
+    `security.folderTrust.enabled` and `security.enableConseca`; and one
+    `session retention: general.sessionRetention.<key>=<value> (from
+    <file>, file mtime)` row for each of `enabled`, `maxAge`, `maxCount`
+    and `minRetention` that is set. No other key is read: `mcpServers`
+    embeds credentials.
+  - `.gemini/policies/*.toml` (and `auto-saved.toml.bak`) in the home or a
+    project: TOML whose `rule` array holds `decision`, `toolName`,
+    `priority`, `mcpName`, `commandPrefix`, `argsPattern`,
+    `commandRegex`, `allowRedirection`, `modes` and others; one
+    `permission setting: policy <decision> <toolName> <key>=<value> ...
+    (from <file>, file mtime)` row per rule, the other keys in file order.
+    Read with `tomllib`, so on Python 3.10 each file is one `parser:` row
+    saying it was not read; an unreadable file is one `parser:` row.
+  - `.gemini/trusted_hooks.json` (`{"<project>": ["<name>:<command>"]}`):
+    `permission setting: trustedHooks=<entry> (from <file>, file mtime)`.
+  - `.gemini/acknowledgments/agents.json` (`{"<project>": {"<agent>":
+    "<hash>"}}`): `permission setting: acknowledgedAgents.<agent>=<hash>
+    (from <file>, file mtime)`.
+* Secondary sources in `tmp/<slug>/`, with no time of their own, so their
+  rows have an empty `timestamp_utc` and no session id and match the
+  session files on text (tool rows on `tool_use_id`):
+  - `shell_history`: the shell-mode commands, oldest first, one per line,
+    a line ending in an odd number of backslashes continued on the next;
+    one `user` row per command. A line that is not UTF-8 is a bad-line row.
+  - `checkpoint-<tag>.json` from `/chat save` (`{history, authType}`, or a
+    bare `Content[]` from older builds) and `bug-report-history-<ms>.json`
+    from `/bug` (a bare `Content[]`): each `Content` ({`role`, `parts`})
+    yields its text parts as one `user` or `assistant` row, a `thinking`
+    row per `thought` part when asked for, and a `tool_use` or
+    `tool_result` row per `functionCall` or `functionResponse` part
+    (`id`, `name`, `args`, `response`). `source_line` is the item's
+    1-based position. A first `system` row names the file: `chat
+    checkpoint: tag <tag> authType=<authType> (from <file>, file mtime)`
+    at the file's modification time, or `bug report history: exported
+    (from <file>, time in the file name)` at the time in its name. A file
+    cut mid-write keeps its complete leading items (`iter_json_array`).
+
 Model and permission rows. A gemini message's `model` yields a `system`
 row `model: <id>` before the first message of a session that names one
 and `model: <old> -> <new>` before each message whose model differs,
@@ -63,16 +117,14 @@ tracked per `sessionId` in replay order. A tool call whose `status` is
 result row (an `error` keeps `[error]`) and is followed by a `system` row
 `permission decision: <status>` with the call's `tool_name` and
 `tool_use_id`, after the result row or, when there is no result, after
-the `tool_use` row. The session file records no approval mode; the
-policies under `policies/` are not read (their TOML shape is not
-recorded).
+the `tool_use` row. The session file records no approval mode.
 
 No cwd and no git branch are stored per message. `project_path` is the
 content of `tmp/<slug>/.project_root`, else the key of `projects.json`
 (`{"projects": {"<path>": "<slug>"}}`) mapping to the slug, else the key
 whose sha256 equals the legacy hash directory name or the `projectHash`,
-else the `projectHash` itself. Tool checkpoints (`checkpoints/*.json`,
-`checkpoint-<tag>.json`) and the activity log under `logs/` are not parsed.
+else the `projectHash` itself. Tool checkpoints (`checkpoints/*.json`),
+the activity log under `logs/` and `memory/` are not parsed.
 """
 
 from __future__ import annotations
@@ -81,9 +133,11 @@ import hashlib
 import json
 import os
 import re
+import sys
 from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import unquote
 
 from ..inputs import Artifact
 from ..model import Row, compact
@@ -95,15 +149,59 @@ from .base import (
     error_rows,
     file_mtime,
     iter_jsonl,
+    line_text,
     setting_value,
     track_change,
 )
+from .codex import load_toml
+from .kilo_code import iter_json_array
 
 SESSION_RX = re.compile(
     r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/chats/(?:.*/)?[^/]+\.jsonl?$"
 )
 LOGS_RX = re.compile(r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/logs\.json$")
 TRUSTED_RX = re.compile(r"^(?:\.cache/)?\.gemini/trustedFolders\.json$")
+# Past use beside the session files, in the per-project temp directory.
+TMP_BASE = r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/"
+SHELL_RX = re.compile(TMP_BASE + r"shell_history$")
+CHECKPOINT_RX = re.compile(TMP_BASE + r"checkpoint-(?P<tag>[^/]+)\.json$")
+BUG_RX = re.compile(TMP_BASE + r"bug-report-history-(?P<ms>[0-9]+)\.json$")
+# Standing permission files. `settings.json` and the policy files are read in
+# the home's `.gemini` and in a project's; the other two exist only in the home.
+SETTINGS_RX = re.compile(r"^\.gemini/settings\.json$")
+POLICY_RX = re.compile(r"^\.gemini/policies/[^/]+\.toml(?:\.bak)?$")
+HOOKS_RX = re.compile(r"^\.gemini/trusted_hooks\.json$")
+AGENTS_ACK_RX = re.compile(r"^\.gemini/acknowledgments/agents\.json$")
+# The start of a `/chat save` checkpoint as `JSON.stringify({history, authType})`
+# writes it, for reading the history array of a file cut mid-write.
+HISTORY_OBJ_RX = re.compile(r'\s*\{\s*"history"\s*:\s*')
+
+# `settings.json` keys that hold standing permission or sandbox state
+# (`settingsSchema.ts`): one row per list entry, one row per scalar.
+SETTING_LISTS = (
+    "tools.sandboxAllowedPaths",
+    "tools.core",
+    "tools.allowed",
+    "tools.confirmationRequired",
+    "tools.exclude",
+    "mcp.allowed",
+    "mcp.excluded",
+    "security.allowedExtensions",
+)
+SETTING_SCALARS = (
+    "general.defaultApprovalMode",
+    "tools.sandbox",
+    "tools.sandboxNetworkAccess",
+    "security.toolSandboxing",
+    "security.disableYoloMode",
+    "security.disableAlwaysAllow",
+    "security.enablePermanentToolApproval",
+    "security.autoAddToPolicyByDefault",
+    "security.blockGitExtensions",
+    "security.folderTrust.enabled",
+    "security.enableConseca",
+)
+RETENTION_KEYS = ("enabled", "maxAge", "maxCount", "minRetention")
 HEX64_RX = re.compile(r"^[0-9a-f]{64}$")
 
 MESSAGE_TYPES = ("user", "gemini", "info", "error", "warning")
@@ -337,6 +435,70 @@ def trusted_folder_rows(parser: Parser, artifact: Artifact) -> Iterator[Row]:
         )
 
 
+def _dotted(doc: dict, key: str):
+    """The value at the dotted `key` of nested objects, or None."""
+    value: object = doc
+    for part in key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def shell_history_entries(raw: bytes, errors: list) -> list[tuple[int, str]]:
+    """(first line, command) for each command of a `shell_history` file, as
+    `readHistoryFile` in `useShellHistory.ts` reads it: lines split on
+    `\\n` or `\\r\\n`, blank lines skipped, and a line whose predecessor
+    ends in an odd number of backslashes joined to it with a space, the
+    last backslash dropped. A line that is not valid UTF-8 is appended to
+    `errors` and skipped."""
+    out: list[tuple[int, str]] = []
+    cur, first = "", 0
+    for n, line in enumerate(raw.split(b"\n"), 1):
+        line = line[:-1] if line.endswith(b"\r") else line
+        try:
+            text = line.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append((n, "unparseable line (not valid UTF-8)", line_text(line)))
+            continue
+        if not text.strip():
+            continue
+        tail = len(cur) - len(cur.rstrip("\\"))
+        if cur and tail % 2:
+            cur = cur[:-1] + " " + text
+        else:
+            if cur:
+                out.append((first, cur))
+            cur, first = text, n
+    if cur:
+        out.append((first, cur))
+    return out
+
+
+def history_items(text: str, errors: list) -> tuple[list, dict]:
+    """The `Content[]` items of a `/chat save` checkpoint (`{history,
+    authType}`, or the legacy bare array) or a `/bug` history export (a
+    bare array), and the checkpoint object when there is one. A file cut
+    mid-write keeps its complete leading items (`iter_json_array`); a file
+    that is neither form is one error."""
+    try:
+        doc = json.loads(text)
+    except ValueError as e:
+        if text.lstrip().startswith("["):
+            return iter_json_array(text, errors), {}
+        m = HISTORY_OBJ_RX.match(text)
+        if m:
+            return iter_json_array(text[m.end() :], errors), {}
+        errors.append((1, "unparseable chat history (%s)" % e, ""))
+        return [], {}
+    if isinstance(doc, list):
+        return doc, {}
+    if isinstance(doc, dict) and isinstance(doc.get("history"), list):
+        return doc["history"], doc
+    errors.append((1, "not a chat history: neither a JSON array nor an object with history", ""))
+    return [], {}
+
+
 # ---- parser -------------------------------------------------------------------
 
 
@@ -347,22 +509,268 @@ class GeminiCliParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        return bool(SESSION_RX.match(rel) or LOGS_RX.match(rel) or TRUSTED_RX.match(rel))
+        if HOOKS_RX.match(rel) or AGENTS_ACK_RX.match(rel):
+            return not artifact.home.project
+        return bool(
+            SESSION_RX.match(rel)
+            or LOGS_RX.match(rel)
+            or TRUSTED_RX.match(rel)
+            or SHELL_RX.match(rel)
+            or CHECKPOINT_RX.match(rel)
+            or BUG_RX.match(rel)
+            or SETTINGS_RX.match(rel)
+            or POLICY_RX.match(rel)
+        )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(LOGS_RX.match(artifact.rel))
+        rel = artifact.rel
+        return bool(
+            LOGS_RX.match(rel)
+            or SHELL_RX.match(rel)
+            or CHECKPOINT_RX.match(rel)
+            or BUG_RX.match(rel)
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if TRUSTED_RX.match(artifact.rel):
+        rel = artifact.rel
+        if TRUSTED_RX.match(rel):
             yield from trusted_folder_rows(self, artifact)
-            return
-        m = LOGS_RX.match(artifact.rel)
-        if m:
+        elif SETTINGS_RX.match(rel):
+            yield from self._parse_settings(artifact)
+        elif POLICY_RX.match(rel):
+            yield from self._parse_policy(artifact)
+        elif HOOKS_RX.match(rel) or AGENTS_ACK_RX.match(rel):
+            yield from self._parse_project_grants(artifact)
+        elif m := LOGS_RX.match(rel):
             yield from self._parse_logs(artifact, opts, m)
-            return
-        m = SESSION_RX.match(artifact.rel)
-        if m:
+        elif m := SHELL_RX.match(rel):
+            yield from self._parse_shell_history(artifact, m)
+        elif m := CHECKPOINT_RX.match(rel) or BUG_RX.match(rel):
+            yield from self._parse_history_copy(artifact, opts, m)
+        elif m := SESSION_RX.match(rel):
             yield from self._parse_session(artifact, opts, m)
+
+    # -- standing permission files --
+
+    def _standing(self, artifact: Artifact, ts: str, project: str, text: str) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = ts
+        row.project_path = project
+        row.text = compact(text)
+        return row
+
+    def _json_object(self, artifact: Artifact, jsonc: bool) -> tuple[dict | None, Row | None]:
+        """The file's JSON object, or None and the row saying it is not one."""
+        try:
+            raw = artifact.disk_path.read_bytes()
+            doc = parse_jsonc(raw) if jsonc else json.loads(raw.decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        if isinstance(doc, dict):
+            return doc, None
+        text = "parser: %s is not a JSON object" % artifact.rel
+        return None, self._standing(artifact, file_mtime(artifact), "", text)
+
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        # settings.json is read through strip-json-comments (settings.ts).
+        doc, bad = self._json_object(artifact, jsonc=True)
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        ts = file_mtime(artifact)
+        project = artifact.home.original if artifact.home.project else ""
+        src = "(from %s, file mtime)" % artifact.rel
+
+        def setting(key: str, value: object) -> Row:
+            text = "permission setting: %s=%s %s" % (key, setting_value(value), src)
+            return self._standing(artifact, ts, project, text)
+
+        for key in SETTING_LISTS:
+            value = _dotted(doc, key)
+            if isinstance(value, list):
+                for entry in value:
+                    yield setting(key, entry)
+            elif value is not None:
+                yield setting(key, value)
+        for key in SETTING_SCALARS:
+            value = _dotted(doc, key)
+            if value is not None:
+                yield setting(key, value)
+        for key in RETENTION_KEYS:
+            value = _dotted(doc, "general.sessionRetention." + key)
+            if value is not None:
+                text = "session retention: general.sessionRetention.%s=%s %s" % (
+                    key,
+                    setting_value(value),
+                    src,
+                )
+                yield self._standing(artifact, ts, project, text)
+
+    def _parse_policy(self, artifact: Artifact) -> Iterator[Row]:
+        ts = file_mtime(artifact)
+        project = artifact.home.original if artifact.home.project else ""
+        if sys.version_info < (3, 11):
+            # flat_toml, the 3.10 stand-in, reads top-level keys only and a
+            # policy file holds nothing but [[rule]] tables.
+            text = "parser: %s not read: its [[rule]] tables need Python 3.11 or later (tomllib)"
+            yield self._standing(artifact, ts, project, text % artifact.rel)
+            return
+        try:
+            doc = load_toml(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError) as e:
+            text = "parser: unreadable %s: %s" % (artifact.rel, e)
+            yield self._standing(artifact, ts, project, text)
+            return
+        rules = doc.get("rule")
+        if rules is None:
+            return
+        if not isinstance(rules, list):
+            yield self._standing(
+                artifact, ts, project, "parser: %s rule is not an array" % artifact.rel
+            )
+            return
+        src = "(from %s, file mtime)" % artifact.rel
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            fields = [
+                "permission setting: policy",
+                setting_value(rule.get("decision", "-")),
+                setting_value(rule.get("toolName", "-")),
+            ]
+            fields += [
+                "%s=%s" % (k, setting_value(v))
+                for k, v in rule.items()
+                if k not in ("decision", "toolName")
+            ]
+            fields.append(src)
+            yield self._standing(artifact, ts, project, " ".join(fields))
+
+    def _parse_project_grants(self, artifact: Artifact) -> Iterator[Row]:
+        # Both files are written with JSON.stringify and read with JSON.parse.
+        doc, bad = self._json_object(artifact, jsonc=False)
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        ts = file_mtime(artifact)
+        src = "(from %s, file mtime)" % artifact.rel
+        hooks = bool(HOOKS_RX.match(artifact.rel))
+        for project, value in doc.items():
+            if hooks:
+                entries = value if isinstance(value, list) else [value]
+                pairs = [("trustedHooks", e) for e in entries]
+            elif isinstance(value, dict):
+                pairs = [("acknowledgedAgents." + str(k), v) for k, v in value.items()]
+            else:
+                pairs = [("acknowledgedAgents", value)]
+            for key, entry in pairs:
+                text = "permission setting: %s=%s %s" % (key, setting_value(entry), src)
+                yield self._standing(artifact, ts, str(project), text)
+
+    # -- shell_history, /chat save checkpoints and /bug history exports --
+
+    def _parse_shell_history(self, artifact: Artifact, m) -> Iterator[Row]:
+        project = resolve_project(self._base_dir(artifact, m), m.group("slug"))
+        errors: list = []
+        try:
+            raw = artifact.disk_path.read_bytes()
+        except OSError as e:
+            errors.append((0, "unreadable shell_history (%s)" % e, ""))
+            raw = b""
+        for line, command in shell_history_entries(raw, errors):
+            row = self.base_row(artifact)
+            row.source_line = line
+            row.project_path = project
+            row.turn_type = "user"
+            row.text = compact(command)
+            yield row
+        yield from error_rows(self, artifact, errors, "", project)
+
+    def _parse_history_copy(self, artifact: Artifact, opts: Options, m) -> Iterator[Row]:
+        project = resolve_project(self._base_dir(artifact, m), m.group("slug"))
+        errors: list = []
+        try:
+            text = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError as e:
+            errors.append((0, "unreadable chat history (%s)" % e, ""))
+            text = ""
+        items, doc = history_items(text, errors) if text else ([], {})
+        if "tag" in m.groupdict():
+            header = self._standing(
+                artifact,
+                file_mtime(artifact),
+                project,
+                "chat checkpoint: tag %s authType=%s (from %s, file mtime)"
+                % (unquote(m.group("tag")), doc.get("authType") or "-", artifact.rel),
+            )
+        else:
+            header = self._standing(
+                artifact,
+                to_utc(int(m.group("ms"))),
+                project,
+                "bug report history: exported (from %s, time in the file name)" % artifact.rel,
+            )
+        header.source_line = 0
+        yield header
+        for i, item in enumerate(items, 1):
+            if not isinstance(item, dict):
+                errors.append(
+                    (i, "unparseable record %d (not a JSON object)" % i, compact_json(item))
+                )
+                continue
+            yield from self._content_rows(artifact, opts, item, i, project)
+        yield from error_rows(self, artifact, errors, "", project)
+
+    def _content_rows(
+        self, artifact: Artifact, opts: Options, item: dict, index: int, project: str
+    ) -> Iterator[Row]:
+        """Rows of one `Content` ({role, parts}) of a history copy: the text
+        parts as one `user` or `assistant` row, thought parts as `thinking`
+        rows when asked for, and a `tool_use` or `tool_result` row per
+        `functionCall` or `functionResponse` part. No time of their own."""
+
+        def row(turn: str, text: str) -> Row:
+            r = self.base_row(artifact)
+            r.source_line = index
+            r.project_path = project
+            r.turn_type = turn
+            r.text = compact(text)
+            return r
+
+        parts = _parts(item.get("parts"))
+        texts, thoughts, tools = [], [], []
+        for p in parts:
+            if isinstance(p, str):
+                texts.append(p)
+            elif not isinstance(p, dict):
+                continue
+            elif isinstance(p.get("functionCall"), dict):
+                fc = p["functionCall"]
+                r = row("tool_use", compact_json(fc.get("args")) if fc.get("args") else "")
+                r.tool_name, r.tool_use_id = str(fc.get("name") or ""), str(fc.get("id") or "")
+                tools.append(r)
+            elif isinstance(p.get("functionResponse"), dict):
+                fr = p["functionResponse"]
+                r = row("tool_result", response_text(fr))
+                r.tool_name, r.tool_use_id = str(fr.get("name") or ""), str(fr.get("id") or "")
+                tools.append(r)
+            elif isinstance(p.get("text"), str):
+                (thoughts if p.get("thought") else texts).append(p["text"])
+            elif isinstance(p.get("inlineData"), dict):
+                texts.append("[inlineData %s]" % (p["inlineData"].get("mimeType") or ""))
+            elif isinstance(p.get("fileData"), dict):
+                texts.append("[fileData %s]" % (p["fileData"].get("fileUri") or ""))
+        if opts.include_thinking:
+            for t in thoughts:
+                yield row("thinking", t)
+        text = "\n".join(t for t in texts if t)
+        if text:
+            yield row("user" if item.get("role") == "user" else "assistant", text)
+        yield from tools
 
     def _base_dir(self, artifact: Artifact, m) -> Path:
         return Path(artifact.home.disk_path) / m.group("base")
