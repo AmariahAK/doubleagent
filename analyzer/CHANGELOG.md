@@ -26,7 +26,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   second push destination is kept; sorted by name) and the branch its
   `.git/HEAD` names, or
   the commit of a detached HEAD; `[]` and `""` when the collection holds
-  neither file. The `detect` text output adds a `remotes:` line under
+  neither file, and also when one of them cannot be read, which is then a
+  `problem:` line. The `detect` text output adds a `remotes:` line under
   each project that has any ([#253]).
 - `inventory.json` gains `remotes`, `head` and `recorded_remotes` as the
   last three keys of each `projects.<path>` and `scratch_directories.<path>`

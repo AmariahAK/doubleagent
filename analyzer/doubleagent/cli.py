@@ -377,10 +377,11 @@ def detect_object(col: Collection) -> dict:
     object per project directory from `project_agents`, its `agents` an
     array of `agent`, `files`, `bytes`, `parser`, as in `homes`, and its
     last two keys `remotes` and `head` from `gitmeta.project_git`, `[]`
-    and `""` without the repository files). The callers add `problems`,
-    and `detect --json --files` adds `files`."""
+    and `""` without the repository files; one the analyzer cannot read is
+    added to `col.problems`). The callers add `problems`, and
+    `detect --json --files` adds `files`."""
     parsers = by_agent()
-    git = gitmeta.project_git(col.artifacts)
+    git = gitmeta.project_git(col.artifacts, col.problems)
     projects = [
         {
             "path": path,
@@ -883,14 +884,15 @@ def home_scratch_key(key: str, home: str, cat: catalog_mod.Catalog) -> bool:
     return bool(cat.claims_home_path(key[len(home_key) :], windows))
 
 
-def project_files(col: Collection) -> dict[str, dict]:
+def project_files(col: Collection, problems: list[str] | None = None) -> dict[str, dict]:
     """`project_agents` keyed as `collected_projects` keys its paths, with
     the image root stripped and in `canonical_project_path` form, and summed
     when two directories map to one path: per path `agents` (agent to
     `files` and `bytes`), `shared_files`, and the `remotes` and `head` of
-    `gitmeta.project_git` (the first directory's that has them)."""
+    `gitmeta.project_git` (the first directory's that has them; a
+    repository file it cannot read is added to `problems`)."""
     summary = col.summary or {}
-    git = gitmeta.project_git(col.artifacts)
+    git = gitmeta.project_git(col.artifacts, problems)
     merged: dict[str, dict] = {}
     for path, p in project_agents(col).items():
         key = canonical_project_path(strip_image_root(path, summary))
@@ -1011,7 +1013,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
-    groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
+    groups = project_inventory(
+        rows, sessions, collected_projects(col), project_files(col, problems)
+    )
     scratch = scratch_keys(col, rows)
     synced = sum(1 for s in sessions if s.synced == "yes")
     relayed = sum(1 for s in sessions if s.relayed == "yes")

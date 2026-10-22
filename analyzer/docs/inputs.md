@@ -112,7 +112,10 @@ wants them. The analyzer reads two of those files itself, from a project
 base only: the remotes of `.git/config` and the branch or commit of
 `.git/HEAD`, which `detect --json` and `inventory.json` give per project
 as `remotes` and `head` (see [detect --json](output.md#detect---json)).
-A loose input has no project bases, so these stay empty there.
+One of the two files the analyzer cannot read is a `problem:` line, as
+for any other unreadable file (see [Unreadable inputs](#unreadable-inputs)),
+and leaves the project's `remotes` empty. A loose input has no project
+bases, so these stay empty there.
 
 Cody and Twinny keep their chats as rows of the editor's own `state.vscdb`,
 which the catalog attributes to `vscode` or to the fork whose `User/`

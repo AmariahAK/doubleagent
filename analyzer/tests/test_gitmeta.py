@@ -59,6 +59,32 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_comment_backslash_does_not_continue(self):
+        # A backslash that ends a full-line or a trailing comment is not a
+        # continuation, so the header after it keeps its own remote (pull
+        # request 254 review); one that ends a value still is.
+        text = (
+            '[remote "origin"]\n'
+            "\turl = https://h/origin.git  # cloned from C:\\git\\\n"
+            '[remote "backup"]\n'
+            "\turl = https://h/backup.git\n"
+            "# mirrors live under D:\\git\\\n"
+            '[remote "mirror"]\n'
+            "\turl = https://h/\\\n"
+            "mirror.git ; comment with a backslash \\\n"
+            '[remote "last"]\n'
+            "\turl = https://h/last.git\n"
+        )
+        self.assertEqual(
+            gitmeta.parse_remotes(text),
+            [
+                {"name": "backup", "urls": ["https://h/backup.git"], "pushurls": []},
+                {"name": "last", "urls": ["https://h/last.git"], "pushurls": []},
+                {"name": "mirror", "urls": ["https://h/mirror.git"], "pushurls": []},
+                {"name": "origin", "urls": ["https://h/origin.git"], "pushurls": []},
+            ],
+        )
+
     def test_malformed_lines_are_skipped(self):
         text = (
             '[remote "origin"]\n'
@@ -150,8 +176,51 @@ class ProjectGitTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlinks not available")
         config = Artifact(link, "/srv/proj/.git/config", ".git/config", "project", proj)
-        self.assertEqual(gitmeta.read_text(link), "")
-        self.assertEqual(gitmeta.project_git([config])["/srv/proj"]["remotes"], [])
+        self.assertEqual(gitmeta.read_text(link), ("", "not a regular file"))
+        problems: list[str] = []
+        self.assertEqual(gitmeta.project_git([config], problems)["/srv/proj"]["remotes"], [])
+        self.assertEqual(problems, ["/srv/proj/.git/config: not a regular file"])
+
+    def test_unreadable_file_is_a_problem(self):
+        # A permission or I/O error is reported, never read as "no remotes"
+        # (pull request 254 review); the other project is still read.
+        if os.geteuid() == 0:
+            self.skipTest("root reads everything")
+        proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
+        other = Home(self.tmp / "srv/other", "/srv/other", "alice", project=True)
+        config = self.artifact(proj, ".git/config", PROJ_GIT_CONFIG)
+        head = self.artifact(other, ".git/HEAD", PROJ_GIT_HEAD)
+        os.chmod(config.disk_path, 0)
+        try:
+            problems: list[str] = []
+            got = gitmeta.project_git([config, head, config], problems)
+            # Without a list to report to, the read failure is still not a result.
+            alone = gitmeta.project_git([config])
+        finally:
+            os.chmod(config.disk_path, 0o600)
+        self.assertEqual(
+            got,
+            {
+                "/srv/proj": {"remotes": [], "head": ""},
+                "/srv/other": {"remotes": [], "head": "main"},
+            },
+        )
+        self.assertEqual(len(problems), 1, problems)
+        self.assertTrue(problems[0].startswith("/srv/proj/.git/config: "), problems[0])
+        self.assertEqual(alone["/srv/proj"]["remotes"], [])
+
+    def test_whole_file_is_read(self):
+        # No size cap: a remote past the first MiB is read in full (pull
+        # request 254 review).
+        proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
+        text = (
+            "# " + "x" * (1 << 20) + '\n[remote "far"]\n\turl = https://host/team/repository.git\n'
+        )
+        config = self.artifact(proj, ".git/config", text)
+        self.assertEqual(
+            gitmeta.project_git([config])["/srv/proj"]["remotes"],
+            [{"name": "far", "urls": ["https://host/team/repository.git"], "pushurls": []}],
+        )
 
 
 if __name__ == "__main__":
