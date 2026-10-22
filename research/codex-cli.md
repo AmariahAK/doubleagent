@@ -931,6 +931,11 @@ is written only when `cwd` is inside a git repository
 stored: every password, and every username other than the ssh `git` user, is dropped
 ([sanitized_git_url.rs:11](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/sanitized_git_url.rs#L11),
 [73-98](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/sanitized_git_url.rs#L73-L98)).
+The type arrived in commit
+[1bc02ae](https://github.com/openai/codex/commit/1bc02aea5065dd5d1df540ecc9625794ad7a3172)
+of 2026-08-25, so a rollout an earlier build wrote, and one a fork without that commit wrote
+(Open Interpreter is such a fork), can hold the URL with its credentials; the parser writes the
+stored string as it is.
 
 Observed on Codex Desktop (Windows, 0.162.0-alpha.17.2, 2026-10-15; macOS, 0.163.0-alpha.10.2,
 2026-10-18) and in the Windows standalone CLI's rollout: `id`, `session_id`, `timestamp`, `cwd`,

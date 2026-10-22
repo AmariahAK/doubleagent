@@ -1027,11 +1027,14 @@ session and URL, at the time of the record that names it (since 0.21.0):
   the Gateway registered or cloned, not a session.
 
 The URL can carry credentials in its user part; redact them before
-sharing the timeline. The rollout's `git.repository_url`, which the
-`codex-cli` and `open-interpreter` parsers read, is the exception: Codex
-removes every password and every username but the ssh `git` user before
-it stores the value
-([`session_meta` in `research/codex-cli.md`](../../research/codex-cli.md#session_meta)).
+sharing the timeline. That holds for every source, the rollout's
+`git.repository_url` included: Codex has removed every password and
+every username but the ssh `git` user before storing the value since
+late August 2026
+([`session_meta` in `research/codex-cli.md`](../../research/codex-cli.md#session_meta)),
+but a rollout an earlier build wrote, or one written by a fork such as
+Open Interpreter, may hold the URL as the remote had it, and the parser
+writes the stored string as it is.
 
 The `codex-cli` and `open-interpreter` parsers (one shared reader) write
 `model: <id>` at the first record of a rollout that names a model and

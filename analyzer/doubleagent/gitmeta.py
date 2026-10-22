@@ -49,7 +49,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .inputs import PROJECT_AGENT, Artifact
-from .model import is_windows_path
 
 CONFIG_REL = ".git/config"
 HEAD_REL = ".git/HEAD"
@@ -244,43 +243,42 @@ def project_git(
     `artifacts`, keyed as `cli.project_agents` keys it (`home.original`, or
     the disk path when that is empty), from its `.git/config` and
     `.git/HEAD` files with agent `project`. A project without them is
-    absent; the first file met wins when a path has two copies. A file that
-    cannot be read counts as absent and is appended to `problems`, when
-    given, as `<original path>: <reason>` (once per path). Under a Windows
-    project path the file names are matched without regard to case, since
-    the PowerShell collector matches the catalog that way and keeps the
-    on-disk spelling (`.GIT/CONFIG`); elsewhere the match is exact."""
-    out: dict[str, dict] = {}
+    absent. The file is chosen by name: the exact spelling when the
+    collection has it, else the first file whose name matches without
+    regard to case, because the PowerShell collector matches the catalog
+    that way and keeps the on-disk spelling (`.GIT/CONFIG` on Windows, and
+    on a macOS or other case-insensitive volume), while a case-sensitive
+    volume that holds both spellings keeps git's own. A file that cannot
+    be read, or a pair in it git would reject, is appended to `problems`,
+    when given, as `<original path>: <reason>` (once per path)."""
+    chosen: dict[str, dict[str, Artifact]] = {}
     for a in artifacts:
         if not a.home.project or a.agent != PROJECT_AGENT:
             continue
-        path = a.home.original or str(a.home.disk_path)
-        windows = is_windows_path(path)
-        rel = a.rel.lower() if windows else a.rel
-        if rel == CONFIG_REL:
-            field = "remotes"
-        elif rel == (HEAD_REL.lower() if windows else HEAD_REL):
-            field = "head"
+        lower = a.rel.lower()
+        if lower == CONFIG_REL:
+            field, exact = "remotes", a.rel == CONFIG_REL
+        elif lower == HEAD_REL.lower():
+            field, exact = "head", a.rel == HEAD_REL
         else:
             continue
-        entry = out.setdefault(path, {"remotes": None, "head": None})
-        if entry[field] is not None:
-            continue
-        text, error = read_text(a.disk_path)
-        if error:
-            line = "%s: %s" % (a.original, error)
-            if problems is not None and line not in problems:
-                problems.append(line)
-            continue
-        if field == "head":
-            entry[field] = parse_head(text)
-            continue
-        errors: list[str] = []
-        entry[field] = parse_remotes(text, errors)
-        for e in errors:
-            line = "%s: %s" % (a.original, e)
-            if problems is not None and line not in problems:
-                problems.append(line)
-    return {
-        path: {"remotes": e["remotes"] or [], "head": e["head"] or ""} for path, e in out.items()
-    }
+        path = a.home.original or str(a.home.disk_path)
+        fields = chosen.setdefault(path, {})
+        if field not in fields or (exact and fields[field].rel != a.rel):
+            fields[field] = a
+    out: dict[str, dict] = {}
+    for path, fields in chosen.items():
+        entry = out[path] = {"remotes": [], "head": ""}
+        for field, a in fields.items():
+            text, error = read_text(a.disk_path)
+            errors = [error] if error else []
+            if not error:
+                if field == "head":
+                    entry[field] = parse_head(text)
+                else:
+                    entry[field] = parse_remotes(text, errors)
+            for e in errors:
+                line = "%s: %s" % (a.original, e)
+                if problems is not None and line not in problems:
+                    problems.append(line)
+    return out

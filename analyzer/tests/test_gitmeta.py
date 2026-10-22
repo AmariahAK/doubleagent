@@ -309,6 +309,20 @@ class ProjectGitTests(unittest.TestCase):
             disk.write_text(text, encoding="utf-8")
         return Artifact(disk, home.original + "/" + rel, rel, agent, home)
 
+    def aside(self, home: Home, rel: str, text: str) -> Artifact:
+        """An artifact of `home` at `rel` whose copy is written apart from the
+        others, so two spellings of one name never share a file on a
+        case-insensitive volume."""
+        disk = (
+            self.tmp
+            / "aside"
+            / str(len(os.listdir(self.tmp / "aside")) if (self.tmp / "aside").is_dir() else "0")
+        )
+        disk.mkdir(parents=True, exist_ok=True)
+        disk = disk / rel.replace("/", "_")
+        disk.write_text(text, encoding="utf-8")
+        return Artifact(disk, home.original + "/" + rel, rel, "project", home)
+
     def test_project_git(self):
         proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
         bare = Home(self.tmp / "srv/bare", "/srv/bare", "alice", project=True)
@@ -339,21 +353,37 @@ class ProjectGitTests(unittest.TestCase):
             ],
         )
 
-    def test_windows_project_matches_without_regard_to_case(self):
+    def test_case_preserved_names_match_and_exact_names_win(self):
         # The PowerShell collector matches the catalog case-insensitively and
-        # keeps the on-disk spelling, so a Windows repository's .GIT/CONFIG
-        # and .git/head are the files (pull request 254 review); on a Unix
-        # path the match stays exact, .git/head is another file there.
+        # keeps the on-disk spelling, on Windows and on a macOS volume alike,
+        # so .GIT/CONFIG and .git/head are the repository's files when no
+        # exact spelling was collected; where a case-sensitive volume holds
+        # both spellings, git's own wins whatever order the rows come in
+        # (pull request 254 review).
         win = Home(self.tmp / "c/proj", "C:\\proj", "alice", project=True)
-        unix = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
+        mac = Home(self.tmp / "Users/alice/proj", "/Users/alice/proj", "alice", project=True)
+        both = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
         arts = [
             self.artifact(win, ".GIT/CONFIG", PROJ_GIT_CONFIG),
             self.artifact(win, ".git/head", PROJ_GIT_HEAD),
-            self.artifact(unix, ".git/head", PROJ_GIT_HEAD),
-            self.artifact(unix, ".GIT/config", PROJ_GIT_CONFIG),
+            self.artifact(mac, ".GIT/config", PROJ_GIT_CONFIG),
+            self.artifact(mac, ".git/HEAD", PROJ_GIT_HEAD),
+            # Case-insensitive spelling first, exact second, and the reverse.
+            # The variants' copies live apart on disk, since on a
+            # case-insensitive volume (this Mac) the two spellings would be
+            # one file and the later write would replace the earlier.
+            self.aside(both, ".git/head", "ref: refs/heads/other\n"),
+            self.artifact(both, ".git/HEAD", PROJ_GIT_HEAD),
+            self.artifact(both, ".git/config", PROJ_GIT_CONFIG),
+            self.aside(both, ".GIT/CONFIG", '[remote "x"]\n\turl = https://h/x.git\n'),
         ]
         self.assertEqual(
-            gitmeta.project_git(arts), {"C:\\proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"}}
+            gitmeta.project_git(arts),
+            {
+                "C:\\proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"},
+                "/Users/alice/proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"},
+                "/srv/proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"},
+            },
         )
 
     def test_missing_unreadable_and_symlinked_files(self):
