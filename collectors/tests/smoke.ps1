@@ -1950,17 +1950,22 @@ Check '#215 twinny-server forge repos.json flagged secret' { $r = Row 'Users/ali
 # 2026-10-21 project git metadata (#253)
 # Is253 FILE...: each file under the project's .git has a collected row with
 # agent project and the project as its home. NoRow253 PREFIX...: no manifest
-# row names a path under the project's .git that starts with it.
+# row of the project names a path under its .git that starts with it. Both
+# look only at rows whose home is the project, because Row matches a path
+# suffix and proj/.git/HEAD also ends the Copilot Desktop clone at
+# repos/proj/.git (#147), whose rows are copilot-desktop and whose objects/
+# has a skipped_excluded row.
+function Rows253 { return @($script:Rows | Where-Object { ($_.home -replace '\\', '/').EndsWith('/proj') }) }
 function Is253([string[]]$files) {
   foreach ($f in $files) {
-    $r = Row "$g253/$f"
-    if (-not ($r -and ($r.home -replace '\\', '/').EndsWith('/proj') -and $r.agent -eq 'project' -and $r.status -eq 'collected')) { return $false }
+    $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/$f") } | Select-Object -First 1
+    if (-not ($r -and $r.agent -eq 'project' -and $r.status -eq 'collected')) { return $false }
   }
   return $true
 }
 function NoRow253([string[]]$prefixes) {
   foreach ($p in $prefixes) {
-    if (@($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like "*/$g253/$p*" }).Count -ne 0) { return $false }
+    if (@(Rows253 | Where-Object { ($_.path -replace '\\', '/') -like "*/$g253/$p*" }).Count -ne 0) { return $false }
   }
   return $true
 }
@@ -1968,7 +1973,7 @@ Check '#253 project git HEAD, config, FETCH_HEAD and packed-refs collected as pr
 Check '#253 project git refs and logs collected as project' { Is253 @('refs/heads/main', 'refs/remotes/origin/main', 'logs/HEAD', 'logs/refs/remotes/origin/main') }
 Check '#253 project git worktrees collected as project' { Is253 @('worktrees/wt1/HEAD', 'worktrees/wt1/gitdir') }
 Check '#253 project git objects, index, hooks, lfs and modules have no row' { NoRow253 @('objects', 'index', 'hooks', 'lfs', 'modules') }
-Check '#253 project git config not flagged secret' { $r = Row "$g253/config"; $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
+Check '#253 project git config not flagged secret' { $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/config") } | Select-Object -First 1; $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
