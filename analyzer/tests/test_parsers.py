@@ -7068,6 +7068,9 @@ def model_or_permission_row(r) -> bool:
     return r.turn_type == "system" and r.text.startswith(("model: ", "permission "))
 
 
+from fixtures import zed_thread_record
+
+
 class ZedTests(ParserBase):
     REL = ".local/share/zed/threads/threads.db"
     SIDEBAR = ".local/share/zed/db/0-stable/db.sqlite"
@@ -7366,6 +7369,25 @@ class ZedTests(ParserBase):
                 ("t3", "permission decision: auto_denied reason=fetch tool is disabled"),
             ],
         )
+
+    def test_git_remote_is_the_projects_own(self):
+        # A multi-folder thread whose project (folder_paths /srv/other) has
+        # no remote while another folder does: no `git remote:` row, never
+        # the other repository's URL (issue 253, pull request 254 review).
+        thread = zed_thread_record("/srv/other")
+        snaps = thread["initial_project_snapshot"]["worktree_snapshots"]
+        snaps[0]["git_state"]["remote_url"] = None
+        snaps.append(
+            {
+                "worktree_path": "/srv/proj",
+                "git_state": {"remote_url": PROJ_REMOTE, "head_sha": "d4", "current_branch": "x"},
+            }
+        )
+        self._insert("multi", "json", json.dumps(thread).encode("utf-8"))
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "multi"]
+        self.assertTrue(rows)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/other"})
+        self.assertEqual([r.text for r in rows if r.text.startswith("git remote:")], [])
 
     def test_scratch_rows(self):
         rows = [

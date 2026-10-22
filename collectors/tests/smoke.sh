@@ -1425,6 +1425,7 @@ printf '%s %s A <a@example.com> 1759449600 +0000\tfetch: fast-forward\n' \
   >"$G253/logs/refs/remotes/origin/main"
 printf 'ref: refs/heads/wt1\n' >"$G253/worktrees/wt1/HEAD"
 printf '/srv/proj-wt1/.git\n' >"$G253/worktrees/wt1/gitdir"
+printf 'DIRC\n' >"$G253/worktrees/wt1/index"
 printf 'object\n' >"$G253/objects/ab/cdef"
 printf 'DIRC\n' >"$G253/index"
 printf '#!/bin/sh\n' >"$G253/hooks/pre-commit.sample"
@@ -1903,6 +1904,7 @@ norow253() {
 check "#253 project git HEAD, config, FETCH_HEAD and packed-refs collected as project" "is253 HEAD config FETCH_HEAD packed-refs"
 check "#253 project git refs and logs collected as project" "is253 refs/heads/main refs/remotes/origin/main logs/HEAD logs/refs/remotes/origin/main"
 check "#253 project git worktrees collected as project" "is253 worktrees/wt1/HEAD worktrees/wt1/gitdir"
+check "#253 project git linked worktree index excluded" "[ \"\$(status_of \"$G253/worktrees/wt1/index\")\" = skipped_excluded ]"
 check "#253 project git objects, index, hooks, lfs and modules have no row" "norow253 objects index hooks lfs modules"
 check "#253 project git config not flagged secret" "row \"$G253/config\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
 

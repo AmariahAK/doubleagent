@@ -15,10 +15,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The bundled catalog copy has the collector's seven new project lines,
   `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`,
-  `.git/refs`, `.git/logs` and `.git/worktrees`, so the analyzer
-  attributes a collected project's repository files to `project`, the
-  shared project files, and `detect` counts them under `(shared)`
-  ([#253]).
+  `.git/refs`, `.git/logs` and `.git/worktrees`, and its exclusion of
+  each linked worktree's `index`, so the analyzer attributes a collected
+  project's repository files to `project`, the shared project files, and
+  `detect` counts them under `(shared)` ([#253]).
 - `detect --json` gains `remotes` and `head` as the last two keys of each
   `projects[]` object, new keys of that interface: the remotes of the
   project's `.git/config` (`name`, and `urls` and `pushurls`, every

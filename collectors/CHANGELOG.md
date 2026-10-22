@@ -20,8 +20,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   name the checked-out branch, the remotes with their fetch and push URLs,
   the last fetch, the branches and tags, the reflog and the linked
   worktrees; the object store, index, hooks, LFS objects and submodule
-  repositories are not collected, and `.git/config` is not flagged
-  `secret` although a remote URL can carry a token ([#253]).
+  repositories are not collected, each linked worktree's `index` is
+  excluded (`.git/worktrees/*/index`, a `skipped_excluded` row), and
+  `.git/config` is not flagged `secret` although a remote URL can carry
+  a token ([#253]).
 
 ## [1.18.0] - 2026-10-21
 

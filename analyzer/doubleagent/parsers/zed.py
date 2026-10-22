@@ -692,14 +692,13 @@ class ZedParser(Parser):
             if isinstance(w.get("git_state"), dict) and w["git_state"].get("current_branch")
         ]
         branch = max(branches, key=lambda b: b[0])[1] if branches else ""
-        remotes = [
-            (w.get("worktree_path") == project, str(w["git_state"]["remote_url"]))
-            for w in worktrees
-            if isinstance(w.get("git_state"), dict)
-            and isinstance(w["git_state"].get("remote_url"), str)
-            and w["git_state"]["remote_url"].strip()
-        ]
-        remote = max(remotes, key=lambda b: b[0])[1] if remotes else ""
+        # The project's own snapshot, else the first one; never another
+        # worktree's, whose remote is another repository's.
+        own = [w for w in worktrees if w.get("worktree_path") == project] or worktrees[:1]
+        remote = ""
+        if own and isinstance(own[0].get("git_state"), dict):
+            url = own[0]["git_state"].get("remote_url")
+            remote = url.strip() if isinstance(url, str) else ""
         m = thread.get("model")
         if not isinstance(m, dict):
             m = {}

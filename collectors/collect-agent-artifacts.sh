@@ -1232,6 +1232,7 @@ AppData/Local/langflow/langflow/Cache/profile_pictures
 AppData/Local/Ollama/updates
 Library/Caches/ollama
 Library/Caches/com.electron.ollama
+.git/worktrees/*/index
 .time_travel
 usr/.time_travel
 workdir/*/.venv
