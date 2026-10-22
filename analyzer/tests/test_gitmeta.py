@@ -109,6 +109,29 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_bom_crlf_and_unicode_line_separators(self):
+        # git accepts a UTF-8 byte-order mark at the start of a config and
+        # ends a line at LF or CRLF only; a U+2028 or U+0085 inside a quoted
+        # path is part of the path (pull request 254 review).
+        text = (
+            '﻿[remote "origin"]\r\n'
+            "\turl = https://h/origin.git\r\n"
+            '[remote "odd"]\n'
+            '\turl = "/srv/team\N{LINE SEPARATOR}archive.git"\n'
+            '\tpushurl = "/srv/team\N{NEXT LINE}archive.git"\n'
+        )
+        self.assertEqual(
+            gitmeta.parse_remotes(text),
+            [
+                {
+                    "name": "odd",
+                    "urls": ["/srv/team\N{LINE SEPARATOR}archive.git"],
+                    "pushurls": ["/srv/team\N{NEXT LINE}archive.git"],
+                },
+                {"name": "origin", "urls": ["https://h/origin.git"], "pushurls": []},
+            ],
+        )
+
     def test_pair_on_the_header_line(self):
         # git allows a variable after its section header on the same line
         # (pull request 254 review); a comment there is still a comment.
@@ -159,6 +182,17 @@ class ParseRemotesTests(unittest.TestCase):
 
 
 class ParseHeadTests(unittest.TestCase):
+    def test_unicode_in_a_branch_name(self):
+        # A ref may hold U+2028 or a trailing U+00A0; the line ends at the
+        # line feed and only ASCII whitespace is trimmed (pull request 254
+        # review).
+        self.assertEqual(
+            gitmeta.parse_head("ref: refs/heads/team\N{LINE SEPARATOR}release\N{NO-BREAK SPACE}\n"),
+            "team\N{LINE SEPARATOR}release\N{NO-BREAK SPACE}",
+        )
+        self.assertEqual(gitmeta.parse_head("ref: refs/heads/main\r\n"), "main")
+        self.assertEqual(gitmeta.parse_head("\n  ref: refs/heads/second \t\n"), "second")
+
     def test_branch(self):
         self.assertEqual(gitmeta.parse_head(PROJ_GIT_HEAD), "main")
         self.assertEqual(gitmeta.parse_head("ref: refs/heads/feature/x"), "feature/x")

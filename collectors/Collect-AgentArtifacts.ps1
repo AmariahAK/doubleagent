@@ -1273,6 +1273,7 @@ AppData/Local/Ollama/updates
 Library/Caches/ollama
 Library/Caches/com.electron.ollama
 .git/worktrees/*/index
+.git/worktrees/*/modules
 .time_travel
 usr/.time_travel
 workdir/*/.venv

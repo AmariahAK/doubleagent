@@ -70,6 +70,25 @@ def read_text(path: Path) -> tuple[str, str]:
     return data.decode("utf-8", errors="replace"), ""
 
 
+# The whitespace git trims around a value and a ref: ASCII only, since
+# `str.strip()` would also take U+00A0 and its kind, which git keeps.
+_ASCII_SPACE = " \t\r\f\v"
+
+
+def _physical_lines(text: str) -> list[str]:
+    """`text` split at line feeds only, a carriage return before one
+    removed, and an initial byte-order mark dropped: git ends a line at LF
+    or CRLF alone and accepts a UTF-8 BOM at the start of a config, while
+    `str.splitlines()` would also split at U+2028, U+0085 and the ASCII
+    separators, cutting a path that holds one."""
+    if text.startswith("﻿"):
+        text = text[1:]
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return [ln[:-1] if ln.endswith("\r") else ln for ln in lines]
+
+
 def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
     """The value that starts with `text` on line `i` of `lines`, with quotes
     and escapes resolved, a trailing comment removed and only the bare
@@ -105,9 +124,9 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
             i += 1
             text = lines[i]
             continue
-        while out and out[0][0].isspace() and not out[0][1]:
+        while out and out[0][0] in _ASCII_SPACE and not out[0][1]:
             out.pop(0)
-        while out and out[-1][0].isspace() and not out[-1][1]:
+        while out and out[-1][0] in _ASCII_SPACE and not out[-1][1]:
             out.pop()
         return "".join(c for c, _ in out), i
 
@@ -118,21 +137,21 @@ def _entries(text: str) -> Iterable[tuple[str, str | None]]:
     resolved by `_parse_value`. A pair may follow its header on the same
     line (`[remote "origin"] url = ...`), as git allows. Comment, blank and
     unparseable lines are skipped; only a value continues across lines."""
-    lines = text.splitlines()
+    lines = _physical_lines(text)
     i = 0
     while i < len(lines):
         # Only leading whitespace is dropped here: a value's trailing
         # whitespace is _parse_value's to judge, since `\ ` at the end of a
         # line is an escaped space, not a continuation.
-        line = lines[i].lstrip()
+        line = lines[i].lstrip(_ASCII_SPACE)
         if line.startswith("["):
             m = _HEADER_RX.match(line)
             if m is None:
-                yield "[", line.rstrip()  # unterminated or malformed
+                yield "[", line.rstrip(_ASCII_SPACE)  # unterminated or malformed
                 i += 1
                 continue
             yield "[", m.group(0)
-            line = line[m.end() :].lstrip()
+            line = line[m.end() :].lstrip(_ASCII_SPACE)
         if not line or line[0] in "#;":
             i += 1
             continue
@@ -180,10 +199,12 @@ def parse_remotes(text: str) -> list[dict]:
 def parse_head(text: str) -> str:
     """The branch a `.git/HEAD` text names (`ref: refs/heads/<branch>`), the
     full ref for any other symbolic ref, else the detached commit hash; ""
-    for an empty text."""
-    first = text.strip().splitlines()[0].strip() if text.strip() else ""
+    for an empty text. The first line ends at a line feed, and only ASCII
+    whitespace is trimmed, since a ref may hold other whitespace."""
+    lines = [ln.strip(_ASCII_SPACE) for ln in _physical_lines(text)]
+    first = next((ln for ln in lines if ln), "")
     if first.startswith("ref:"):
-        ref = first[len("ref:") :].strip()
+        ref = first[len("ref:") :].strip(_ASCII_SPACE)
         return ref[len("refs/heads/") :] if ref.startswith("refs/heads/") else ref
     return first
 
