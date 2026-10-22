@@ -105,6 +105,15 @@ accepts it are kept under that parser's agent. A parser that scopes a row
 to the project, such as `claude-code` for a project's
 `.claude/settings.json`, reads the project base marker, not the agent.
 
+A project's git metadata, collected from collector 1.19.0 (see
+[Git metadata in `collectors/docs/coverage.md`](../../collectors/docs/coverage.md#git-metadata)),
+is in the same group: its rows have agent `project`, and no parser
+wants them. The analyzer reads two of those files itself, from a project
+base only: the remotes of `.git/config` and the branch or commit of
+`.git/HEAD`, which `detect --json` and `inventory.json` give per project
+as `remotes` and `head` (see [detect --json](output.md#detect---json)).
+A loose input has no project bases, so these stay empty there.
+
 Cody and Twinny keep their chats as rows of the editor's own `state.vscdb`,
 which the catalog attributes to `vscode` or to the fork whose `User/`
 directory holds it (`cursor`, `windsurf`, `pearai`, `kiro`, `antigravity`);

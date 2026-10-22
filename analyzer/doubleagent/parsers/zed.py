@@ -19,8 +19,8 @@ to the config directory (`.config/zed`, `AppData/Roaming/Zed`, or
   `json`.
   The thread JSON, `version` `0.3.0`: `title`, `updated_at`,
   `initial_project_snapshot.timestamp`,
-  `initial_project_snapshot.worktree_snapshots[].worktree_path` and
-  `.git_state.current_branch`, `model.provider`, `model.model`,
+  `initial_project_snapshot.worktree_snapshots[].worktree_path`,
+  `.git_state.current_branch` and `.git_state.remote_url`, `model.provider`, `model.model`,
   `subagent_context.parent_thread_id`, and `messages[]`, externally tagged:
   - `{"User": {"id", "content": [{"Text"}, {"Mention": {"uri"}}, {"Image"}]}}`
   - `{"Agent": {"content": [{"Text"}, {"Thinking": {"text"}},
@@ -102,7 +102,11 @@ There are no per-message timestamps. Every message row carries the thread's
 `updated_at` (approximate: it is the last write, not the message time); the
 thread-start row carries `initial_project_snapshot.timestamp`, falling back
 to `created_at`. `source_line` is the SQLite `rowid` of the thread or
-sidebar row. The git branch is the one captured at thread start.
+sidebar row. The git branch is the one captured at thread start, and so
+is the remote: the `git_state.remote_url` of the snapshot whose
+`worktree_path` is the thread's project (else of the first snapshot, as
+for the branch) is a `system` row `git remote: <url>` at the thread-start
+time, right after the thread-start row (issue 253).
 
 Model and permission rows (issues 96 and 97), all `system`, after the
 thread-start row and before the first message:
@@ -168,7 +172,7 @@ from collections.abc import Iterator
 import zstandard
 
 from ..inputs import Artifact
-from ..model import Row, compact
+from ..model import GIT_REMOTE_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, error_rows, file_mtime, setting_value
@@ -688,6 +692,14 @@ class ZedParser(Parser):
             if isinstance(w.get("git_state"), dict) and w["git_state"].get("current_branch")
         ]
         branch = max(branches, key=lambda b: b[0])[1] if branches else ""
+        remotes = [
+            (w.get("worktree_path") == project, str(w["git_state"]["remote_url"]))
+            for w in worktrees
+            if isinstance(w.get("git_state"), dict)
+            and isinstance(w["git_state"].get("remote_url"), str)
+            and w["git_state"]["remote_url"].strip()
+        ]
+        remote = max(remotes, key=lambda b: b[0])[1] if remotes else ""
         m = thread.get("model")
         if not isinstance(m, dict):
             m = {}
@@ -717,6 +729,8 @@ class ZedParser(Parser):
             model,
             branch,
         )
+        if remote:
+            yield base("system", GIT_REMOTE_PREFIX + remote, start_ts, model, branch)
         if m.get("model"):
             text = "model: %s" % m["model"]
             if m.get("provider"):

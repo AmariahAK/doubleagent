@@ -63,6 +63,13 @@ from fixtures import (
     OPENCODE_SHARED,
     PI_BUG_SESSION,
     PI_SESSION,
+    PROJ_GIT_CONFIG,
+    PROJ_GIT_HEAD,
+    PROJ_GIT_REMOTES,
+    PROJ_MIRROR,
+    PROJ_PUSH_URL,
+    PROJ_REMOTE,
+    PROJ_UPSTREAM,
     QWEN_ARCHIVED,
     QWEN_DAEMON_SESSION,
     QWEN_SESSION,
@@ -94,6 +101,9 @@ PROJECT_KEYS = [
     "origin",
     "recovered",
 ]
+# The last keys of a project or scratch directory entry of inventory.json,
+# after the marks (issue 253); `outside_projects` has none of them.
+REPO_KEYS = ["remotes", "head", "recorded_remotes"]
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -569,6 +579,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
                 "relayed": "",
                 "origin": "",
                 "recovered": "",
+                "remotes": [],
+                "head": "",
+                "recorded_remotes": [],
             },
         )
         self.assertEqual(projects["/srv/proj"]["rows"], 1)
@@ -585,6 +598,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
                 "relayed",
                 "origin",
                 "recovered",
+                "remotes",
+                "head",
+                "recorded_remotes",
             ],
         )
         self.assertNotIn("status", inv["outside_projects"])
@@ -709,7 +725,7 @@ FIXTURE_DEDUPLICATED = {
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "claude-desktop": 3,  # audit.jsonl "thanks" and model row, record initialMessage
     "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
-    "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
+    "codex-cli": 12,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 3
     "continue": 3,  # input_history.json "rename foo", chatFeedback prompt and reply
     "copilot-cli": 6,  # session-store.db 3, rewind snapshot 1, command history 2
     "cursor": 3,  # agent transcript: two prompts and a reply the bubbles hold
@@ -918,7 +934,7 @@ class SyncedSessionTests(unittest.TestCase):
         # and "" for no sessions or no agent with a secondary source.
         projects = inv["projects"]
         for path, entry in projects.items():
-            self.assertEqual(list(entry)[-4:], PROJECT_KEYS, path)
+            self.assertEqual(list(entry)[-7:], PROJECT_KEYS + REPO_KEYS, path)
             for name, a in entry["agents"].items():
                 self.assertNotIn("recovered_sessions", a, (path, name))
         agy = projects["/home/u/proj"]
@@ -1477,6 +1493,124 @@ PROJECT_AGENTS = {
 }
 
 
+# A second Codex thread, in a project the collection does not hold.
+GONE_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-000000000253"
+GONE_REMOTE = "https://example.com/team/gone.git"
+
+
+def gone_rollout() -> str:
+    """The fixture rollout as a thread of `/srv/gone` whose session_meta
+    names `GONE_REMOTE`."""
+    recs = codex_rollout_records(cwd="/srv/gone")
+    recs[0]["payload"]["id"] = GONE_SESSION
+    recs[0]["payload"]["git"]["repository_url"] = GONE_REMOTE
+    for rec in recs[1:]:
+        if rec["type"] == "turn_context":
+            rec["payload"]["cwd"] = "/srv/gone"
+    return "".join(json.dumps(r) + "\n" for r in recs)
+
+
+class GitRemotesTests(unittest.TestCase):
+    """The repository of each collected project in `detect` and
+    inventory.json, and the remotes the agents recorded (issue 253)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-remotes-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def build(self) -> Path:
+        c = Collected(self.tmp / "col", ["/srv/proj", "/srv/bare"])
+        sessions = ".codex/sessions/2026/10/02/"
+        c.add(
+            "alice",
+            "/home/alice",
+            "codex-cli",
+            sessions + "rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION,
+            "".join(json.dumps(r) + "\n" for r in codex_rollout_records()),
+        )
+        c.add(
+            "alice",
+            "/home/alice",
+            "codex-cli",
+            sessions + "rollout-2026-10-02T10-00-00-%s.jsonl" % GONE_SESSION,
+            gone_rollout(),
+        )
+        c.add("alice", "/srv/proj", "project", ".git/config", PROJ_GIT_CONFIG)
+        c.add("alice", "/srv/proj", "project", ".git/HEAD", PROJ_GIT_HEAD)
+        c.add("alice", "/srv/bare", "project", "AGENTS.md", "# x\n")
+        return c.write()
+
+    def test_detect_json(self):
+        rc, out = run_detect(self.build(), "--json")
+        self.assertEqual(rc, 0, out)
+        projects = {p["path"]: p for p in json.loads(out)["projects"]}
+        for p in projects.values():
+            self.assertEqual(list(p)[-2:], ["remotes", "head"])
+        self.assertEqual(projects["/srv/proj"]["remotes"], PROJ_GIT_REMOTES)
+        self.assertEqual(projects["/srv/proj"]["head"], "main")
+        # The .git files are shared files, never an agent.
+        self.assertEqual(projects["/srv/proj"]["agents"], [])
+        self.assertEqual(projects["/srv/proj"]["shared_files"], 2)
+        self.assertEqual(
+            (projects["/srv/bare"]["remotes"], projects["/srv/bare"]["head"]), ([], "")
+        )
+
+    def test_detect_text(self):
+        rc, out = run_detect(self.build())
+        self.assertEqual(rc, 0, out)
+        lines = [x for x in out.splitlines() if x.lstrip().startswith("remotes:")]
+        self.assertEqual(
+            lines,
+            [
+                "  remotes: origin %s %s (push %s), upstream %s"
+                % (
+                    PROJ_REMOTE,
+                    PROJ_MIRROR,
+                    PROJ_PUSH_URL,
+                    PROJ_UPSTREAM,
+                )
+            ],
+        )
+
+    def test_inventory(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.build(), out)
+        self.assertEqual(rc, 0, stdout)
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        projects = inv["projects"]
+        self.assertEqual(sorted(projects), ["/srv/bare", "/srv/gone", "/srv/proj"])
+        for path, entry in projects.items():
+            self.assertEqual(list(entry)[-3:], REPO_KEYS, path)
+        proj, gone, bare = projects["/srv/proj"], projects["/srv/gone"], projects["/srv/bare"]
+        self.assertEqual(
+            (proj["remotes"], proj["head"], proj["recorded_remotes"]),
+            (PROJ_GIT_REMOTES, "main", [PROJ_REMOTE]),
+        )
+        # A referenced project: no repository files, but the remote the
+        # agent recorded survives the directory.
+        self.assertEqual(gone["status"], "referenced")
+        self.assertEqual(
+            (gone["remotes"], gone["head"], gone["recorded_remotes"]), ([], "", [GONE_REMOTE])
+        )
+        self.assertEqual((bare["remotes"], bare["head"], bare["recorded_remotes"]), ([], "", []))
+        for key in REPO_KEYS:
+            self.assertNotIn(key, inv["outside_projects"])
+
+    def test_recorded_remotes_follow_the_filters(self):
+        out = self.tmp / "out"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = cli.main(
+                ["timeline", str(self.build()), "-o", str(out), "--match", "list the home"]
+            )
+        self.assertEqual(rc, 0, buf.getvalue())
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["projects"]["/srv/proj"]["recorded_remotes"], [])
+        self.assertEqual(inv["projects"]["/srv/proj"]["remotes"], PROJ_GIT_REMOTES)
+
+
 class ProjectAgentsTests(unittest.TestCase):
     """The agents used on each home and collected project, in `detect`,
     `detect --json` and inventory.json; `project` is never shown as an
@@ -1556,6 +1690,8 @@ class ProjectAgentsTests(unittest.TestCase):
                     ],
                     "shared_files": 1,
                     "shared_bytes": 4,
+                    "remotes": [],
+                    "head": "",
                 },
                 {
                     "path": "/srv/shared",
@@ -1563,6 +1699,8 @@ class ProjectAgentsTests(unittest.TestCase):
                     "agents": [],
                     "shared_files": 1,
                     "shared_bytes": 9,
+                    "remotes": [],
+                    "head": "",
                 },
             ],
         )
@@ -1786,6 +1924,9 @@ class ProjectAgentsTests(unittest.TestCase):
                     "relayed",
                     "origin",
                     "recovered",
+                    "remotes",
+                    "head",
+                    "recorded_remotes",
                 ],
                 path,
             )
@@ -1832,6 +1973,9 @@ class ProjectAgentsTests(unittest.TestCase):
                 "relayed": "",
                 "origin": "",
                 "recovered": "",
+                "remotes": [],
+                "head": "",
+                "recorded_remotes": [],
             },
         )
         self.assertEqual(
@@ -1846,6 +1990,9 @@ class ProjectAgentsTests(unittest.TestCase):
                 "relayed": "",
                 "origin": "",
                 "recovered": "",
+                "remotes": [],
+                "head": "",
+                "recorded_remotes": [],
             },
         )
         self.assertEqual(inv["outside_projects"], EMPTY_OUTSIDE)
@@ -1929,6 +2076,9 @@ SCRATCH_ENTRY_KEYS = [
     "relayed",
     "origin",
     "recovered",
+    "remotes",
+    "head",
+    "recorded_remotes",
 ]
 
 

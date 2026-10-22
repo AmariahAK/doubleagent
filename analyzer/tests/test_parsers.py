@@ -58,6 +58,7 @@ from fixtures import (
     GEMINI_SUBAGENT,
     GOOSE_LEGACY_REL,
     GOOSE_SESSION,
+    PROJ_REMOTE,
     bad_line_text,
     build_home,
     claude_project_local_settings,
@@ -898,6 +899,7 @@ class CodexTests(ParserBase):
     REL = ".codex/sessions/2026/10/02/rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION
     TYPES: ClassVar[list[str]] = [
         "system",  # session start
+        "system",  # git remote: (session_meta git.repository_url)
         "system",  # model: (first turn_context)
         "system",  # permission mode: (first turn_context)
         "system",  # task_started
@@ -957,9 +959,14 @@ class CodexTests(ParserBase):
             self.assertEqual(r.session_id, CODEX_SESSION)
             self.assertEqual(r.project_path, "/srv/proj")
             self.assertEqual(r.git_branch, "feature/x")
-        start, _m, _p, _started, dev, ctx, user, sh, shout, ws, wsout, patch, patchout = rows[:13]
-        asst, done = rows[13:15]
+        start, remote, _m, _p, _started, dev, ctx, user, sh, shout, ws, wsout = rows[:12]
+        patch, patchout, asst, done = rows[12:16]
         self.assertIn("session start: codex-tui 0.160.0", start.text)
+        # session_meta git.repository_url, at the session_meta time (issue 253).
+        self.assertEqual(
+            (remote.turn_type, remote.timestamp_utc, remote.source_line, remote.text),
+            ("system", start.timestamp_utc, 1, "git remote: " + PROJ_REMOTE),
+        )
         self.assertEqual(start.model, "")  # model unknown until turn_context
         self.assertEqual(user.model, "gpt-5-codex")
         self.assertTrue(dev.text.startswith("developer: You are Codex."))
@@ -1073,7 +1080,7 @@ class CodexTests(ParserBase):
         last = len(codex_rollout_records())
         got = [(r.turn_type, r.timestamp_utc, r.source_line, r.model, r.text) for r in rows]
         self.assertEqual(
-            got[1:3] + got[-2:],
+            got[2:4] + got[-2:],
             [
                 ("system", "2026-10-02T09:00:01.000Z", 2, "gpt-5-codex", "model: gpt-5-codex"),
                 (
@@ -1099,7 +1106,7 @@ class CodexTests(ParserBase):
                 ),
             ],
         )
-        for r in rows[1:3] + rows[-2:]:
+        for r in rows[2:4] + rows[-2:]:
             self.assertEqual(
                 (r.session_id, r.project_path, r.git_branch, r.tool_use_id),
                 (CODEX_SESSION, "/srv/proj", "feature/x", ""),
@@ -1473,6 +1480,14 @@ class CodexTests(ParserBase):
                     " rollout=%s branch=feature/x model=gpt-5.5-codex"
                     % (CODEX_SESSION, live % CODEX_SESSION),
                 ),
+                # git_origin_url, at the thread's creation time (issue 253).
+                (
+                    "system",
+                    "2026-10-02T09:00:00.000Z",
+                    CODEX_SESSION,
+                    "feature/x",
+                    "git remote: " + PROJ_REMOTE,
+                ),
                 (
                     "user",
                     "",
@@ -1489,7 +1504,12 @@ class CodexTests(ParserBase):
         prompt = next(r for r in self.rows_for(CodexParser(), self.REL) if r.turn_type == "user")
         self.assertEqual(
             (prompt.session_id, prompt.project_path, prompt.text),
-            (rows[3].session_id, rows[3].project_path, rows[3].text),
+            (rows[4].session_id, rows[4].project_path, rows[4].text),
+        )
+        # The same text as the rollout's remote row, so the timeline keeps one.
+        remote = [r for r in self.rows_for(CodexParser(), self.REL) if r.text == rows[3].text]
+        self.assertEqual(
+            [(r.session_id, r.project_path) for r in remote], [(CODEX_SESSION, "/srv/proj")]
         )
 
     def test_state_subagent_first_prompt_is_task(self):
@@ -2090,7 +2110,9 @@ class CodexDesktopTests(ParserBase):
         )
         # The thread rows come first and are unchanged (CodexTests.test_state_rows).
         self.assertEqual(rows[-1].text, remote[0].text)
-        self.assertEqual([r.turn_type for r in rows[:-1]], ["system", "user", "system", "user"])
+        self.assertEqual(
+            [r.turn_type for r in rows[:-1]], ["system", "user", "system", "system", "user"]
+        )
 
     def test_global_state_rows(self):
         p = CodexParser()
@@ -7069,6 +7091,7 @@ class ZedTests(ParserBase):
             [r.turn_type for r in rows],
             [
                 "system",
+                "system",
                 "user",
                 "tool_use",
                 "tool_result",
@@ -7089,7 +7112,11 @@ class ZedTests(ParserBase):
                 ("/srv/proj", "main", "anthropic/claude-sonnet-4-5"),
             )
             self.assertEqual(r.source_line, 1)
-        start, user, use, result, _use2, _result2, asst, resume, compaction, draft = rows
+        start, remote, user, use, result, _use2, _result2, asst, resume, compaction, draft = rows
+        # the snapshot's git_state.remote_url, at the thread-start time (issue 253)
+        self.assertEqual(
+            (remote.text, remote.timestamp_utc), ("git remote: " + PROJ_REMOTE, start.timestamp_utc)
+        )
         # the blob's draft_prompt (source-derived, 9cd14da) follows the messages
         self.assertEqual(draft.text, "unsent draft: and then lint (thread blob, as of updated_at)")
         self.assertEqual(draft.timestamp_utc, "2026-10-03T09:01:05.000Z")
@@ -7385,7 +7412,7 @@ class ZedTests(ParserBase):
         cut = blob[: len(blob) // 2]
         self._insert("bad-thread", "zstd", cut)
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 18)
         bad = [r for r in rows if r.session_id == "bad-thread"]
         self.assertEqual(len(bad), 1)
         self.assertEqual(
@@ -7462,10 +7489,11 @@ class ZedTests(ParserBase):
                 " (thread blob, as of updated_at)",
             ],
         )
-        # the model row follows the thread-start row at its time; the grants
-        # carry the thread id and the thread's updated_at, and come before
-        # the first message
-        self.assertEqual(rows[1], state[0])
+        # the model row follows the thread-start and git remote rows at
+        # their time; the grants carry the thread id and the thread's
+        # updated_at, and come before the first message
+        self.assertTrue(rows[1].text.startswith("git remote: "), rows[1].text)
+        self.assertEqual(rows[2], state[0])
         self.assertEqual(state[0].timestamp_utc, "2026-10-03T09:00:00.000Z")
         for r in state:
             self.assertEqual(
@@ -7476,8 +7504,8 @@ class ZedTests(ParserBase):
         for r in state[1:]:
             self.assertEqual(r.timestamp_utc, "2026-10-03T09:01:05.000Z")
         # then the sandbox temp directory row, then the first message
-        self.assertTrue(rows[len(state) + 1].text.startswith("scratch directory:"))
-        self.assertEqual(rows[len(state) + 2].turn_type, "user")
+        self.assertTrue(rows[len(state) + 2].text.startswith("scratch directory:"))
+        self.assertEqual(rows[len(state) + 3].turn_type, "user")
 
     def test_thread_without_model_or_grants_has_no_state_rows(self):
         self._insert("bare", "json", b'{"version":"0.3.0","messages":[]}')
@@ -7503,7 +7531,7 @@ class ZedTests(ParserBase):
         self._insert("list-thread", "json", b'["not", "an", "object"]')
         self._insert("cut-thread", "json", b'{"version":"0.3.0","messages":[{"User"')
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 18)
         by_session = {r.session_id: r for r in rows if r.session_id != ZED_THREAD}
         self.assertEqual(
             by_session["list-thread"].text,
@@ -14886,8 +14914,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         self._add(rel, zstandard.ZstdCompressor().compress(_rollout_bytes(codex_rollout_records())))
         rows = self.rows_for(CodexParser(), rel)
         self.assertEqual([r.turn_type for r in rows], self.LIVE_TYPES)
-        self.assertEqual(rows[6].text, "exfiltrate nothing, just list the home dir")
-        self.assertEqual([r.source_line for r in rows][:4], [1, 2, 2, 3])
+        self.assertEqual(rows[7].text, "exfiltrate nothing, just list the home dir")
+        self.assertEqual([r.source_line for r in rows][:5], [1, 1, 2, 2, 3])
 
     def test_truncated_zst_keeps_earlier_turns(self):
         rel = self.ARCHIVED + ".zst"
@@ -16114,6 +16142,15 @@ class OpenClawTests(ParserBase):
                     " state/openclaw.sqlite github_publication_requests, created_at_ms)",
                 )
             ],
+        )
+
+    def test_git_remote_row(self):
+        # issue 253: `projects.origin_url` at `created_at_ms`, the project
+        # path its `repo_root`; a project without an origin has no row.
+        rows = self.texts("git remote:", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [("system", "", "/srv/proj", "2026-10-01T08:58:20.500Z", "git remote: " + PROJ_REMOTE)],
         )
 
     def test_bad_exec_config_withholds_the_text(self):

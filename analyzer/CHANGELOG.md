@@ -9,6 +9,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-21
+
+### Added
+
+- The bundled catalog copy has the collector's seven new project lines,
+  `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`,
+  `.git/refs`, `.git/logs` and `.git/worktrees`, so the analyzer
+  attributes a collected project's repository files to `project`, the
+  shared project files, and `detect` counts them under `(shared)`
+  ([#253]).
+- `detect --json` gains `remotes` and `head` as the last two keys of each
+  `projects[]` object, new keys of that interface: the remotes of the
+  project's `.git/config` (`name`, and `urls` and `pushurls`, every
+  `url` and `pushurl` value as the file records them, in file order, so a
+  second push destination is kept; sorted by name) and the branch its
+  `.git/HEAD` names, or
+  the commit of a detached HEAD; `[]` and `""` when the collection holds
+  neither file. The `detect` text output adds a `remotes:` line under
+  each project that has any ([#253]).
+- `inventory.json` gains `remotes`, `head` and `recorded_remotes` as the
+  last three keys of each `projects.<path>` and `scratch_directories.<path>`
+  entry, new keys of that interface: `remotes` and `head` as in `detect
+  --json` (`[]` and `""` for a `referenced` project), and
+  `recorded_remotes`, the sorted distinct URLs of the `git remote:` rows
+  of the sessions counted under the project after the filters, so a
+  project whose directory is gone still names the remote its agent
+  recorded. `outside_projects` has none of the three ([#253]).
+- `git remote: <url>` `system` rows, once per session per URL at the time
+  of the record that names it: the `codex-cli` and `open-interpreter`
+  parsers read the rollout's `session_meta` `git.repository_url` and the
+  `state_5.sqlite` `threads.git_origin_url` (a secondary source, so the
+  timeline keeps one of the two); the `zed` parser reads the thread
+  snapshot's `git_state.remote_url`; the `openclaw` parser reads the
+  `projects` table's `origin_url` of `state/openclaw.sqlite`, with the
+  project path its `repo_root` and no session ([#253]).
+
 ## [0.20.1] - 2026-10-21
 
 ### Added
@@ -1878,7 +1914,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.1...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.21.0...HEAD
+[0.21.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.1...analyzer-v0.21.0
 [0.20.1]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.0...analyzer-v0.20.1
 [0.20.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.19.0...analyzer-v0.20.0
 [0.19.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...analyzer-v0.19.0
@@ -1903,6 +1940,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#253]: https://github.com/seanthegeek/doubleagent/issues/253
 [#237]: https://github.com/seanthegeek/doubleagent/issues/237
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
 [#231]: https://github.com/seanthegeek/doubleagent/issues/231
