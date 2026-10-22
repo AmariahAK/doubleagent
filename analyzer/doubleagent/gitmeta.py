@@ -11,7 +11,9 @@ lines, collector 1.19.0, issue 253). This module reads two of them:
   matched without regard to case, as git does; the subsection (the remote's
   name) is kept as written. The deprecated `[remote.<name>]` form is read
   too. A value may be quoted, may hold `\\`, `\\"`, `\\n`, `\\t` and `\\b`
-  escapes, ends at a `#` or `;` outside quotes, and continues on the next
+  escapes, keeps the whitespace quotes or an escape protect while the bare
+  whitespace around it is trimmed, ends at a `#` or `;` outside quotes,
+  and continues on the next
   line after a backslash at the end of the line that is part of the value:
   a backslash that ends a comment, a header line or a blank line continues
   nothing, as in git, so a comment such as `# C:\\git\\` never swallows the
@@ -69,12 +71,15 @@ def read_text(path: Path) -> tuple[str, str]:
 
 def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
     """The value that starts with `text` on line `i` of `lines`, with quotes
-    and escapes resolved and a trailing comment removed, and the index of
-    the last line it used: a backslash at the end of the line, outside a
+    and escapes resolved, a trailing comment removed and only the bare
+    whitespace around it trimmed, and the index of the last line it used: a backslash at the end of the line, outside a
     comment, continues the value on the next line (a comment ends the line
     and never continues it, as in git). A lone backslash at the end of the
     file is dropped."""
-    out: list[str] = []
+    # Each character with whether quotes or an escape protect it: only bare
+    # whitespace around the value is trimmed, as git trims it, so a quoted
+    # path that ends in a space keeps its space.
+    out: list[tuple[str, bool]] = []
     quoted = False
     while True:
         j = 0
@@ -83,7 +88,7 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
             c = text[j]
             if c == "\\":
                 if j + 1 < len(text):
-                    out.append(_ESCAPES.get(text[j + 1], text[j + 1]))
+                    out.append((_ESCAPES.get(text[j + 1], text[j + 1]), True))
                     j += 2
                     continue
                 continued = True
@@ -93,13 +98,17 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
             elif c in "#;" and not quoted:
                 break
             else:
-                out.append(c)
+                out.append((c, quoted))
             j += 1
         if continued and i + 1 < len(lines):
             i += 1
             text = lines[i]
             continue
-        return "".join(out).strip(), i
+        while out and out[0][0].isspace() and not out[0][1]:
+            out.pop(0)
+        while out and out[-1][0].isspace() and not out[-1][1]:
+            out.pop()
+        return "".join(c for c, _ in out), i
 
 
 def _entries(text: str) -> Iterable[tuple[str, str | None]]:
@@ -111,15 +120,18 @@ def _entries(text: str) -> Iterable[tuple[str, str | None]]:
     lines = text.splitlines()
     i = 0
     while i < len(lines):
-        line = lines[i].strip()
+        # Only leading whitespace is dropped here: a value's trailing
+        # whitespace is _parse_value's to judge, since `\ ` at the end of a
+        # line is an escaped space, not a continuation.
+        line = lines[i].lstrip()
         if line.startswith("["):
             m = _HEADER_RX.match(line)
             if m is None:
-                yield "[", line  # unterminated or malformed
+                yield "[", line.rstrip()  # unterminated or malformed
                 i += 1
                 continue
             yield "[", m.group(0)
-            line = line[m.end() :].strip()
+            line = line[m.end() :].lstrip()
         if not line or line[0] in "#;":
             i += 1
             continue

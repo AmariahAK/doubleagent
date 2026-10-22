@@ -85,6 +85,30 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_quoted_and_escaped_whitespace_is_kept(self):
+        # Only bare whitespace around a value is trimmed, as git trims it; a
+        # quoted or escaped space is part of the path (pull request 254
+        # review). Bare whitespace before a comment still goes.
+        text = (
+            '[remote "a"]\n'
+            '\turl =   "/srv/mirror.git "  \n'
+            '[remote "b"]\n'
+            '\turl = " /srv/lead.git"\t; note\n'
+            '[remote "c"]\n'
+            "\turl = /srv/plain.git \\ \n"
+            '[remote "d"]\n'
+            '\turl = "/srv/in ner.git"\n'
+        )
+        self.assertEqual(
+            [(r["name"], r["urls"]) for r in gitmeta.parse_remotes(text)],
+            [
+                ("a", ["/srv/mirror.git "]),
+                ("b", [" /srv/lead.git"]),
+                ("c", ["/srv/plain.git  "]),
+                ("d", ["/srv/in ner.git"]),
+            ],
+        )
+
     def test_pair_on_the_header_line(self):
         # git allows a variable after its section header on the same line
         # (pull request 254 review); a comment there is still a comment.
