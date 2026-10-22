@@ -20,9 +20,11 @@ lines, collector 1.19.0, issue 253). This module reads two of them:
   header after it. A pair may follow its header on the same line
   (`[remote "origin"] url = ...`), as git allows. A line that is not a
   section header or a `key = value` pair, and the keys after an
-  unterminated section header, are skipped, and a quoted value the file
-  ends inside is dropped and reported, since git rejects the line and a
-  config cut mid-URL must not yield a partial destination;
+  unterminated section header, are skipped, and a value git rejects, a
+  quoted one the file ends inside or one with an escape git does not
+  define, is dropped and reported, since a config cut mid-URL or edited
+  by hand must not yield a destination git would not read; the deprecated
+  dotted form lower-cases its subsection, as git does;
   the rest of the file is still read. A remote may have several `url` and
   `pushurl` lines (git fetches from the first `url` and pushes to every
   `pushurl`, or to every `url` when there is none), so every value of each
@@ -91,10 +93,13 @@ def _physical_lines(text: str) -> list[str]:
     return [ln[:-1] if ln.endswith("\r") else ln for ln in lines]
 
 
-def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, bool]:
+def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, str]:
     """The value that starts with `text` on line `i` of `lines`, with quotes
     and escapes resolved, a trailing comment removed and only the bare
-    whitespace around it trimmed, and the index of the last line it used: a backslash at the end of the line, outside a
+    whitespace around it trimmed, the index of the last line it used, and
+    `""` or the reason git would reject the line (an unterminated quote, an
+    escape other than `\\\\`, `\\"`, `\\n`, `\\t` and `\\b`), in which case
+    the value is `""`: a backslash at the end of the line, outside a
     comment, continues the value on the next line (a comment ends the line
     and never continues it, as in git). A lone backslash at the end of the
     file is dropped."""
@@ -110,7 +115,10 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, bool]:
             c = text[j]
             if c == "\\":
                 if j + 1 < len(text):
-                    out.append((_ESCAPES.get(text[j + 1], text[j + 1]), True))
+                    if text[j + 1] not in _ESCAPES:
+                        # git rejects the line; the value is not evidence.
+                        return "", i, "unsupported escape \\" + text[j + 1]
+                    out.append((_ESCAPES[text[j + 1]], True))
                     j += 2
                     continue
                 continued = True
@@ -132,7 +140,7 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, bool]:
             out.pop()
         # A quote still open at the end is a value the file ends inside: git
         # rejects the line, and the text so far is not the destination.
-        return "".join(c for c, _ in out), i, not quoted
+        return "".join(c for c, _ in out), i, "unterminated quoted value" if quoted else ""
 
 
 def _entries(text: str, errors: list[str]) -> Iterable[tuple[str, str | None]]:
@@ -141,9 +149,10 @@ def _entries(text: str, errors: list[str]) -> Iterable[tuple[str, str | None]]:
     resolved by `_parse_value`. A pair may follow its header on the same
     line (`[remote "origin"] url = ...`), as git allows. Comment, blank and
     unparseable lines are skipped; only a value continues across lines. A
-    pair whose quoted value the file ends inside is dropped and described
-    in `errors` (`line <n>: unterminated quoted value`), since git rejects
-    the line and its text is not a complete value."""
+    pair git would reject, a quoted value the file ends inside or an
+    escape git does not define, is dropped and described in `errors`
+    (`line <n>: unterminated quoted value`, `line <n>: unsupported escape
+    \\q`), since its text is not the value git would have read."""
     lines = _physical_lines(text)
     i = 0
     while i < len(lines):
@@ -171,11 +180,11 @@ def _entries(text: str, errors: list[str]) -> Iterable[tuple[str, str | None]]:
             i += 1
             continue
         start = i + 1
-        value, i, closed = _parse_value(lines, i, m.group(2))
-        if closed:
-            yield m.group(1).lower(), value
+        value, i, error = _parse_value(lines, i, m.group(2))
+        if error:
+            errors.append("line %d: %s" % (start, error))
         else:
-            errors.append("line %d: unterminated quoted value" % start)
+            yield m.group(1).lower(), value
         i += 1
 
 
@@ -200,7 +209,9 @@ def parse_remotes(text: str, errors: list[str] | None = None) -> list[dict]:
                 if section == "remote":
                     current = re.sub(r"\\(.)", r"\1", sub)
             elif section.startswith("remote.") and len(section) > len("remote."):
-                current = m.group(1)[len("remote.") :]
+                # git lower-cases the dotted form's subsection, so
+                # [remote.Origin] and [remote "origin"] are one remote.
+                current = section[len("remote.") :]
             continue
         if current is None or key not in ("url", "pushurl") or not value:
             continue

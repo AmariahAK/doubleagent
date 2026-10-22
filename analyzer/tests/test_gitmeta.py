@@ -95,7 +95,7 @@ class ParseRemotesTests(unittest.TestCase):
             '[remote "b"]\n'
             '\turl = " /srv/lead.git"\t; note\n'
             '[remote "c"]\n'
-            "\turl = /srv/plain.git \\ \n"
+            "\turl = /srv/plain.git\\t \n"
             '[remote "d"]\n'
             '\turl = "/srv/in ner.git"\n'
         )
@@ -104,7 +104,7 @@ class ParseRemotesTests(unittest.TestCase):
             [
                 ("a", ["/srv/mirror.git "]),
                 ("b", [" /srv/lead.git"]),
-                ("c", ["/srv/plain.git  "]),
+                ("c", ["/srv/plain.git\t"]),
                 ("d", ["/srv/in ner.git"]),
             ],
         )
@@ -135,6 +135,55 @@ class ParseRemotesTests(unittest.TestCase):
             [{"name": "a", "urls": ["https://h/a.git"], "pushurls": []}],
         )
         self.assertEqual(len(errors), 1)
+
+    def test_unsupported_escape_is_dropped_and_reported(self):
+        # git defines \\, \", \n, \t and \b and a backslash before a line
+        # end; any other escape makes it reject the line, so the backslash
+        # is never dropped to invent a destination (pull request 254 review).
+        text = (
+            '[remote "origin"]\n'
+            "\turl = https://h/origin.git\n"
+            '[remote "bad"]\n'
+            "\turl = https://host/team\\q.git\n"
+            "\tpushurl = https://h/bad-push.git\n"
+            '[remote "spaced"]\n'
+            "\turl = /srv/with\\ space.git\n"
+        )
+        errors: list[str] = []
+        self.assertEqual(
+            gitmeta.parse_remotes(text, errors),
+            [
+                {"name": "bad", "urls": [], "pushurls": ["https://h/bad-push.git"]},
+                {"name": "origin", "urls": ["https://h/origin.git"], "pushurls": []},
+            ],
+        )
+        self.assertEqual(
+            errors, ["line 4: unsupported escape \\q", "line 7: unsupported escape \\ "]
+        )
+
+    def test_dotted_header_subsection_is_lower_cased(self):
+        # The deprecated [section.subsection] form lower-cases its subsection
+        # (git), so [remote.Origin] and [remote "origin"] are one remote; a
+        # quoted subsection keeps its case (pull request 254 review).
+        text = (
+            "[remote.Origin]\n"
+            "\turl = https://h/origin.git\n"
+            '[remote "origin"]\n'
+            "\tpushurl = https://h/origin-push.git\n"
+            '[remote "Origin"]\n'
+            "\turl = https://h/capital.git\n"
+        )
+        self.assertEqual(
+            gitmeta.parse_remotes(text),
+            [
+                {"name": "Origin", "urls": ["https://h/capital.git"], "pushurls": []},
+                {
+                    "name": "origin",
+                    "urls": ["https://h/origin.git"],
+                    "pushurls": ["https://h/origin-push.git"],
+                },
+            ],
+        )
 
     def test_bom_crlf_and_unicode_line_separators(self):
         # git accepts a UTF-8 byte-order mark at the start of a config and
