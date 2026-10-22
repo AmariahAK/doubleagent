@@ -75,6 +75,28 @@ stream, not Gemini's. Files:
   one `parser:` row, and so is an entry that is not one. Fixture only: no
   real install has shown either file.
 
+* `~/.qwen/settings.json` and a project's `.qwen/settings.json` (a project
+  catalog file; `project_path` the project), read as JSONC (comments and a
+  byte-order mark allowed, as `packages/cli/src/config/settings.ts` reads
+  it): one `system` row per entry of `permissions.allow`,
+  `permissions.ask` and `permissions.deny` and one for
+  `tools.approvalMode`, `permission setting: <key>=<value> (from <file>,
+  file mtime)`, at the file's modification time with no session id. No
+  other key is read (the file holds `modelProviders[].apiKey` and channel
+  tokens). A file that is not a JSON object is one `parser:` row. The
+  collector flags the home copy `secret: true`, so a `--no-secrets`
+  collection lacks it. Source-derived (5dcf7c7c), issue 187.
+
+* `~/.qwen/usage_record.jsonl`: one `UsageSummaryRecord` per line
+  (`sessionId`, `startTime` epoch ms, `project`, `durationMs`, `models`
+  keyed by model id, `tools.byName.<tool>.count`), written at session exit,
+  at `/clear` and before a session's transcript is deleted. One `system`
+  row per line, `session usage: project <project> duration <durationMs>ms
+  models <id>,... tools <tool>=<count>,... (from usage_record.jsonl,
+  startTime)`, `-` for an absent part, at `startTime`, with the record's
+  `sessionId` and `project`. A secondary source: what is left of a deleted
+  session. Source-derived (5dcf7c7c), issue 187.
+
 Model and permission rows. A `session_model` record is the row
 `model: <modelId> auth=<authType>` (`model: <old> -> <new> auth=<authType>`
 when it names a model other than the one in force); an assistant
@@ -85,7 +107,27 @@ differs from the one in force, tracked per `sessionId`. A `logs.json`
 A `tool_result` whose `toolCallResult.status` is `cancelled` or
 `awaiting_approval` keeps the `[<status>]` prefix and is followed by a
 `system` row `permission decision: <status>` with its `tool_name` and
-`tool_use_id`. The session file records no approval mode.
+`tool_use_id`.
+
+Source-derived from 5dcf7c7c (issue 187), not observed on any real
+install: a record's `executionContext {modelId, authType?, approvalMode}`
+(user prompts and `mid_turn_user_message` records) feeds the same per-session
+model tracking, as `model: <modelId>[ auth=<authType>]` or `model: <old> ->
+<new>[ auth=<authType>]` before the record's rows, and a per-session approval
+mode tracking, `permission mode: <approvalMode>` the first time and
+`permission mode: <old> -> <new>` on a change. A `session_approval_mode`
+record (`systemPayload {mode, prePlanMode?, planExecutionMode?}`) is the row
+`permission mode: <mode>` or `permission mode: <old> -> <mode>`, followed by
+` prePlanMode=<p>` and ` planExecutionMode=<e>` when recorded. A
+`ui_telemetry` record whose `systemPayload.uiEvent` has `event.name`
+`qwen-code.tool_call` or `tool_call` and a `decision` (`accept`, `reject`,
+`modify`, `auto_accept`) keeps its `ui_telemetry: <JSON>` row and is followed by
+`permission decision: <decision> (tool_call ui_telemetry)` with `tool_name`
+the event's `function_name` and `tool_use_id` its `call_id`. Both event
+names are matched: `logToolCall` records `qwen-code.tool_call` at 5dcf7c7
+(telemetry/loggers.ts:317-331, constants.ts:11), while the `ToolCallEvent`
+class's own default is the bare `tool_call` (telemetry/types.ts:214), which
+a build that recorded the event without the rename would have written.
 
 Not parsed: `checkpoint-<tag>.json` (a raw `Content[]` without timestamps)
 and `shell_history`.
@@ -107,15 +149,24 @@ from .base import (
     error_rows,
     file_mtime,
     iter_jsonl,
+    setting_value,
     tail_text,
     track_change,
 )
-from .gemini_cli import trusted_folder_rows
+from .gemini_cli import parse_jsonc, trusted_folder_rows
 
 SESSION_RX = re.compile(r"^\.qwen/projects/[^/]+/chats/(?:archive/)?[^/]+\.jsonl$")
 LOGS_RX = re.compile(r"^\.qwen/tmp/[^/]+/logs\.json$")
 TRUSTED_RX = re.compile(r"^\.qwen/trustedFolders\.json$")
 CHANNELS_RX = re.compile(r"^\.qwen/(channels/(?:sessions\.json|daemon/[^/]+/routes\.json))$")
+# `~/.qwen/settings.json`, or a project's `.qwen/settings.json` (a project
+# catalog file), for the standing permission rules (#187).
+SETTINGS_RX = re.compile(r"^\.qwen/settings\.json$")
+USAGE_RX = re.compile(r"^\.qwen/usage_record\.jsonl$")
+PERMISSION_LISTS = ("allow", "ask", "deny")
+# `ToolCallEvent` as `logToolCall` records it in a `ui_telemetry` record,
+# and the class's own default name, which an older build may have written.
+TOOL_CALL_EVENTS = ("qwen-code.tool_call", "tool_call")
 DECISION_STATUSES = ("cancelled", "awaiting_approval")
 SIDECAR_SUFFIX = ".ledger.jsonl"
 # `type: user` subtypes that never hold a prompt the user typed (#172).
@@ -220,17 +271,22 @@ class QwenCodeParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        if LOGS_RX.match(rel) or TRUSTED_RX.match(rel) or CHANNELS_RX.match(rel):
-            return True
+        for rx in (LOGS_RX, TRUSTED_RX, CHANNELS_RX, SETTINGS_RX, USAGE_RX):
+            if rx.match(rel):
+                return True
         return bool(SESSION_RX.match(rel)) and not rel.endswith(SIDECAR_SUFFIX)
 
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(LOGS_RX.match(artifact.rel))
+        return bool(LOGS_RX.match(artifact.rel) or USAGE_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         channels = CHANNELS_RX.match(artifact.rel)
         if TRUSTED_RX.match(artifact.rel):
             yield from trusted_folder_rows(self, artifact)
+        elif SETTINGS_RX.match(artifact.rel):
+            yield from self._parse_settings(artifact)
+        elif USAGE_RX.match(artifact.rel):
+            yield from self._parse_usage(artifact)
         elif channels:
             yield from self._parse_channel_routes(artifact, channels.group(1))
         elif LOGS_RX.match(artifact.rel):
@@ -281,10 +337,106 @@ class QwenCodeParser(Parser):
             yield row
         yield from error_rows(self, artifact, errors)
 
+    def _settings_row(self, artifact: Artifact, ts: str, project: str, text: str) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = ts
+        row.project_path = project
+        row.text = compact(text)
+        return row
+
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per `permissions.allow`, `ask` and
+        `deny` rule and one for `tools.approvalMode` of a `settings.json`,
+        read as JSONC as Qwen Code reads it; no other key is read, since
+        the file can hold provider keys and channel tokens."""
+        ts = file_mtime(artifact)
+        project = artifact.home.original if artifact.home.project else ""
+        try:
+            doc = parse_jsonc(artifact.disk_path.read_bytes())
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict):
+            text = "parser: %s is not a JSON object" % artifact.rel
+            yield self._settings_row(artifact, ts, project, text)
+            return
+        settings: list = []
+        perms = doc.get("permissions")
+        perms = perms if isinstance(perms, dict) else {}
+        for key in PERMISSION_LISTS:
+            entries = perms.get(key)
+            if isinstance(entries, list):
+                settings.extend(("permissions." + key, entry) for entry in entries)
+        tools = doc.get("tools")
+        if isinstance(tools, dict) and tools.get("approvalMode") is not None:
+            settings.append(("tools.approvalMode", tools["approvalMode"]))
+        for key, value in settings:
+            text = "permission setting: %s=%s (from %s, file mtime)" % (
+                key,
+                setting_value(value),
+                artifact.rel,
+            )
+            yield self._settings_row(artifact, ts, project, text)
+
+    def _parse_usage(self, artifact: Artifact) -> Iterator[Row]:
+        """One `session usage:` row per `usage_record.jsonl` line, at its
+        `startTime`; a secondary source that survives the session's delete."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+            models = rec.get("models")
+            tools = rec.get("tools")
+            by_name = tools.get("byName") if isinstance(tools, dict) else None
+            counts = [
+                "%s=%s" % (name, v.get("count") if isinstance(v, dict) else v)
+                for name, v in (by_name.items() if isinstance(by_name, dict) else ())
+            ]
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.turn_type = "system"
+            row.timestamp_utc = to_utc(rec.get("startTime"))
+            row.session_id = str(rec.get("sessionId") or "")
+            row.project_path = str(rec.get("project") or "")
+            duration = rec.get("durationMs")
+            row.text = compact(
+                "session usage: project %s duration %s models %s tools %s"
+                " (from usage_record.jsonl, startTime)"
+                % (
+                    row.project_path or "-",
+                    "%sms" % duration if duration not in (None, "") else "-",
+                    ",".join(models) if isinstance(models, dict) and models else "-",
+                    ",".join(counts) or "-",
+                )
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)
+
+    @staticmethod
+    def _context_changes(rec: dict, session_id: str, models: dict, modes: dict) -> list:
+        """The `model:` and `permission mode:` row texts (with the model for
+        the `model` column) for a record's `executionContext`, when either
+        differs from the one in force for the session."""
+        ctx = rec.get("executionContext")
+        if not isinstance(ctx, dict):
+            return []
+        out = []
+        model = str(ctx.get("modelId") or "")
+        change = track_change("model", models, session_id, model)
+        if change:
+            auth = ctx.get("authType")
+            out.append((change + (" auth=%s" % auth if auth else ""), model))
+        mode = track_change(
+            "permission mode", modes, session_id, str(ctx.get("approvalMode") or "")
+        )
+        if mode:
+            out.append((mode, ""))
+        return out
+
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
         session_id = project_path = ""
         models: dict = {}  # session id -> model in force, for the model rows
+        modes: dict = {}  # session id -> approval mode in force
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             rtype = rec.get("type")
             if rec.get("sessionId"):
@@ -303,6 +455,10 @@ class QwenCodeParser(Parser):
                 row.text = compact(text)
                 return row
 
+            for text, model in self._context_changes(rec, session_id, models, modes):
+                row = base("system", text)
+                row.model = model
+                yield row
             parts = _parts(rec)
             if rtype == "user":
                 text = "\n".join(
@@ -387,9 +543,33 @@ class QwenCodeParser(Parser):
                             change or "model: %s" % model,
                             payload.get("authType") or "",
                         )
+                elif subtype == "session_approval_mode" and isinstance(payload, dict):
+                    mode = str(payload.get("mode") or "")
+                    if mode:
+                        change = track_change("permission mode", modes, session_id, mode)
+                        extras = [
+                            " %s=%s" % (k, payload[k])
+                            for k in ("prePlanMode", "planExecutionMode")
+                            if payload.get(k)
+                        ]
+                        text = (change or "permission mode: %s" % mode) + "".join(extras)
                 row = base("system", text)
                 row.model = model
                 yield row
+                event = payload.get("uiEvent") if isinstance(payload, dict) else None
+                if (
+                    subtype == "ui_telemetry"
+                    and isinstance(event, dict)
+                    and event.get("event.name") in TOOL_CALL_EVENTS
+                    and event.get("decision")
+                ):
+                    dec = base(
+                        "system",
+                        "permission decision: %s (tool_call ui_telemetry)" % event["decision"],
+                    )
+                    dec.tool_name = str(event.get("function_name") or "")
+                    dec.tool_use_id = str(event.get("call_id") or "")
+                    yield dec
         yield from error_rows(self, artifact, errors, session_id, project_path)
 
     def _parse_logs(self, artifact: Artifact, opts: Options) -> Iterator[Row]:

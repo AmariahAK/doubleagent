@@ -40,6 +40,10 @@ The built-in CodeInterpreterTool is gone
 
 ### Source reviews
 
+- 2026-10-21: crewAIInc/crewAI at
+  [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2),
+  from source only: the project-local `.crewai` directory is now collected through the project
+  catalog ([Project-local files](#project-local-files)).
 - 2026-10-19: HEAD
   [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
   against the previously cited
@@ -176,8 +180,11 @@ anyway ([Memory gap](#memory-gap)).
 A CrewAI project is ordinary Python code, and the run directory is per
 project but lives under the home ([Per-user storage](#per-user-storage)). At
 [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
-CrewAI writes these files inside the project directory (the working directory of the run);
-none is in `PROJECT_CATALOG`:
+CrewAI writes these files inside the project directory (the working directory of the run).
+The `crewai|.crewai` project catalog entry collects the three in `.crewai/` from every project
+that another agent's state or the `-p` option names, since CrewAI records no project path of
+its own ([Where the project path is recorded](#where-the-project-path-is-recorded)); the
+others are not in `PROJECT_CATALOG`:
 
 - `.crewai/last_run.json`: the last traced run whose spans reached AMP. The source names Wharf,
   AMP's trace intake, as the place a run's spans are sent
@@ -242,9 +249,9 @@ CrewAI is `backlog`: its parser is
 [issue 140](https://github.com/seanthegeek/doubleagent/issues/140), and nothing it writes is
 parsed yet. The stores it would read are the run database, the opt-in Flow database and the
 consent file ([Run data directory detail](#run-data-directory-detail)), and the project-local
-AMP sync marker and checkpoints, which are not in `PROJECT_CATALOG`
-([Project-local files](#project-local-files)); every one is SQLite or a JSON document, none
-line-oriented.
+AMP sync marker, collected with the project's `.crewai` directory, and checkpoints, which are
+not in `PROJECT_CATALOG` ([Project-local files](#project-local-files)); every one is SQLite
+or a JSON document, none line-oriented.
 
 ## Confidence
 

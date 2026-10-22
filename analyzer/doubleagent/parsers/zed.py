@@ -1,10 +1,14 @@
 """Zed agent panel threads.
 
-Validated against source, zed-industries/zed at a84689073d29 (see
-`research/zed.md`), with a synthetic fixture; no real install was
-checked. Files, relative to the Zed data directory (`.local/share/zed`,
-`Library/Application Support/Zed`, `AppData/Local/Zed`, or the Flatpak
-`.var/app/dev.zed.Zed*/data/zed`):
+Validated against source, zed-industries/zed at a84689073d29 and, for
+the settings, `db.sqlite` stores, denials, scratch directories and drafts,
+at 9cd14daad768 (see `research/zed.md`), with a synthetic fixture; no real
+install was checked, and every row the 9cd14daad768 review added is
+source-derived, not observed on any real install. Files, relative to the
+Zed data directory (`.local/share/zed`, `Library/Application Support/Zed`,
+`AppData/Local/Zed`, or the Flatpak `.var/app/dev.zed.Zed*/data/zed`), and
+to the config directory (`.config/zed`, `AppData/Roaming/Zed`, or
+`.var/app/dev.zed.Zed*/config/zed`):
 
 * `threads/threads.db` (rollback journal, so a `-journal` may sit beside it):
   table `threads(id, summary, updated_at, data_type, data, parent_id,
@@ -29,12 +33,70 @@ checked. Files, relative to the Zed data directory (`.local/share/zed`,
   `type` text/thinking/RedactedThinking, `tool_uses[]`, `tool_results[]`)
   and the unversioned legacy shape (`messages[].role`, `.text`) are read
   on a best-effort basis; their role spelling was not confirmed.
-* `db/0-<channel>/db.sqlite` (WAL): table `sidebar_threads(session_id,
-  agent_id, title, title_override, updated_at, interacted_at,
-  folder_paths, archived)`. Rows with `agent_id` set are external ACP agent
-  threads whose transcript is not in `threads.db`; each becomes one `system`
-  row. Native rows (`agent_id` NULL) are skipped, their thread is parsed
-  from `threads.db`.
+  The blob's `sandboxed_terminal_temp_dir` (macOS only) is a
+  `scratch directory: <path> (sandboxed terminal temp directory of thread
+  <id>) (thread blob, as of updated_at)` row after the grant rows, with the
+  path as `project_path` and no `session_id`, so the thread stays counted
+  under its project; its `draft_prompt` (a list of ACP `ContentBlock`s,
+  `type` `text`, `resource_link`, `resource`, `image`, `audio`) is an
+  `unsent draft: <text> (thread blob, as of updated_at)` row after the
+  messages.
+* `db/0-<channel>/db.sqlite` (WAL), all `system` rows:
+  - table `sidebar_threads(thread_id, session_id, agent_id, title,
+    title_override, updated_at, interacted_at, folder_paths, archived,
+    main_worktree_paths)`. A row with `agent_id` set is an external ACP agent
+    thread whose transcript is not in `threads.db`: `external agent thread
+    (no transcript in threads.db): agent=<id> title=<title>[ archived]` at
+    `interacted_at`, else `updated_at`. A native row (`agent_id` NULL) with a
+    `session_id` is the thread's sidebar state: `sidebar thread:
+    title=<title> archived=<true|false> interacted_at=<time|-> main_worktree=
+    <path|->` at `updated_at`, with the thread id. It is not a secondary
+    source: it repeats no event of `threads.db` and is deleted with the
+    thread. A native row with no `session_id` is a draft and has no row of
+    its own.
+  - table `trusted_worktrees(absolute_path, user_name, host_name)`:
+    `permission setting: trusted_worktrees.<path>=true[ host=<user>@<host>]
+    (from <file> trusted_worktrees, file mtime)`, `project_path` the path.
+  - table `scoped_kv_store(namespace, key, value)`, namespace
+    `agent_draft_prompts` (key the hyphenated `sidebar_threads.thread_id`,
+    value a JSON array of ACP `ContentBlock`s): `unsent draft: <text>` at
+    the draft's sidebar `updated_at`, `project_path` its first folder, or
+    with ` (from <file> agent_draft_prompts, file mtime)` at the file's
+    modification time when the sidebar row is gone; namespace
+    `created_git_worktrees` (key `<host>` newline `<worktree path>`, `local`
+    for this machine, value `{created_at_seconds, created_at_subsec_nanos}`):
+    `scratch directory: <path> (Zed-created git worktree[ of <main>][
+    host=<host>]) (from <file> created_git_worktrees, created_at)` at that
+    time, `project_path` the worktree, `<main>` the
+    `sidebar_threads.main_worktree_paths` of a thread whose `folder_paths`
+    holds the worktree, else the `archived_git_worktrees.main_repo_path`.
+  - tables `archived_git_worktrees(id, worktree_path, main_repo_path,
+    branch_name, staged_commit_hash, unstaged_commit_hash,
+    original_commit_hash)` and `thread_archived_worktrees(thread_id,
+    archived_worktree_id)`: `archived worktree: <worktree_path> of
+    <main_repo_path> branch=<b> staged=<hash> unstaged=<hash>
+    original=<hash> ref=refs/archived-worktrees/<id> (from <file>
+    archived_git_worktrees, file mtime)`, one per linked thread with its
+    `session_id`, `project_path` the main repository; the archive time is not
+    recorded.
+  - table `sidebar_terminal_threads(title, custom_title, created_at,
+    working_directory, folder_paths)`: `sidebar terminal: <title> cwd=<dir>`
+    at `created_at`, `project_path` the first folder, no `session_id`.
+  A value in `scoped_kv_store` that does not decode is `parser: unparseable
+  record <rowid> (<namespace ...>: <reason>): <value>` at the end of the file.
+* `settings.json` and `global_settings.json` in the config directory (JSONC,
+  read with `parse_jsonc`): one `permission setting: <key>=<value> (from
+  <file>, file mtime)` row per leaf of `agent.tool_permissions` (`default`,
+  `tools.<tool>.default`, one per `always_allow`, `always_deny` and
+  `always_confirm` entry `{pattern, case_sensitive}` as compact JSON) and of
+  `agent.sandbox_permissions` (one per `network_hosts` and `write_paths`
+  entry), and per `agent.always_allow_tool_actions` (the legacy boolean),
+  `agent_servers.<id>.default_mode` and `session.trust_all_worktrees`, in
+  the top level and in each `dev`, `nightly`, `preview`, `stable`, `macos`,
+  `linux`, `windows` and `profiles.<name>.settings` block, whose name
+  prefixes the key. A project's `.zed/settings.json` cannot hold these keys
+  (it parses as `ProjectSettingsContent`) and is not read. A file that is
+  not a JSON object is one `parser: <file> is not a JSON object` row.
 
 There are no per-message timestamps. Every message row carries the thread's
 `updated_at` (approximate: it is the last write, not the message time); the
@@ -57,6 +119,17 @@ thread-start row and before the first message:
   "for the rest of this thread", stored in the blob, so the row carries the
   thread id as `session_id` and the thread's `updated_at` as its time (the
   last write, not the moment of the grant, which is not recorded).
+
+Per-call decisions: a failed tool result (`is_error` true) whose text is
+`Permission to run tool denied by user` is followed by `permission
+decision: denied`, and one whose text is a rule's automatic denial
+(`Blocked by global default: deny`, `Command blocked by security rule for
+<tool> tool`, `<tool> tool is disabled`, `Blocked by built-in security
+rule. ...`, the invalid-terminal-command, invalid-regex and
+unsupported-shell messages) by `permission decision: auto_denied
+reason=<text>`, each with the call's `tool_name` and `tool_use_id`. An
+approval, once or always, leaves no record in the thread, so it has no row;
+an "always" choice shows only as the settings rows above.
 
 Bad files and records (issues 136 and 168). A file that is not SQLite is
 one `parser: not a SQLite database` row, and a SQLite error while reading
@@ -89,6 +162,7 @@ import io
 import json
 import re
 import sqlite3
+import uuid
 from collections.abc import Iterator
 
 import zstandard
@@ -97,12 +171,32 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, error_rows, setting_value
+from .base import Options, Parser, compact_json, error_rows, file_mtime, setting_value
+from .gemini_cli import parse_jsonc
 
 DATA_DIR = r"(?:\.local/share/zed|Library/Application Support/Zed|AppData/Local/Zed|\.var/app/dev\.zed\.Zed[A-Za-z]*/data/zed)"
 SANDBOX_FLAGS = ("network_any_host", "allow_fs_write_all", "unsandboxed", "sandbox_fallback")
+CONFIG_DIR = r"(?:\.config/zed|AppData/Roaming/Zed|\.var/app/dev\.zed\.Zed[A-Za-z]*/config/zed)"
 THREADS_RX = re.compile(r"^" + DATA_DIR + r"/threads/threads\.db$")
 SIDEBAR_RX = re.compile(r"^" + DATA_DIR + r"/db/0-[^/]+/db\.sqlite$")
+SETTINGS_RX = re.compile(r"^" + CONFIG_DIR + r"/(?:global_)?settings\.json$")
+# Release-channel and platform override blocks of a user settings file
+# (`ReleaseChannelOverrides`, `PlatformOverrides`), each a whole settings
+# object of its own.
+SETTINGS_OVERRIDES = ("dev", "nightly", "preview", "stable", "macos", "linux", "windows")
+USER_DENIAL = "Permission to run tool denied by user"
+# The texts `ToolPermissionDecision::Deny` carries when the rules deny a
+# call with no prompt (crates/agent/src/tool_permissions.rs at 9cd14da).
+AUTO_DENIAL_RX = re.compile(
+    r"(?:Blocked by global default: deny"
+    r"|Command blocked by security rule for \S+ tool"
+    r"|\S+ tool is disabled"
+    r"|Blocked by built-in security rule\..*"
+    r"|The terminal command could not be approved because .*"
+    r"|The \S+ tool cannot run because \d+ regex patterns? failed to compile\..*"
+    r'|The .+ shell does not support "always allow" patterns .*)',
+    re.S,
+)
 
 
 def decompress(blob: bytes) -> bytes:
@@ -183,14 +277,80 @@ def first_folder(folder_paths) -> str:
     return ""
 
 
+def acp_blocks_text(blocks) -> str:
+    """Text of a list of ACP `ContentBlock`s (`{"type": "text", "text"}`,
+    `resource_link` and `resource` by URI, `image` and `audio` as markers),
+    as a draft prompt stores them; another block is compact JSON."""
+    if isinstance(blocks, dict):
+        blocks = [blocks]
+    if not isinstance(blocks, list):
+        return compact_json(blocks)
+    parts = []
+    for b in blocks:
+        kind = b.get("type") if isinstance(b, dict) else None
+        if isinstance(b, str):
+            parts.append(b)
+        elif kind == "text" and isinstance(b.get("text"), str):
+            parts.append(b["text"])
+        elif kind == "resource_link" and isinstance(b.get("uri"), str):
+            parts.append("[mention] " + b["uri"])
+        elif kind == "resource" and isinstance(b.get("resource"), dict):
+            uri = b["resource"].get("uri")
+            parts.append("[mention] " + (uri if isinstance(uri, str) else compact_json(uri)))
+        elif kind in ("image", "audio"):
+            parts.append("[%s]" % kind)
+        else:
+            parts.append(compact_json(b))
+    return "\n".join(parts)
+
+
+def denial_text(res: dict) -> str:
+    """The `permission decision:` row text for a failed tool result whose
+    text is one Zed writes when a call is denied, else "". An approval
+    leaves no record, so only denials have a row."""
+    if not res.get("is_error"):
+        return ""
+    text = content_text(res.get("content")).strip()
+    if text == USER_DENIAL:
+        return "permission decision: denied"
+    if AUTO_DENIAL_RX.fullmatch(text):
+        return "permission decision: auto_denied reason=" + text
+    return ""
+
+
+def thread_key(blob) -> str:
+    """A `sidebar_threads.thread_id` (16 raw UUID bytes) as the hyphenated
+    string the key-value store keys drafts by, else ""."""
+    if isinstance(blob, (bytes, bytearray)) and len(blob) == 16:
+        return str(uuid.UUID(bytes=bytes(blob)))
+    return str(blob or "")
+
+
+def flatten_setting(key: str, value) -> Iterator[tuple[str, object]]:
+    """(dotted key, value) per leaf of a settings value: one per object
+    member, recursively, and one per list entry."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from flatten_setting("%s.%s" % (key, k), v)
+    elif isinstance(value, list):
+        for e in value:
+            yield key, e
+    else:
+        yield key, value
+
+
 class ZedParser(Parser):
     agent = "zed"
     name = "zed"
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(THREADS_RX.match(artifact.rel) or SIDEBAR_RX.match(artifact.rel))
+        rel = artifact.rel
+        return bool(THREADS_RX.match(rel) or SIDEBAR_RX.match(rel) or SETTINGS_RX.match(rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if SETTINGS_RX.match(artifact.rel):
+            yield from self._parse_settings(artifact)
+            return
         if not is_sqlite(artifact.disk_path):
             yield self._file_error(artifact, "not a SQLite database")
             return
@@ -198,7 +358,7 @@ class ZedParser(Parser):
             if THREADS_RX.match(artifact.rel):
                 yield from self._parse_threads(artifact, opts)
             else:
-                yield from self._parse_sidebar(artifact, opts)
+                yield from self._parse_sidebar(artifact)
         except sqlite3.DatabaseError as e:
             yield self._file_error(artifact, "SQLite error: %s" % e)
 
@@ -209,32 +369,281 @@ class ZedParser(Parser):
         row.text = "parser: " + message
         return row
 
+    def _state_row(
+        self,
+        artifact: Artifact,
+        text: str,
+        ts: str,
+        source_line: int,
+        session_id: str = "",
+        project: str = "",
+    ) -> Row:
+        """A `system` row of `artifact` with the given text and context."""
+        row = self.base_row(artifact)
+        row.source_line = source_line
+        row.session_id = session_id
+        row.project_path = project
+        row.timestamp_utc = ts
+        row.turn_type = "system"
+        row.text = compact(text)
+        return row
+
+    # -- settings.json, global_settings.json ----------------------------------------
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per standing permission entry of a
+        user settings file, at the file's modification time."""
+        try:
+            raw = artifact.disk_path.read_bytes()
+        except OSError as e:
+            yield self._file_error(artifact, "unreadable: %s" % e)
+            return
+        if not raw.strip():
+            return
+        try:
+            doc = parse_jsonc(raw)
+        except ValueError:
+            doc = None
+        if not isinstance(doc, dict):
+            yield self._file_error(artifact, "%s is not a JSON object" % artifact.rel)
+            return
+        ts = file_mtime(artifact)
+        for key, value in self._settings_entries(doc):
+            text = "permission setting: %s=%s (from %s, file mtime)" % (
+                key,
+                setting_value(value),
+                artifact.rel,
+            )
+            yield self._state_row(artifact, text, ts, 1)
+
+    @staticmethod
+    def _settings_entries(doc: dict) -> Iterator[tuple[str, object]]:
+        """(dotted key, value) per entry of `agent.tool_permissions`,
+        `agent.sandbox_permissions`, the legacy
+        `agent.always_allow_tool_actions`, `agent_servers.<id>.default_mode`
+        and `session.trust_all_worktrees`, in the top level, each
+        release-channel and platform override block and each
+        `profiles.<name>.settings`, the key prefixed with the block's."""
+        layers: list[tuple[str, dict]] = [("", doc)]
+        for name in SETTINGS_OVERRIDES:
+            if isinstance(doc.get(name), dict):
+                layers.append((name + ".", doc[name]))
+        profiles = doc.get("profiles")
+        if isinstance(profiles, dict):
+            for name, prof in profiles.items():
+                if isinstance(prof, dict) and isinstance(prof.get("settings"), dict):
+                    layers.append(("profiles.%s.settings." % name, prof["settings"]))
+        for prefix, block in layers:
+            agent = block.get("agent")
+            if isinstance(agent, dict):
+                for sub in ("tool_permissions", "sandbox_permissions"):
+                    if sub in agent:
+                        yield from flatten_setting(prefix + "agent." + sub, agent[sub])
+                if "always_allow_tool_actions" in agent:
+                    legacy = agent["always_allow_tool_actions"]
+                    yield prefix + "agent.always_allow_tool_actions", legacy
+            servers = block.get("agent_servers")
+            if isinstance(servers, dict):
+                for sid, cfg in servers.items():
+                    if isinstance(cfg, dict) and "default_mode" in cfg:
+                        yield prefix + "agent_servers.%s.default_mode" % sid, cfg["default_mode"]
+            session = block.get("session")
+            if isinstance(session, dict) and "trust_all_worktrees" in session:
+                yield prefix + "session.trust_all_worktrees", session["trust_all_worktrees"]
+
     # -- db/0-<channel>/db.sqlite -------------------------------------------------
-    def _parse_sidebar(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+    def _parse_sidebar(self, artifact: Artifact) -> Iterator[Row]:
+        errors: list = []
         with open_copy(artifact.disk_path) as con:
-            if "sidebar_threads" not in table_names(con):
-                return
-            for r in con.execute(
-                "select rowid as _rowid, * from sidebar_threads order by updated_at"
-            ):
-                r = dict(r)
-                if not r.get("agent_id"):
-                    continue
-                row = self.base_row(artifact)
-                row.source_line = r["_rowid"]
-                row.session_id = str(r.get("session_id") or "")
-                row.timestamp_utc = to_utc(r.get("interacted_at") or r.get("updated_at"))
-                row.project_path = first_folder(r.get("folder_paths"))
-                row.turn_type = "system"
-                row.text = compact(
-                    "external agent thread (no transcript in threads.db): agent=%s title=%s%s"
-                    % (
-                        r["agent_id"],
-                        r.get("title_override") or r.get("title") or "",
-                        " archived" if r.get("archived") else "",
-                    ),
-                )
-                yield row
+            tables = table_names(con)
+            sidebar = self._select(
+                con,
+                tables,
+                "sidebar_threads",
+                "select rowid as _rowid, * from sidebar_threads order by updated_at",
+            )
+            trusted = self._select(
+                con,
+                tables,
+                "trusted_worktrees",
+                "select rowid as _rowid, * from trusted_worktrees order by rowid",
+            )
+            kv = self._select(
+                con,
+                tables,
+                "scoped_kv_store",
+                "select rowid as _rowid, namespace, key, value"
+                " from scoped_kv_store where namespace in ('agent_draft_prompts',"
+                " 'created_git_worktrees') order by rowid",
+            )
+            link = "thread_archived_worktrees" in tables
+            archived = self._select(
+                con,
+                tables,
+                "archived_git_worktrees",
+                "select a.rowid as _rowid, a.*, t.thread_id as _thread from"
+                " archived_git_worktrees a left join thread_archived_worktrees t"
+                " on t.archived_worktree_id = a.id order by a.id"
+                if link
+                else "select rowid as _rowid, *, null as _thread from archived_git_worktrees"
+                " order by id",
+            )
+            terminals = self._select(
+                con,
+                tables,
+                "sidebar_terminal_threads",
+                "select rowid as _rowid, * from sidebar_terminal_threads order by created_at",
+            )
+        by_key = {thread_key(r.get("thread_id")): r for r in sidebar}
+        for r in sidebar:
+            yield from self._sidebar_row(artifact, r)
+        for r in trusted:
+            yield self._trusted_row(artifact, r)
+        for r in kv:
+            if r["namespace"] == "agent_draft_prompts":
+                yield from self._draft(artifact, r, by_key, errors)
+            else:
+                yield from self._created_worktree(artifact, r, sidebar, archived, errors)
+        for r in archived:
+            yield self._archived_worktree(artifact, r, by_key)
+        for r in terminals:
+            title = r.get("custom_title") or r.get("title") or ""
+            text = "sidebar terminal: %s cwd=%s" % (title, r.get("working_directory") or "-")
+            project = first_folder(r.get("folder_paths"))
+            ts = to_utc(r.get("created_at"))
+            yield self._state_row(artifact, text, ts, r["_rowid"], "", project)
+        yield from error_rows(self, artifact, errors)
+
+    @staticmethod
+    def _select(con: sqlite3.Connection, tables: set, table: str, sql: str) -> list[dict]:
+        """The rows of `sql` as dicts, or [] when `table` does not exist."""
+        if table not in tables:
+            return []
+        return [dict(r) for r in con.execute(sql)]
+
+    def _sidebar_row(self, artifact: Artifact, r: dict) -> Iterator[Row]:
+        """An external agent's thread (no transcript in `threads.db`), or the
+        sidebar state of a native thread; a draft (no `session_id`) has no
+        row of its own, only its draft prompt."""
+        title = r.get("title_override") or r.get("title") or ""
+        project = first_folder(r.get("folder_paths"))
+        session_id = str(r.get("session_id") or "")
+        if r.get("agent_id"):
+            text = "external agent thread (no transcript in threads.db): agent=%s title=%s%s" % (
+                r["agent_id"],
+                title,
+                " archived" if r.get("archived") else "",
+            )
+            ts = to_utc(r.get("interacted_at") or r.get("updated_at"))
+            yield self._state_row(artifact, text, ts, r["_rowid"], session_id, project)
+        elif session_id:
+            text = "sidebar thread: title=%s archived=%s interacted_at=%s main_worktree=%s" % (
+                title,
+                "true" if r.get("archived") else "false",
+                to_utc(r.get("interacted_at")) or "-",
+                first_folder(r.get("main_worktree_paths")) or "-",
+            )
+            ts = to_utc(r.get("updated_at"))
+            yield self._state_row(artifact, text, ts, r["_rowid"], session_id, project)
+
+    def _trusted_row(self, artifact: Artifact, r: dict) -> Row:
+        """The `permission setting:` row of one trusted project path."""
+        path = str(r.get("absolute_path") or "")
+        host = str(r.get("host_name") or "")
+        if host and r.get("user_name"):
+            host = "%s@%s" % (r["user_name"], host)
+        text = "permission setting: trusted_worktrees.%s=true%s (from %s trusted_worktrees," % (
+            path,
+            " host=%s" % host if host else "",
+            artifact.rel,
+        )
+        ts = file_mtime(artifact)
+        return self._state_row(artifact, text + " file mtime)", ts, r["_rowid"], "", path)
+
+    def _draft(self, artifact: Artifact, r: dict, by_key: dict, errors: list) -> Iterator[Row]:
+        """`unsent draft: <text>` for an `agent_draft_prompts` entry, at the
+        draft's sidebar `updated_at`, or at the file's modification time,
+        saying so, when the draft has no sidebar row."""
+        rowid, key, value = r["_rowid"], str(r["key"]), r["value"]
+        try:
+            blocks = json.loads(value)
+        except (TypeError, ValueError) as e:
+            label = "unparseable record %d (agent_draft_prompts %s: %s: %s)" % (
+                rowid,
+                key,
+                type(e).__name__,
+                e,
+            )
+            errors.append((rowid, label, str(value)))
+            return
+        text = acp_blocks_text(blocks)
+        if not text.strip():
+            return
+        side = by_key.get(key)
+        if side is not None:
+            ts = to_utc(side.get("updated_at"))
+            project = first_folder(side.get("folder_paths"))
+            yield self._state_row(artifact, "unsent draft: " + text, ts, rowid, "", project)
+            return
+        text = "unsent draft: %s (from %s agent_draft_prompts, file mtime)" % (text, artifact.rel)
+        yield self._state_row(artifact, text, file_mtime(artifact), rowid)
+
+    def _created_worktree(
+        self, artifact: Artifact, r: dict, sidebar: list, archived: list, errors: list
+    ) -> Iterator[Row]:
+        """`scratch directory:` for a `created_git_worktrees` entry, at the
+        worktree's recorded creation time, `project_path` the worktree, and
+        the main repository from the sidebar or the archived worktrees."""
+        rowid, value = r["_rowid"], r["value"]
+        host, _, path = str(r["key"]).partition("\n")
+        try:
+            rec = json.loads(value)
+            seconds = rec["created_at_seconds"] + rec.get("created_at_subsec_nanos", 0) / 1e9
+        except (TypeError, ValueError, KeyError, AttributeError) as e:
+            label = "unparseable record %d (created_git_worktrees: %s: %s)" % (
+                rowid,
+                type(e).__name__,
+                e,
+            )
+            errors.append((rowid, label, str(value)))
+            return
+        main = next(
+            (
+                first_folder(s.get("main_worktree_paths"))
+                for s in sidebar
+                if s.get("main_worktree_paths")
+                and path in str(s.get("folder_paths") or "").split("\n")
+            ),
+            "",
+        ) or next((str(a["main_repo_path"]) for a in archived if a["worktree_path"] == path), "")
+        text = "scratch directory: %s (Zed-created git worktree%s%s) (from %s" % (
+            path,
+            " of %s" % main if main else "",
+            " host=%s" % host if host and host != "local" else "",
+            artifact.rel,
+        )
+        text += " created_git_worktrees, created_at)"
+        yield self._state_row(artifact, text, to_utc(seconds), rowid, "", path)
+
+    def _archived_worktree(self, artifact: Artifact, r: dict, by_key: dict) -> Row:
+        """The row of one archived worktree and one thread linked to it."""
+        side = by_key.get(thread_key(r.get("_thread"))) if r.get("_thread") else None
+        session_id = str((side or {}).get("session_id") or "")
+        text = (
+            "archived worktree: %s of %s branch=%s staged=%s unstaged=%s original=%s"
+            " ref=refs/archived-worktrees/%s (from %s archived_git_worktrees, file mtime)"
+        ) % (
+            r.get("worktree_path") or "",
+            r.get("main_repo_path") or "",
+            r.get("branch_name") or "-",
+            r.get("staged_commit_hash") or "-",
+            r.get("unstaged_commit_hash") or "-",
+            r.get("original_commit_hash") or "-",
+            r.get("id"),
+            artifact.rel,
+        )
+        project = str(r.get("main_repo_path") or "")
+        ts = file_mtime(artifact)
+        return self._state_row(artifact, text, ts, r["_rowid"], session_id, project)
 
     # -- threads/threads.db -------------------------------------------------------
     def _parse_threads(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -323,6 +732,16 @@ class ZedParser(Parser):
                 branch,
             )
 
+        temp_dir = thread.get("sandboxed_terminal_temp_dir")
+        if isinstance(temp_dir, str) and temp_dir:
+            # Its own project_path and no session_id, so the thread stays
+            # counted under its project.
+            text = (
+                "scratch directory: %s (sandboxed terminal temp directory of thread %s)"
+                " (thread blob, as of updated_at)" % (temp_dir, session_id)
+            )
+            yield self._state_row(artifact, text, updated, r["_rowid"], "", temp_dir)
+
         errors: list = []
         for kind, text, tool_name, tool_id in self._messages(thread, r["_rowid"], errors):
             if kind == "thinking" and not opts.include_thinking:
@@ -333,6 +752,12 @@ class ZedParser(Parser):
             row.tool_name = tool_name
             row.tool_use_id = tool_id
             yield row
+        draft = thread.get("draft_prompt")
+        if draft:
+            text = acp_blocks_text(draft)
+            if text.strip():
+                text = "unsent draft: %s (thread blob, as of updated_at)" % text
+                yield base("system", text, "", model, branch)
         yield from error_rows(self, artifact, errors, session_id, project)
 
     @staticmethod
@@ -475,12 +900,11 @@ class ZedParser(Parser):
                 )
             if res.get("is_error"):
                 text = "[error] " + text
-            return (
-                "tool_result",
-                text,
-                str(res.get("tool_name") or ""),
-                str(res.get("tool_use_id") or key),
-            )
+            name, tid = str(res.get("tool_name") or ""), str(res.get("tool_use_id") or key)
+            yield "tool_result", text, name, tid
+            decision = denial_text(res)
+            if decision:
+                yield "system", decision, name, tid
 
         content = a.get("content")
         if isinstance(content, (str, dict)):
@@ -507,7 +931,7 @@ class ZedParser(Parser):
                 # The result follows its call, so the timeline reads in order.
                 if isinstance(results.get(tid), dict):
                     done.add(tid)
-                    yield result(tid, results[tid])
+                    yield from result(tid, results[tid])
             elif "Image" in c:
                 yield "assistant", "[image]", "", ""
             else:
@@ -516,7 +940,7 @@ class ZedParser(Parser):
             if key in done:
                 continue
             if isinstance(res, dict):
-                yield result(key, res)
+                yield from result(key, res)
             else:
                 bad(n, "Agent tool_results entry %s is not an object" % key, res)
 
@@ -553,13 +977,19 @@ class ZedParser(Parser):
                 text = content_text(res.get("content"))
                 if res.get("is_error"):
                     text = "[error] " + text
-                yield "tool_result", text, "", str(res.get("tool_use_id") or "")
+                tid = str(res.get("tool_use_id") or "")
+                yield "tool_result", text, "", tid
+                decision = denial_text(res)
+                if decision:
+                    yield "system", decision, "", tid
 
 
 __all__ = [
     "ZedParser",
+    "acp_blocks_text",
     "content_text",
     "decompress",
+    "denial_text",
     "first_folder",
     "record_json",
     "tool_input_text",

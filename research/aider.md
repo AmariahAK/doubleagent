@@ -22,6 +22,12 @@ history format comes from the upstream prompt_toolkit `history.py`, which is not
 
 ### Source reviews
 
+- 2026-10-21: Aider-AI/aider at
+  [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c):
+  the parser now yields `model:` rows from the announcement lines and `permission decision:` rows
+  from the confirmation lines ([Model rows](#model-rows), [Permission rows](#permission-rows));
+  added the exact form of a confirmation answer, the `/settings` output that is not an
+  announcement, and the source-host statement ([Source host rows](#source-host-rows)).
 - 2026-10-19: the head of [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` is still
   [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
   the commit cited throughout, so there is no drift. Added the confirmation lines and the startup
@@ -192,6 +198,12 @@ histories as secondary sources on every run (see
   `> Editor model: <name> with <format> edit format` in architect mode, `> Weak model: <name>`, and
   `> Git repo: <dir> with <n> files` or `> Git repo: none`
   ([`base_coder.py:207-260`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L207-L260)).
+  `/settings` prints the same announcement lines inside one multi-line message, and
+  `append_chat_history` puts `> ` before the first line of a message only, so only its
+  `> Aider v<version>` line is a blockquote and the model lines that follow it read as assistant
+  text
+  ([`commands.py:1432-1460`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1432-L1460),
+  [`io.py:1117-1121`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L1117-L1121)).
   `/model <name>` itself is a `#### /model <name>` user line
   ([`commands.py:87-112`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L87-L112)).
 - Confirmations: `confirm_ask` writes one blockquote line `>
@@ -201,6 +213,17 @@ histories as secondary sources on every run (see
   ([`io.py:807-858`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L807-L858),
   [`903-905`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L903-L905),
   [`922-923`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L922-L923)).
+  The line is
+  `f"{question.strip()} {res}"` with `res` reduced to the lower-case first letter of the answer,
+  the default filled in for an empty one, so the bracketed default ends in `]:` and one of the five
+  letters follows
+  ([`io.py:900`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L900),
+  [`904`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L904),
+  [`922`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L922)).
+  An answer taken from an earlier "All" or "Skip all" of the same group (several URLs or files
+  asked about together) is also written as a `#### <question><answer>` user line before the
+  blockquote
+  ([`io.py:870-872`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L870-L872)).
   The questions include `Run shell command?`, `Create new file?`, `Add file to the chat?` and
   `Add URL to the chat?`
   ([`base_coder.py:977`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L977),
@@ -211,8 +234,12 @@ histories as secondary sources on every run (see
   [`args.py:760-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L760-L764))
   the answer `y` is written without asking, and `n` for a question that requires an explicit yes
   ([`io.py:866-867`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L866-L867)),
-  so a line alone does not say whether a person answered. "Don't ask again" adds the question to an
-  in-memory set for the run, and a later asking of the same question is declined without a line
+  so a line alone does not say whether a person answered. `Run shell command?` is such a
+  question
+  ([`base_coder.py:2456-2461`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2456-L2461)),
+  so under `--yes-always` a suggested shell command is declined with an `n` line. "Don't ask
+  again" adds the question to an in-memory set for the run, and a later asking of the same
+  question is declined without a line
   ([`io.py:269`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L269),
   [`821-824`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L821-L824),
   [`903`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L903)).
@@ -285,32 +312,38 @@ Rows: one per `#### ` block (user), per assistant run, per `> ` run
 | session_id | synthesised `<path>#<header timestamp>` |
 | project_path | the directory holding the file |
 | git_branch | empty |
-| model | empty |
+| model | the new model on a `model:` row; empty on every other row |
 | tool_name, tool_use_id | empty |
 | text | prompt text, assistant text, blockquote text |
 
 #### Permission rows
 
-Aider's confirmation prompts are written as `> ` blockquote lines
-([Record schema](#record-schema)), which the parser already emits with the
-rest of the blockquote run as `tool_result` rows; no separate `permission
-decision:` row is derived from them.
+Each confirmation line ([Record schema](#record-schema)) is a `system` row after the
+`tool_result` row of its blockquote run, at that run's time, with `source_line` the confirmation
+line: `permission decision: <decision> (<question>) answer=<letter> default=<default>`, where
+`<decision>` is `yes`, `no`, `all`, `skip all` or `no, don't ask again` for the letters `y`, `n`,
+`a`, `s` and `d`. A `y` or `n` answer adds `; may be automatic (--yes-always)`, since
+`--yes-always` writes the same line without asking. The subject stays in the `tool_result` row,
+the blockquote text before the question. A question declined without a line after "Don't ask
+again" yields nothing. Source-derived; not observed on any real install.
 
-The confirmation lines are decisions on disk; a
-`permission decision: <answer> (<question>)` `system` row beside the
-`tool_result` row would surface them, and a `yes-always` key in a
-collected `.aider.conf.yml` is a standing setting
-(`permission setting: yes-always=true (from <file>, file mtime)`).
+The `yes-always` key of a collected `.aider.conf.yml` is a standing setting, but the parser does
+not read the file: it is YAML, which the analyzer has no reader for, so no `permission setting:`
+row is written for it.
 
 #### Model rows
 
-The model is in the chat history only as the `> Model:`, `> Main
-model:`, `> Weak model:` and `> Editor model:` announcement lines
-([Record schema](#record-schema)); the parser does not read them, so it
-yields no `model:` rows. The announcement lines would give
-`model: <name>` at each session
-header and `model: <old> -> <new>` at each later announcement that
-names another; not yet parsed.
+A blockquote run that holds a `Model:` or `Main model:` announcement line
+([Record schema](#record-schema)) is read for the model lines, so the `/settings` output and a
+stray `Weak model:` line elsewhere are not. After the run's `tool_result` row the parser writes a
+`system` row per change, with `source_line` the announcement line and the `model` column the new
+model: `model: <name>` at a session's first announcement and `model: <old> -> <new>` on each later
+one that names another main model; ` (editor model)` or ` (weak model)` follows the same text for
+the `Editor model:` and `Weak model:` lines. A `Model:` line means the weak model is the main
+model, so it sets the weak model without a row unless it replaces a separate one. The model state
+starts afresh at each session header. The edit format and the options after it (think tokens,
+reasoning effort, prompt cache) are not in the row. Source-derived; not observed on any real
+install.
 
 #### Past-use rows and secondary sources
 
@@ -454,11 +487,37 @@ bar
 > Commit abc1234 refactor: rename foo to bar  
 ```
 
+Announcement and confirmation lines, after a session header and after a `/model` switch:
+
+```markdown
+> Aider v0.86.1  
+> Main model: anthropic/claude-sonnet-4-5 with diff edit format, prompt cache  
+> Weak model: anthropic/claude-haiku-4-5  
+> Git repo: .git with 3 files  
+> pytest -q  
+> Run shell command? (Y)es/(N)o/(D)on't ask again [Yes]: n  
+> Main model: claude-opus-4-5 with architect edit format  
+> Editor model: claude-sonnet-4-5 with editor-diff edit format  
+> Add URL to the chat? (Y)es/(N)o/(A)ll/(S)kip all/(D)on't ask again [Yes]: d  
+```
+
 The other two files:
 
 - `.aider.input.history`: `\n# 2026-10-02 12:00:05.123456\n+rename foo to bar\n`
 - `.aider.llm.history`: `TO LLM 2026-10-02T12:00:05\n-------\nSYSTEM Act as an expert\n-------\nUSER
   rename foo to bar\nLLM RESPONSE 2026-10-02T12:00:09\nASSISTANT Here is the change:\n`
+
+#### Source host rows
+
+The agent records no source-host integration. A grep of `aider/` (the website tree aside) at
+[5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c) for
+`github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and `clone`
+found no account sign-in, repository list or remote conversation: the one OAuth flow is
+OpenRouter's ([Credentials](#credentials)), the GitHub hit is the Copilot model provider, whose
+`GITHUB_COPILOT_TOKEN` is read from the environment and exchanged in memory for an API key that is
+never written
+([`models.py:950-983`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/models.py#L950-L983)),
+and `git` use is the user's own repository.
 
 ## Confidence
 

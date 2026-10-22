@@ -762,7 +762,10 @@ def scratch_keys(
        or under a directory that a home catalog entry (of `cat`, the
        bundled catalog when None) names, in one of the input's homes that
        is not a project directory and has a known path on the source host
-       (`home_scratch_key`).
+       (`home_scratch_key`), or it is under a directory that one agent's
+       project catalog entry names inside another directory, as an
+       agent's own worktree `<project>/.claude/worktrees/<name>` is
+       (`project_scratch_key`, issue 227).
 
     The collector's project list only adds paths to test: a scratch
     directory the collector collected project files from stays one."""
@@ -778,9 +781,34 @@ def scratch_keys(
     }
     paths = [r.project_path for r in rows] + collected_projects(col)
     for key in {project_key(p) for p in paths if p} - keys:
-        if any(home_scratch_key(key, home, cat) for home in homes):
+        if project_scratch_key(key, cat) or any(home_scratch_key(key, home, cat) for home in homes):
             keys.add(key)
     return keys
+
+
+def project_scratch_key(key: str, cat: catalog_mod.Catalog) -> bool:
+    r"""Whether `key`, a `project_key`, lies under a directory that a
+    project catalog entry of one agent names inside a project:
+    `<project>/<entry>/<more>`, with at least one segment before the entry
+    (the project) and at least one after it, so `/srv/p/.kilo/worktrees/x`
+    is under the `kilo-code` entry `.kilo` of the project `/srv/p`, while
+    `/srv/p/.kilo` itself and `/srv/p/src` are not. The entries of the
+    pseudo-agent `project` (`AGENTS.md`, `.agents`), which belong to no
+    single agent, are skipped. Unlike `home_scratch_key` this needs no
+    home path, so it applies in loose mode too. A Windows path is split on
+    backslashes and its segments are matched without regard to case."""
+    windows = is_windows_path(key)
+    flags = re.IGNORECASE if windows else 0
+    parts = [p for p in key.split("\\" if windows else "/") if p]
+    for e in cat.project_entries:
+        if e.agent == PROJECT_AGENT:
+            continue
+        n = len(e.segments)
+        for i in range(1, len(parts) - n):
+            pairs = zip(e.regexes, parts[i : i + n], strict=True)
+            if all(re.fullmatch(rx.pattern, p, flags) for rx, p in pairs):
+                return True
+    return False
 
 
 def home_scratch_key(key: str, home: str, cat: catalog_mod.Catalog) -> bool:

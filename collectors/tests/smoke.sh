@@ -268,7 +268,6 @@ excl||.hermes/sandboxes
 excl||.hermes/checkpoints/store/objects
 excl||.hermes/checkpoints/store/indexes
 excl||.hermes/checkpoints/legacy-1
-excl||.hermes/state-snapshots
 excl||.hermes/backups
 excl||.hermes/browser-profile
 excl||.hermes/browser-profiles
@@ -286,7 +285,6 @@ excl||AppData/Local/hermes/sandboxes
 excl||AppData/Local/hermes/checkpoints/store/objects
 excl||AppData/Local/hermes/checkpoints/store/indexes
 excl||AppData/Local/hermes/checkpoints/legacy-1
-excl||AppData/Local/hermes/state-snapshots
 excl||AppData/Local/hermes/backups
 excl||AppData/Local/hermes/browser-profile
 excl||AppData/Local/hermes/browser-profiles
@@ -1157,6 +1155,242 @@ mkdir -p "$U236"
 printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+# Agent Canvas (OpenHands/OpenHands 8d39305, scripts/mars-credentials.mjs)
+# keeps its DigitalOcean connections in mars-credentials.json in the Electron
+# user data directory, and Canvas-in-Docker unpacks automation runs under
+# ~/.openhands/workspaces (docker/entrypoint.sh), excluded like
+# agent-canvas/workspaces; workspaces.json beside it stays collected. Checks
+# follow the default run below; the same files are in smoke.ps1 under alice.
+M218A="$H/.config/OpenHands Agent Canvas/mars-credentials.json"
+M218B="$B/Library/Application Support/OpenHands Agent Canvas/mars-credentials.json"
+M218C="$B/AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json"
+for _f in "$M218A" "$M218B" "$M218C"; do
+  mkdir -p "$(dirname "$_f")"
+  printf '{"version":1,"connections":[]}\n' >"$_f"
+done
+mkdir -p "$H/.openhands/workspaces/run1"
+printf 'x\n' >"$H/.openhands/workspaces/run1/f"
+
+# 2026-10-21 Agent Zero source review (#217)
+# The WhatsApp bridge's Baileys login state under the install's tmp/ (home,
+# Desktop and volume-relative forms), an editor (ACP) chat whose workspace
+# and extra folder are discovered as projects, and a computer-use screen
+# capture of the A0 CLI connector in the Windows temp directory. Checks
+# follow the default and --no-secrets runs below; the same files are in
+# smoke.ps1 under alice.
+W217=tmp/whatsapp/session/creds.json
+C217="$H/agent-zero/main/usr/chats/acp1"
+T217="$B/AppData/Local/Temp/_a0_connector/computer_use/ctx1"
+mkdir -p "$H/agent-zero/main/${W217%/*}" "$H/Desktop/agent-zero/${W217%/*}" \
+  "$DV/a0_usr/_data/${W217%/*}" "$C217" "$ROOT/srv/a0acp" "$ROOT/srv/a0extra" "$T217"
+printf '{}\n' >"$H/agent-zero/main/$W217"
+printf '{}\n' >"$H/Desktop/agent-zero/$W217"
+printf '{}\n' >"$DV/a0_usr/_data/$W217"
+printf '{"id": "acp1", "data": {"acp_cwd": "/srv/a0acp", %s}}\n' \
+  '"acp_additional_directories": ["/srv/a0extra"]' >"$C217/chat.json"
+printf '# acp\n' >"$ROOT/srv/a0acp/AGENTS.md"
+printf '# extra\n' >"$ROOT/srv/a0extra/AGENTS.md"
+printf 'png\n' >"$T217/0000.png"
+
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+# From source, no real install: CrewAI's project-local .crewai/last_run.json,
+# its mark of a run traced to AMP, in a discovered project; difyctl's pending
+# device login, login-pending.yml, in its three config directories; and the
+# CLAI 2.0 state directory .local/state/pydantic-clai2 with the web
+# orchestrator's conversation, a workspace record, its token and session.log,
+# and a clone of a remote repository, which is excluded. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1.
+mkdir -p "$ROOT/srv/proj/.crewai"
+printf '{"execution_id":"x","tier":"ephemeral"}\n' >"$ROOT/srv/proj/.crewai/last_run.json"
+for _d224 in .config AppData/Roaming AppData/Local; do
+  mkdir -p "$H/$_d224/difyctl"
+  printf 'device_code: x\n' >"$H/$_d224/difyctl/login-pending.yml"
+done
+P225="$H/.local/state/pydantic-clai2"
+mkdir -p "$P225/workspaces/registry/ws1" "$P225/workspaces/clones/repo-0123456789/.git"
+printf '{}\n' >"$P225/orchestrator.json"
+printf '{"id":"ws1"}\n' >"$P225/workspaces/registry/ws1/workspace.json"
+printf 'token\n' >"$P225/workspaces/registry/ws1/token"
+printf 'log\n' >"$P225/workspaces/registry/ws1/session.log"
+printf 'ref: refs/heads/main\n' >"$P225/workspaces/clones/repo-0123456789/.git/HEAD"
+
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+# Codex (source at 4e7b9e2) runs a desktop thread in its own git worktree,
+# ~/.codex/worktrees/<4 hex>/<repo>, excluded by the catalog, and moves an
+# archived thread's rollout flat into ~/.codex/archived_sessions; Open
+# Interpreter keeps the same worktree layout under ~/.openinterpreter.
+# Discovery drops a worktree cwd and reads the archive. Checks follow the
+# default run below; the same files are in smoke.ps1 (Codex under bob, Open
+# Interpreter under alice).
+mkdir -p "$B/.codex/archived_sessions" "$ROOT/srv/codexarch" "$B/.codex/worktrees/a1b2/repo" \
+  "$H/.openinterpreter/worktrees/c3d4/repo"
+printf '{"type":"session_meta","payload":{"cwd":"/srv/codexarch"}}\n' \
+  >"$B/.codex/archived_sessions/rollout-2026-10-01T00-00-00-a1.jsonl"
+printf '# agents\n' >"$ROOT/srv/codexarch/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/Users/bob/.codex/worktrees/a1b2/repo"}}\n' \
+  >"$B/.codex/sessions/2026/10/03/rollout-3.jsonl"
+printf '# agents\n' >"$B/.codex/worktrees/a1b2/repo/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/home/alice/.openinterpreter/worktrees/c3d4/repo"}}\n' \
+  >"$H/.openinterpreter/sessions/2026/10/04/rollout-2026-10-04T00-00-00-u3.jsonl"
+printf '# agents\n' >"$H/.openinterpreter/worktrees/c3d4/repo/AGENTS.md"
+
+# 2026-10-21 Cody JetBrains plugin files (#214)
+# Source-derived (sourcegraph/cody-public-snapshot at 8e20ac6): the plugin's
+# application components in each IDE's options/ directory, ~/.sourcegraph and
+# a project's .idea/.sourcegraph settings, and the legacy project-level
+# .idea/cody_history.xml. cody_accounts.xml carries customRequestHeaders and
+# is flagged; cody_accounts_settings.xml holds only the active account id.
+# Checks follow the default and --no-secrets runs below; the same files are
+# in smoke.ps1 under alice.
+O214="$H/.config/JetBrains/IntelliJIdea2025.2/options"
+mkdir -p "$O214" "$H/.sourcegraph" "$ROOT/srv/proj/.idea/.sourcegraph"
+printf '<application />\n' >"$O214/cody.xml"
+printf '<application />\n' >"$O214/cody_accounts.xml"
+printf '<application />\n' >"$O214/cody_accounts_settings.xml"
+printf '<application />\n' >"$O214/cody_application_settings.xml"
+printf '{}\n' >"$H/.sourcegraph/cody_settings.json"
+printf '<project version="4" />\n' >"$ROOT/srv/proj/.idea/cody_history.xml"
+printf '{}\n' >"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json"
+
+# 2026-10-21 agent worktrees inside a project (#216)
+# Gemini CLI's --worktree creates <project>/.gemini/worktrees/<name>
+# (google-gemini/gemini-cli 3be3d44, worktreeService.ts) and Qwen Code's
+# enter_worktree <project>/.qwen/worktrees/<slug> (QwenLM/qwen-code 5dcf7c7,
+# worktreeSessionService.ts): full git checkouts that the project entries
+# collected whole. Both are excluded, as .claude/worktrees and
+# .kilo/worktrees are; the project's .gemini/settings.json beside them stays
+# collected. Checks follow the default run below; the same files are in
+# smoke.ps1 under gem.
+G216="$ROOT/srv/gem"
+mkdir -p "$G216/.gemini/worktrees/w1" "$G216/.qwen/worktrees/w1"
+printf 'wt\n' >"$G216/.gemini/worktrees/w1/f"
+printf 'wt\n' >"$G216/.qwen/worktrees/w1/f"
+printf '{}\n' >"$G216/.gemini/settings.json"
+
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+# hermes-agent 86fa9e6 (source only): a quick snapshot under state-snapshots
+# holds an older state.db, the only copy of a pruned or deleted session, so
+# it is collected, while the credential copies beside it (.env, auth.json,
+# the pairing stores) stay flagged by the home-relative secret globs. The
+# desktop app's connection.json and connections.json can hold a gateway
+# token in plain text and are flagged. Checks follow the default and
+# --no-secrets runs below; the same files are in smoke.ps1 under alice.
+Q123="$H/.hermes/state-snapshots/20261001-120004-pre-update"
+W123="$H/AppData/Local/hermes/state-snapshots/20261001-120004"
+mkdir -p "$Q123/pairing" "$W123" "$H/.config/Hermes"
+printf 'sqlite\n' >"$Q123/state.db"
+printf '{"id":"20261001-120004-pre-update"}\n' >"$Q123/manifest.json"
+printf 'KEY=x\n' >"$Q123/.env"
+printf '{"providers":{}}\n' >"$Q123/auth.json"
+printf '{"42":{"user_name":"u"}}\n' >"$Q123/pairing/telegram-approved.json"
+printf 'sqlite\n' >"$W123/state.db"
+printf '{"connections":[]}\n' >"$H/.config/Hermes/connections.json"
+
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+# nanobot (HKUDS/nanobot at 909b277, source only) keeps its cron jobs and
+# local triggers in the workspace, with one run record per run (session
+# key, prompt, reply) that outlives the session. The project catalog
+# collects the job and trigger files and the runs directories of a
+# discovered workspace; the trigger queue (inbox/) is left. Checks follow
+# the default run below; the same files are in smoke.ps1 under nanows.
+N220="$ROOT/srv/nanows"
+mkdir -p "$N220/cron/runs" "$N220/triggers/runs" "$N220/triggers/inbox"
+printf '{"jobs":[]}\n' >"$N220/cron/jobs.json"
+printf '{"job_id":"j1","status":"ok"}\n' >"$N220/cron/runs/j1_1_ab.json"
+printf '{"triggers":[]}\n' >"$N220/triggers/triggers.json"
+printf '{"trigger_id":"t1","status":"ok"}\n' >"$N220/triggers/runs/d1.json"
+printf '{"id":"d2"}\n' >"$N220/triggers/inbox/d2.json"
+
+# 2026-10-21 OpenClaw source review (#219)
+# OpenClaw 2026.10.5 (source, openclaw/openclaw at 146284a) keeps the
+# approvals socket token in the legacy exec-approvals.json, and the Docker
+# install's ~/.openclaw-auth-profile-secrets holds gateway.env: both are
+# flagged, and so is a volume-relative exec-approvals.json. A Gateway clone
+# under projects/<16 hex>/<name> is excluded while another projects entry is
+# collected, and the volume-relative forms of the clone, plugin-skills and
+# agent tmp exclusions prune the same names in a volume (the a0_usr one
+# here), whose own projects/<name> stays collected. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1
+# under alice.
+O219="$H/.openclaw"
+C219=0123456789abcdef
+V219="$DV/a0_usr/_data"
+mkdir -p "$O219/projects/$C219/repo" "$O219/projects/notes" "$H/.openclaw-auth-profile-secrets" \
+  "$V219/projects/$C219/repo" "$V219/projects/p219" "$V219/plugin-skills" \
+  "$V219/agents/main/agent/tmp" "$V219/agents/main/agent/.tmp"
+printf '{"socket":{"token":"x"}}\n' >"$O219/exec-approvals.json"
+printf 'OPENAI_API_KEY=x\n' >"$H/.openclaw-auth-profile-secrets/gateway.env"
+printf 'clone\n' >"$O219/projects/$C219/repo/README.md"
+printf 'notes\n' >"$O219/projects/notes/todo.md"
+printf '{"socket":{"token":"x"}}\n' >"$V219/exec-approvals.json"
+printf 'clone\n' >"$V219/projects/$C219/repo/README.md"
+printf 'project\n' >"$V219/projects/p219/notes.md"
+printf 'link\n' >"$V219/plugin-skills/s"
+printf 'tmp\n' >"$V219/agents/main/agent/tmp/t"
+printf 'tmp\n' >"$V219/agents/main/agent/.tmp/t"
+
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+# Source only, no real install: OpenCode 2.0 (anomalyco/opencode cb07c55)
+# writes its background server's password to service.json, or
+# service-<channel>.json, in the config and the state directory, keeps the
+# Electron desktop app's data in ai.opencode.desktop, .beta or .dev under
+# the platform's app data directory with a V8 compile-cache, and keeps a
+# temp root that is AppData/Local/Temp/opencode on Windows. Kilo Code
+# (Kilo-Org/kilocode 87cc35c) writes its sandbox policy and preference files
+# beside its state directory. Checks follow the default and --no-secrets
+# runs below; the same files are in smoke.ps1 under alice.
+D213="$B/Library/Application Support/ai.opencode.desktop"
+K221="$H/.local/state/kilo-sandbox-policy/aa"
+mkdir -p "$H/.config/opencode" "$H/.local/state/opencode" "$D213/compile-cache" \
+  "$H/.config/ai.opencode.desktop.beta" "$B/AppData/Roaming/ai.opencode.desktop" \
+  "$B/AppData/Local/Temp/opencode" "$K221" "$H/.local/state/kilo-sandbox-preference"
+printf '{"password":"x"}\n' >"$H/.config/opencode/service.json"
+printf '{"password":"x"}\n' >"$H/.local/state/opencode/service-local.json"
+printf 'sqlite\n' >"$D213/drafts.sqlite"
+printf 'v8\n' >"$D213/compile-cache/x"
+printf 'sqlite\n' >"$H/.config/ai.opencode.desktop.beta/drafts.sqlite"
+printf 'sqlite\n' >"$B/AppData/Roaming/ai.opencode.desktop/drafts.sqlite"
+printf 'tmp\n' >"$B/AppData/Local/Temp/opencode/notes.txt"
+printf '{"enabled":true,"mode":"deny","version":1}\n' >"$K221/bb.json"
+printf 'false\n' >"$H/.local/state/kilo-sandbox-preference/bb.json"
+
+# 2026-10-21 Qwen Code session registry (#230)
+# Qwen Code writes ~/.qwen/sessions/<pid>.json (or <pid>-<8 hex>.json) per
+# running session, with ipcToken, the token that admits a connection to the
+# session's socket, so the directory is a secret glob. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1 under
+# alice.
+mkdir -p "$H/.qwen/sessions"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4242.json"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4243-0123abcd.json"
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+# The Roo Code CLI up to 3.53.0 saved its Roo Code Cloud token in
+# ~/.roo/cli-credentials.json (apps/cli/src/lib/storage/credentials.ts at
+# Roo-Code v3.53.0); the secret glob flags it. Checks follow the default run
+# below; the same file is in smoke.ps1 under alice.
+mkdir -p "$H/.roo"
+printf '{"token":"not-a-real-token"}\n' >"$H/.roo/cli-credentials.json"
+
+# 2026-10-21 Twinny workspace storage (#215)
+# Twinny 4.3.15 (source, twinnydotdev/twinny 0337b265) keeps one
+# agent-changes/<uuid>.json record per agent-mode reply that changed files
+# in its per-workspace extension storage, workspaceStorage/<id>/
+# rjmacarthy.twinny, beside the editor's own workspace.json and
+# state.vscdb. The nested twinny entries claim that directory from the
+# editor's walk; the files beside it stay vscode. Checks follow the default
+# run below; the same files are in smoke.ps1 under alice.
+T215="$H/.config/Code/User/workspaceStorage/ws215"
+mkdir -p "$T215/rjmacarthy.twinny/agent-changes"
+printf '{"id":"c1","root":"/srv/twinproj","createdAt":1,"files":[]}\n' \
+  >"$T215/rjmacarthy.twinny/agent-changes/c1.json"
+printf '{"folder":"file:///srv/twinproj"}\n' >"$T215/workspace.json"
+# The twinny-server forge plugins (GitHub, GitLab, Gitea, Bitbucket) keep
+# their saved access tokens beside the watched repositories in
+# plugins/<id>/repos.json, flagged secret.
+mkdir -p "$H/.twinny/server/plugins/github"
+printf '{"version":1,"repos":[],"tokens":[]}\n' >"$H/.twinny/server/plugins/github/repos.json"
 
 run() { # run NAME ARGS...
   _n=$1; shift
@@ -1540,6 +1774,76 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+S218='"agent":"openhands".*"secret":true,"status":"collected"'
+check "#218 OpenHands Agent Canvas mars-credentials.json flagged secret" "row \"$M218A\" | grep -q '$S218' && row \"$M218B\" | grep -q '$S218' && row \"$M218C\" | grep -q '$S218'"
+check "#218 OpenHands automation workspaces excluded" "[ \"\$(status_of \"$H/.openhands/workspaces\")\" = skipped_excluded ] && ! grep -qF '.openhands/workspaces/run1/f' \"\$M\""
+check "#218 OpenHands workspaces.json beside the excluded workspaces collected" "[ \"\$(status_of \"$H/.openhands/workspaces.json\")\" = collected ]"
+
+# 2026-10-21 Agent Zero source review (#217)
+check "#217 Agent Zero WhatsApp session flagged secret" "row \"$H/agent-zero/main/$W217\" | grep -q '\"agent\":\"agent-zero\".*$SEC153' && row \"$H/Desktop/agent-zero/$W217\" | grep -q '$SEC153' && row \"$DV/a0_usr/_data/$W217\" | grep -q '\"user\":\"docker\".*$SEC153'"
+check "#217 Agent Zero ACP workspace and extra folder discovered" "[ \"\$(status_of \"$ROOT/srv/a0acp/AGENTS.md\")\" = collected ] && [ \"\$(status_of \"$ROOT/srv/a0extra/AGENTS.md\")\" = collected ]"
+check "#217 Agent Zero connector screen capture collected" "row \"$T217/0000.png\" | grep -q '\"agent\":\"agent-zero\".*\"status\":\"collected\"'"
+
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+check "#223 CrewAI project .crewai collected" "row \"$ROOT/srv/proj/.crewai/last_run.json\" | grep -q '\"home\":\"$ROOT/srv/proj\",\"agent\":\"crewai\".*\"status\":\"collected\"'"
+check "#224 difyctl login-pending.yml flagged secret" "row \"$H/.config/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$H/AppData/Roaming/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$H/AppData/Local/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#225 CLAI 2.0 state directory collected" "row \"$P225/orchestrator.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/workspace.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/session.log\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"'"
+check "#225 CLAI 2.0 workspace token flagged secret" "row \"$P225/workspaces/registry/ws1/token\" | grep -q '\"agent\":\"pydantic-clai\".*\"secret\":true,\"status\":\"collected\"'"
+check "#225 CLAI 2.0 workspace clones excluded" "[ \"\$(status_of \"$P225/workspaces/clones\")\" = skipped_excluded ] && ! grep -qF 'repo-0123456789/.git/HEAD' \"\$M\""
+
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+check "#222 Codex archived rollout cwd discovers project" "[ \"\$(status_of \"$ROOT/srv/codexarch/AGENTS.md\")\" = collected ] && grep '^  \"projects\"' \"\$S\" | grep -qF '\"$ROOT/srv/codexarch\"'"
+check "#222 Codex worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.codex/worktrees' && [ \"\$(status_of \"$B/.codex/worktrees\")\" = skipped_excluded ] && ! grep -qF 'worktrees/a1b2/repo/AGENTS.md' \"\$M\""
+check "#222 Open Interpreter worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.openinterpreter/worktrees' && ! grep -qF 'worktrees/c3d4/repo/AGENTS.md' \"\$M\""
+
+# 2026-10-21 Cody JetBrains plugin files (#214)
+check "#214 Cody JetBrains options files collected" "row \"$O214/cody.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"' && row \"$O214/cody_application_settings.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+check "#214 Cody cody_accounts.xml flagged secret" "row \"$O214/cody_accounts.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
+check "#214 Cody cody_accounts_settings.xml not flagged" "row \"$O214/cody_accounts_settings.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":false,\"status\":\"collected\"'"
+check "#214 Cody home .sourcegraph collected" "row \"$H/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
+check "#214 Cody project .idea files collected" "row \"$ROOT/srv/proj/.idea/cody_history.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"' && row \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 agent worktrees inside a project (#216)
+check "#216 Gemini CLI and Qwen Code project worktrees excluded" "[ \"\$(status_of \"$G216/.gemini/worktrees\")\" = skipped_excluded ] && [ \"\$(status_of \"$G216/.qwen/worktrees\")\" = skipped_excluded ] && ! grep -qF 'gem/.gemini/worktrees/w1' \"\$M\" && ! grep -qF 'gem/.qwen/worktrees/w1' \"\$M\""
+check "#216 Gemini CLI project settings beside the worktrees collected" "row \"$G216/.gemini/settings.json\" | grep -q '\"agent\":\"gemini-cli\".*\"status\":\"collected\"'"
+
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes quick snapshot state.db collected" "row \"$Q123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && row \"$Q123/manifest.json\" | grep -q '\"secret\":false,\"status\":\"collected\"' && row \"$W123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && [ -z \"\$(status_of \"$H/.hermes/state-snapshots\")\" ]"
+check "#123 Hermes quick snapshot credentials flagged secret" "row \"$Q123/.env\" | grep -q '$SEC153' && row \"$Q123/auth.json\" | grep -q '$SEC153' && row \"$Q123/pairing/telegram-approved.json\" | grep -q '$SEC153'"
+check "#208 Hermes desktop connection files flagged secret" "row \"$H/.config/Hermes/connections.json\" | grep -q '\"agent\":\"hermes\".*$SEC153' && row \"$H/.config/Hermes/connection.json\" | grep -q '$SEC153'"
+
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+check "#220 nanobot workspace cron jobs and runs collected" "row \"$N220/cron/jobs.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/cron/runs/j1_1_ab.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot workspace triggers and runs collected" "row \"$N220/triggers/triggers.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/triggers/runs/d1.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot trigger queue not collected" "! grep -qF 'nanows/triggers/inbox' \"\$M\""
+
+# 2026-10-21 OpenClaw source review (#219)
+check "#219 OpenClaw exec-approvals.json flagged secret" "row \"$O219/exec-approvals.json\" | grep -q '\"agent\":\"openclaw\".*$SEC153'"
+check "#219 OpenClaw auth-profile secrets directory flagged secret" "row \"$H/.openclaw-auth-profile-secrets/gateway.env\" | grep -q '\"agent\":\"openclaw\".*$SEC153'"
+check "#219 OpenClaw volume exec-approvals.json flagged secret" "row \"$V219/exec-approvals.json\" | grep -q '\"user\":\"docker\".*$SEC153'"
+check "#219 OpenClaw Gateway clone excluded" "[ \"\$(status_of \"$O219/projects/$C219\")\" = skipped_excluded ] && ! grep -qF '$C219/repo/README.md' \"\$M\""
+check "#219 OpenClaw projects entry that is no clone collected" "row \"$O219/projects/notes/todo.md\" | grep -q '\"agent\":\"openclaw\".*\"status\":\"collected\"'"
+check "#219 OpenClaw volume clone, plugin-skills and agent tmp excluded" "[ \"\$(status_of \"$V219/projects/$C219\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/plugin-skills\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/agents/main/agent/tmp\")\" = skipped_excluded ] && [ \"\$(status_of \"$V219/agents/main/agent/.tmp\")\" = skipped_excluded ]"
+check "#219 volume projects entry that is no clone collected" "row \"$V219/projects/p219/notes.md\" | grep -q '\"user\":\"docker\".*\"status\":\"collected\"'"
+
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+check "#213 OpenCode service.json flagged secret" "row \"$H/.config/opencode/service.json\" | grep -q '\"agent\":\"opencode\".*$SEC153' && row \"$H/.local/state/opencode/service-local.json\" | grep -q '\"agent\":\"opencode\".*$SEC153'"
+check "#213 OpenCode desktop data collected" "row \"$D213/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"' && row \"$H/.config/ai.opencode.desktop.beta/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"' && row \"$B/AppData/Roaming/ai.opencode.desktop/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"'"
+check "#213 OpenCode desktop compile-cache excluded" "[ \"\$(status_of \"$D213/compile-cache\")\" = skipped_excluded ] && ! grep -qF 'compile-cache/x' \"\$M\""
+check "#213 OpenCode Windows temp root collected" "row \"$B/AppData/Local/Temp/opencode/notes.txt\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"'"
+check "#221 Kilo sandbox policy and preference collected" "row \"$K221/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"' && row \"$H/.local/state/kilo-sandbox-preference/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"'"
+
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry flagged secret" "row \"$H/.qwen/sessions/4242.json\" | grep -q '\"agent\":\"qwen-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$H/.qwen/sessions/4243-0123abcd.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+check "#159 roo cli-credentials.json flagged secret" "row \"$H/.roo/cli-credentials.json\" | grep -q '\"agent\":\"roo-code\".*\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 Twinny workspace storage (#215)
+check "#215 twinny workspaceStorage agent-changes attributed to twinny" "row \"$T215/rjmacarthy.twinny/agent-changes/c1.json\" | grep -q '\"agent\":\"twinny\".*\"status\":\"collected\"'"
+check "#215 twinny workspaceStorage neighbour stays vscode" "row \"$T215/workspace.json\" | grep -q '\"agent\":\"vscode\".*\"status\":\"collected\"'"
+check "#215 twinny-server forge repos.json flagged secret" "row \"$H/.twinny/server/plugins/github/repos.json\" | grep -q '\"agent\":\"twinny\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
@@ -1567,6 +1871,30 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+check "#224 difyctl login-pending.yml skipped without secrets" "[ \"\$(status_of \"$H/.config/difyctl/login-pending.yml\")\" = skipped_secret ]"
+check "#225 CLAI 2.0 workspace token skipped without secrets" "[ \"\$(status_of \"$P225/workspaces/registry/ws1/token\")\" = skipped_secret ]"
+
+# 2026-10-21 Agent Zero source review (#217)
+check "#217 Agent Zero WhatsApp session skipped without secrets" "[ \"\$(status_of \"$H/agent-zero/main/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$H/Desktop/agent-zero/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$DV/a0_usr/_data/$W217\")\" = skipped_secret ]"
+
+# 2026-10-21 Cody JetBrains plugin files (#214)
+check "#214 Cody cody_accounts.xml skipped without secrets" "[ \"\$(status_of \"$O214/cody_accounts.xml\")\" = skipped_secret ]"
+check "#214 Cody cody.xml skipped without secrets" "[ \"\$(status_of \"$O214/cody.xml\")\" = skipped_secret ]"
+check "#214 Cody cody_settings.json skipped without secrets" "[ \"\$(status_of \"$H/.sourcegraph/cody_settings.json\")\" = skipped_secret ] && [ \"\$(status_of \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\")\" = skipped_secret ]"
+
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes quick snapshot credentials skipped without secrets" "[ \"\$(status_of \"$Q123/.env\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/auth.json\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/state.db\")\" = collected ]"
+check "#208 Hermes desktop connection files skipped without secrets" "[ \"\$(status_of \"$H/.config/Hermes/connections.json\")\" = skipped_secret ]"
+
+# 2026-10-21 OpenClaw source review (#219)
+check "#219 OpenClaw credentials skipped without secrets" "[ \"\$(status_of \"$O219/exec-approvals.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.openclaw-auth-profile-secrets/gateway.env\")\" = skipped_secret ] && [ \"\$(status_of \"$V219/exec-approvals.json\")\" = skipped_secret ]"
+
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+check "#213 OpenCode service.json skipped without secrets" "[ \"\$(status_of \"$H/.config/opencode/service.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.local/state/opencode/service-local.json\")\" = skipped_secret ]"
+
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry skipped without secrets" "[ \"\$(status_of \"$H/.qwen/sessions/4242.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.qwen/sessions/4243-0123abcd.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -1645,6 +1973,15 @@ printf 'k\n' >"$DV/langflow_langflow-data/_data/cache_secret_key"
 printf 'x\n' >"$DV/langflow_langflow-data/_data/profile_pictures/p.svg"
 printf 'db\n' >"$DV/docker_dify_agent_local_sandbox_home/_data/.local/share/shellctl/shellctl.db"
 printf 'x\n' >"$DV/docker_dify_agent_local_sandbox_workspace/_data/out.txt"
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208): a
+# Hermes home in a named volume keeps its quick snapshots at the volume root,
+# so their credential copies need the volume-relative secret globs.
+V123="$DV/hermes_home/_data/state-snapshots/20261001-120004"
+mkdir -p "$V123/pairing"
+printf 'sqlite\n' >"$V123/state.db"
+printf 'KEY=x\n' >"$V123/.env"
+printf '{"providers":{}}\n' >"$V123/auth.json"
+printf '{}\n' >"$V123/pairing/telegram-approved.json"
 run fwvolumes; check "frameworks volumes exit 0" "[ $? -eq 0 ]"
 check "n8n_data volume collected as n8n" "row \"$FV/database.sqlite\" | grep -q '\"user\":\"docker\",\"home\":\"$FV\",\"agent\":\"n8n\".*\"status\":\"collected\"'"
 check "n8n volume config flagged secret (volume-relative)" "row \"$FV/config\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
@@ -1658,7 +1995,9 @@ check "langflow-data volume cache_secret_key flagged (volume-relative)" "row \"$
 check "langflow-data volume profile_pictures excluded (volume-relative)" "[ \"\$(status_of \"$DV/langflow_langflow-data/_data/profile_pictures\")\" = skipped_excluded ]"
 check "dify sandbox home volume collected as dify" "row \"$DV/docker_dify_agent_local_sandbox_home/_data/.local/share/shellctl/shellctl.db\" | grep -q '\"agent\":\"dify\".*\"status\":\"collected\"'"
 check "dify sandbox workspace volume collected as dify" "row \"$DV/docker_dify_agent_local_sandbox_workspace/_data/out.txt\" | grep -q '\"agent\":\"dify\".*\"status\":\"collected\"'"
-rm -rf "$DV/n8n_data" "$DV/n8n_n8n-data" "$DV/langflow_langflow-data" "$DV/docker_dify_agent_local_sandbox_home" "$DV/docker_dify_agent_local_sandbox_workspace"
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes volume quick snapshot collected, credentials flagged (volume-relative)" "row \"$V123/state.db\" | grep -q '\"user\":\"docker\".*\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && row \"$V123/.env\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$V123/auth.json\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$V123/pairing/telegram-approved.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+rm -rf "$DV/n8n_data" "$DV/n8n_n8n-data" "$DV/langflow_langflow-data" "$DV/docker_dify_agent_local_sandbox_home" "$DV/docker_dify_agent_local_sandbox_workspace" "$DV/hermes_home"
 
 # ---- --inventory (1.6.0, 2026-10-04) ---------------------------------------
 # Stat-only fleet inventory: JSON Lines on stdout, nothing written anywhere.
@@ -1687,7 +2026,7 @@ check "inventory nested entry claimed from the enclosing agent" "agent_line inve
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"
 check "inventory: no agent line has zero files" "! grep -q '\"files\":0,' \"$OUT/inventory.stdout\""
 check "inventory projects counted per user" "agent_line inventory alice claude-code | grep -q '\"projects\":[1-9]'"
-check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":4,\"bytes\":91,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
+check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":7,\"bytes\":127,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
 check "inventory rootless docker volume line" "agent_line inventory docker tabby | grep -q '\"files\":1,\"bytes\":23,.*\"evidence\":\"\\*tabby\\*\"}\$'"
 check "inventory shared not inventoried" "! grep -q '\"agent\":\"\\(shared\\|project\\|live\\)\"' \"$OUT/inventory.stdout\""
 check "inventory prints no path below a home" "! grep -q '$ROOT' \"$OUT/inventory.stdout\""

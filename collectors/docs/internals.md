@@ -376,9 +376,9 @@ follows the order in which paths are first seen:
 | # | Sources | sh | PowerShell |
 | --- | --- | --- | --- |
 | 1 | Claude Code: prompt history and `.claude.json` project keys, also in `CLAUDE_CONFIG_DIR` homes | `find_claude_code_projects` | `Find-ClaudeCodeProjects` |
-| 2 | Codex (a rollout `cwd` outside `Documents/Codex`), Qwen Code, Cline CLI, Cursor chats, Continue, Goose sessions, OpenCode, Crush | `find_cli_session_projects` | `Find-CliSessionProjects` |
+| 2 | Codex (a rollout `cwd`, in `sessions` or `archived_sessions`, outside `Documents/Codex` and `.codex/worktrees`), Qwen Code, Cline CLI, Cursor chats, Continue, Goose sessions, OpenCode, Crush, Agent Zero editor (ACP) sessions | `find_cli_session_projects` | `Find-CliSessionProjects` |
 | 3 | Gemini CLI projects, trusted folders and project roots; Antigravity CLI history, settings and project cache; Gemini config projects | `find_gemini_projects` | `Find-GeminiProjects` |
-| 4 | Amp, Factory, Kiro, Cursor `acp-sessions`, Goose recent directories, Copilot CLI (sessions with an `events.jsonl`, a `cwd` outside `.copilot/`), Hermes, Letta, pi, muse, Open Interpreter, OpenHands, PearAI | `find_agent_session_projects` | `Find-AgentSessionProjects` |
+| 4 | Amp, Factory, Kiro, Cursor `acp-sessions`, Goose recent directories, Copilot CLI (sessions with an `events.jsonl`, a `cwd` outside `.copilot/`), Hermes, Letta, pi, muse, Open Interpreter (a rollout `cwd` outside `.openinterpreter/worktrees`), OpenHands, PearAI | `find_agent_session_projects` | `Find-AgentSessionProjects` |
 | 5 | OpenClaw (and clawdbot), nanobot, Tabby, Twinny | `find_config_file_projects` | `Find-ConfigFileProjects` |
 | 6 | VS Code-family `User` directories: `workspaceStorage` folders and the Cline, Roo Code and Kilo Code task indexes | `find_editor_projects` | `Find-EditorProjects` |
 
@@ -507,7 +507,7 @@ PowerShell functions that do their job.
 | Deepest directory shared by file paths | `common_dir` | `Get-CommonDir` |
 | Owner of a `-p` directory | `get_project_owner` | `Get-ProjectOwner` |
 | Discovery group 1, Claude Code | `find_claude_code_projects` | `Find-ClaudeCodeProjects` |
-| Discovery group 2, Codex through Crush | `find_cli_session_projects` | `Find-CliSessionProjects` |
+| Discovery group 2, Codex through Agent Zero | `find_cli_session_projects` | `Find-CliSessionProjects` |
 | Discovery group 3, Gemini CLI and Antigravity | `find_gemini_projects` | `Find-GeminiProjects` |
 | Discovery group 4, Amp through PearAI | `find_agent_session_projects` | `Find-AgentSessionProjects` |
 | Discovery group 5, configuration files | `find_config_file_projects` | `Find-ConfigFileProjects` |

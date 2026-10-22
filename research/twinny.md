@@ -33,6 +33,14 @@ and the `twinny-server` team gateway
 
 ### Source reviews
 
+- 2026-10-21: twinnydotdev/twinny at
+  [0337b26](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
+  (4.3.15), with microsoft/vscode at
+  [4d22f4f](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706)
+  for the log file format: the parser plan now reads the standing grants, the team policy, the
+  reply's `changes`, the `agent-changes/` records, the log channel and the review tab's repository;
+  it corrected the team policy, which is kept in `globalState`, not in memory only, and added the
+  log's line format and rotation and the source-host finding.
 - 2026-10-19: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
   [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
   (version 4.3.15, committed 2026-10-16), against
@@ -124,9 +132,10 @@ Since 4.3.5, at
   [src/extension/chat/reply-changes.ts:25-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L25-L47),
   [211-259](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L211-L259)),
   or `globalStorage/rjmacarthy.twinny/agent-changes/` with no folder open; the record is in
-  [Per-reply file-change records](#per-reply-file-change-records). The workspace copy is collected
-  only inside the editor's `User` directory, attributed to the editor (`vscode` or the fork); no
-  `twinny` catalog line names `workspaceStorage`.
+  [Per-reply file-change records](#per-reply-file-change-records). Nested `twinny` catalog entries
+  (`<User dir>/workspaceStorage/*/rjmacarthy.twinny` for each editor layout) claim the workspace
+  copy from the editor's `User` directory; the `workspace.json` and `state.vscdb` beside it stay the
+  editor's (`vscode` or the fork).
 - Standing permission grants and the current `twinny.selectedModel`, as keys of the extension's
   `globalState` value (the `rjmacarthy.twinny` row of `globalStorage/state.vscdb`), and the
   `twinny.chatTools*` editor settings in the user `settings.json`
@@ -141,8 +150,12 @@ Since 4.3.5, at
   [397-402](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L397-L402)).
 - The **Twinny** log channel, `<editor
   logs>/<session>/window<n>/exthost/rjmacarthy.twinny/Twinny.log`, one line per chat request and
-  the prompts and replies at Debug level ([Twinny log channel](#twinny-log-channel)); collected
-  as agent `vscode` under the editor's `logs` entries.
+  the prompts and replies at Debug level, and the copies it is rotated to, `Twinny.log_1` to
+  `Twinny.log_6` ([Twinny log channel](#twinny-log-channel)); collected as agent `vscode` under the
+  editor's `logs` entries.
+- The pull request review tab's owner and repository, in the extension's per-workspace state (the
+  `rjmacarthy.twinny` row of `workspaceStorage/<id>/state.vscdb`); the keys are in
+  [Pull request review repository](#pull-request-review-repository).
 
 #### `~/.twinny`
 
@@ -199,8 +212,11 @@ Since 4.3.5, at
   [src/extension/p2p/runtime.ts:261-265](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/p2p/runtime.ts#L261-L265);
   [host.ts:336-340](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/p2p/host.ts#L336-L340)).
   These are encrypted `secret://` rows in `state.vscdb` (see [vscode.md](vscode.md)).
-- `twinny.githubToken` setting, a GitHub PAT, in the editor `settings.json`
-  ([package.json:693-698](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L693-L698)).
+- `twinny.githubToken` setting, a GitHub PAT (personal access token), in the editor
+  `settings.json`
+  ([package.json:693-698](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L693-L698)):
+  the token the pull request review sends to GitHub ([Source host rows](#source-host-rows)). It
+  shares the file with every other editor setting, so it cannot be a secret glob.
 - `~/.twinny/node/identity.json`: the `twinny-node` key seed.
 - ChatGPT plan sign-in (new since 4.3.5): access, refresh and id tokens in VS Code secret storage
   under `twinny.chatgpt-plan.credentials`, an encrypted `secret://` row; the account's email and
@@ -208,6 +224,8 @@ Since 4.3.5, at
   ([src/extension/chatgpt-plan/session.ts:11-13](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L11-L13),
   [59-66](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L59-L66),
   [484](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L484)).
+  The profile is redacted by key ([Secrets](#secrets)): `state.vscdb` also holds the chats, so it
+  cannot be a secret glob.
 - `twinny.chatToolsMcpServers` in the user `settings.json` can carry tokens in each server's `env`
   (the setting's own example is a `GITHUB_TOKEN`,
   [package.json:684-720](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L684-L720)).
@@ -220,7 +238,9 @@ Since 4.3.5, at
   `plugins/<id>/settings.json` with git clone tokens for the context plugin
   ([src/gateway/plugins/context.ts:59-60](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L59-L60),
   [214](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L214),
-  [236-241](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L236-L241)).
+  [236-241](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L236-L241)),
+  and `plugins/<forge>/repos.json` with the forge plugins' saved access tokens
+  ([Source host rows](#source-host-rows)).
   Backend API keys are read from environment variables named in the config (`apiKeyEnv`,
   [config.ts:58](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/config.ts#L58),
   [237](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/config.ts#L237)).
@@ -294,10 +314,10 @@ the text of every changed file before the reply, and the Twinny log channel's li
 conversation by time and text only and last until VS Code removes the log session. A `twinny-server`
 gateway whose administrator turned on recording keeps its own copy of each request on the gateway
 host; whether a delete reaches it is not stated, and nothing on the developer's machine says a
-request was recorded. No deletion marker is stated. The analyzer reads only the `rjmacarthy.twinny`
-row: the `agent-changes/` records and the log channel are secondary sources not read yet, and the
-gateway recordings are not read (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+request was recorded. No deletion marker is stated. The analyzer reads the `rjmacarthy.twinny` row,
+and the `agent-changes/` records and the log channel as secondary sources, so a deleted
+conversation's file changes, project root and log lines stay in the timeline; the gateway
+recordings are not read (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -407,16 +427,33 @@ The **Twinny** log channel (secondary, line-oriented): a VS Code log output chan
 ([src/common/logger.ts:93-97](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L93-L97)),
 which VS Code writes to `<extension host logs>/rjmacarthy.twinny/Twinny.log`
 ([extHostOutput.ts:148-150](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostOutput.ts#L148-L150))
-under the editor's `logs/` directory, collected as agent `vscode`. With `twinny.enableLogging` on
+under the editor's `logs/` directory, collected as agent `vscode`. Each entry is one line
+`YYYY-MM-DD HH:MM:SS.mmm [<level>] <message>`, the time in host local time with no zone and the
+level one of `trace`, `debug`, `info`, `warning` and `error`
+([fileLog.ts:62-101](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/log/common/fileLog.ts#L62-L101));
+a message with line breaks continues on the following lines. When the file has passed 5 MB at a
+flush, VS Code moves its content to `Twinny.log_1`, then `_2` and so on up to `_6`, and starts
+again at `_1`
+([fileLog.ts:14](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/log/common/fileLog.ts#L14),
+[41-44](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/log/common/fileLog.ts#L41-L44),
+[78-81](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/log/common/fileLog.ts#L78-L81)). With `twinny.enableLogging` on
 (the default,
 [package.json:633-638](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L633-L638))
 each chat request is one line `Chat → <model> (<provider label>) · <n> messages, <n> chars` and each
 reply one line with its duration
 ([src/extension/chat/generation.ts:188-207](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L188-L207),
 [`:150-153`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L150-L153));
-at the channel's Debug level the messages and the reply are written in full as blocks
-([logger.ts:140-144](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L140-L144)),
-after the secret shield's redaction. A line joins its conversation by time and text only (no
+at the channel's Debug level the messages and the reply are written as blocks, a title line
+(`Chat messages`, `Chat reply`, `FIM #<n> raw` and others) followed by the text with every line
+indented four spaces and cut at 8,000 characters
+([logger.ts:46-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L46-L47),
+[77-87](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L77-L87),
+[140-144](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L140-L144)),
+after the secret shield's redaction. Other Info lines record agent activity in the same channel,
+among them `Chat command: <command>`, `Chat command skipped: <command>` and `Chat created
+<path>`
+([src/extension/chat/tool-sinks.ts:756-761](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-sinks.ts#L756-L761);
+[src/extension/edit/service.ts:390](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/edit/service.ts#L390)). A line joins its conversation by time and text only (no
 conversation id) and survives the conversation's deletion until VS Code removes the log session.
 
 #### `twinny-server` recordings
@@ -450,9 +487,33 @@ decide
 those are in `settings.json`, which the `vscode` parser owns. An Always run choice leaves no mark on
 the step itself, which ends `done` like any other
 ([tool-steps.ts:169-176](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L169-L176)),
-so the list is the only record of it. A team gateway's agent policy (commands asked or off, blocked
-paths) is held in memory only
-([src/common/team-policy.ts:79-89](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/team-policy.ts#L79-L89)).
+so the list is the only record of it.
+
+The policy a developer accepted when connecting to a team gateway is kept in the same value under
+`twinny.teamPolicy` until they leave the team: `{url, policy, providerIds, fetchedAt}`, `url` the
+gateway, `providerIds` the provider entries the connection added and `fetchedAt` a time string
+([src/extension/providers/policy.ts:20-49](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/providers/policy.ts#L20-L49);
+[src/common/team.ts:8-14](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/team.ts#L8-L14)).
+`policy` holds `teamOnly`, `lockDefaults`, `recording[]`, `peers[]`, `systemPrompt` and `agent`,
+whose `off`, `commands` (`ask` or `off`), `edits` (`review`), `mcp` (`off`) and `blockedPaths[]`
+override the developer's own switches and Always run lists
+([src/protocol/types.ts:44-100](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/types.ts#L44-L100)).
+The extension also keeps the policy in force in memory
+([src/common/team-policy.ts:79-89](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/team-policy.ts#L79-L89)),
+reloaded from the stored value.
+
+#### Pull request review repository
+
+The review tab keeps the GitHub owner and repository it last listed pull requests for in the
+extension's per-workspace state, `twinny-workspace-context-reviewOwner` and
+`twinny-workspace-context-reviewRepo` (strings) in the `rjmacarthy.twinny` row of
+`workspaceStorage/<id>/state.vscdb`; it fills them from the workspace's GitHub remote when both
+are empty, and lists that repository's open pull requests as soon as both are set
+([src/webview/review.tsx:25-62](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/webview/review.tsx#L25-L62);
+[src/common/constants/storage.ts:46-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/constants/storage.ts#L46-L47);
+[src/extension/webview/base.ts:362-375](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/webview/base.ts#L362-L375)).
+The list comes from `api.github.com` each time and is not cached
+([src/extension/review/service.ts:179-197](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/review/service.ts#L179-L197)).
 
 ### Format versions
 
@@ -466,26 +527,34 @@ No version field on conversations. `updatedAt` is absent on conversations from o
 The same `rjmacarthy.twinny` JSON holds `twinny.inference-providers` and the
 `twinny.active-*-provider` objects, each with `apiKey`
 ([types.ts:255-272](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L255-L272)).
-Redact `apiKey` wherever it appears in the value. Gateway tokens and P2P seeds are separate
-encrypted `secret://` rows.
+Redact `apiKey` wherever it appears in the value. `twinny.chatgpt-plan.profile` names the signed-in
+OpenAI account (`email`, `subject`, `name`) and is an identity value to redact; the parser never
+reads it. Gateway tokens and P2P seeds are separate encrypted `secret://`
+rows.
 
 ### Parser plan
 
 Select `state.vscdb` (and `-wal`) under any `User/globalStorage/`, read the
 row `key = 'rjmacarthy.twinny'`, parse JSON, iterate
-`twinny.conversations`. Attribute rows to `twinny`, not `vscode`.
+`twinny.conversations`. Attribute rows to `twinny`, not `vscode`. Also select
+`User/workspaceStorage/<id>/state.vscdb` (the same row, for
+[Source host rows](#source-host-rows)),
+`User/workspaceStorage/<id>/rjmacarthy.twinny/agent-changes/*.json` and
+`User/globalStorage/rjmacarthy.twinny/agent-changes/*.json`, and
+`logs/.../rjmacarthy.twinny/Twinny.log` with its rotated `Twinny.log_<n>` copies
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)).
 
 | Column | Source |
 | --- | --- |
-| timestamp_utc | `updatedAt` (ms) on the last message of the conversation only; empty for the rest |
-| session_id | conversation `id` |
-| project_path | empty |
+| timestamp_utc | the conversation's `updatedAt` (ms) on every row of it; a record's `createdAt`; the log line's time; the file's modification time for standing and source-host rows |
+| session_id | conversation `id`; empty for the other sources |
+| project_path | empty; an `agent-changes/` record's `root` |
 | git_branch | empty |
 | turn_type | `role`; `<think>` block → thinking; each `toolSteps[]` → tool_use plus tool_result, except a `said: true` step → user |
 | model | `meta.model` (assistant) |
 | tool_name, tool_use_id | `toolSteps[].name`, `toolSteps[].id` |
 | text | `content` with think block removed; tool_use: `command` or `args` JSON; tool_result: `output`; a `said` step: `summary` |
-| source_line | empty (one SQLite row) |
+| source_line | 0 (one SQLite row or JSON file); the log entry's first line number |
 
 Model and permission rows are all `system`
 ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
@@ -508,9 +577,18 @@ Model and permission rows are all `system`
   did not let run, and an approved step is indistinguishable from one that needed no approval: both
   end `done` or `failed`. A `stopped` step may or may not have been waiting, so it gets no decision
   row.
-- Standing grants: not read. The keys and settings are in
-  [Standing permission grants](#standing-permission-grants); the plan is a row per entry, `permission setting: <key>=<value> (from state.vscdb
-  rjmacarthy.twinny, file mtime)`.
+- Standing grants and the team policy
+  ([Standing permission grants](#standing-permission-grants)), source-derived; not observed on any
+  real install. Each is a `system` row with an empty `session_id`, at the modification time of
+  `state.vscdb`, its text ending ` (from state.vscdb rjmacarthy.twinny, file mtime)`:
+  `permission mode: agentMode=<true|false>`, `permission setting: autoRunCommands=<true|false>`,
+  one `permission setting: alwaysRunCommands=<command>` per kept command and one
+  `permission setting: alwaysRunMcpTools=<server/tool>` per kept tool, then one
+  `permission setting: twinny.teamPolicy.<dotted key>=<value>` per leaf of `twinny.teamPolicy`
+  (`url`, `policy.teamOnly`, `policy.agent.commands`, ..., `fetchedAt`), a list giving one row per
+  entry. The value holds only the current switches, so `agentMode` is one row for the state at
+  the file's time, not a row per change. The editor settings `twinny.chatTools*` are in
+  `settings.json`, which the `vscode` parser owns, and are not read here.
 - `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
   [Per-user storage](#per-user-storage),
   is not read: its shape is not recorded.
@@ -534,10 +612,23 @@ neither is history.
 
 The `agent-changes/` records ([Per-reply file-change records](#per-reply-file-change-records)) are
 secondary for the reply they belong to, but the only source of its file changes and project path;
-the log channel ([Twinny log channel](#twinny-log-channel)) is secondary and line-oriented. Neither
-is read. The plan for the first is a `system` row per changed file, `file changed: <status> <path>
-+<added> -<removed>`, with `project_path` from `root`, joined to the conversation by `changes.id`,
-at `createdAt`.
+the log channel ([Twinny log channel](#twinny-log-channel)) is secondary and line-oriented. Both
+are read on every run and marked secondary, source-derived; not observed on any real install.
+
+- Each assistant message's `changes` gives one `system` row per file, `file changed: <status>
+  <path> +<added> -<removed> reply=<changes.id>`, with ` undone=true` and ` noUndo=true` when the
+  entry sets them, after the message's tool steps, in the conversation.
+- Each `agent-changes/` record gives the same row per file, with `project_path` the record's
+  `root`, the time its `createdAt` and an empty `session_id`, since the record names no
+  conversation; `reply=<id>` is the join to the conversation's `changes.id`. The conversation
+  records neither the project nor the reply's time, so deduplication cannot pair the two copies and
+  both are shown. `before` and `afterHash` are never emitted.
+- Each entry of `Twinny.log` and its rotated copies gives one `system` row, `log <level>: <first
+  line> (from <file name>, log line time, host-local)`, followed on the next lines by the entry's
+  continuation lines with the four-space block indent removed, with an empty `session_id` and
+  `source_line` the entry's first line. The log time has no zone and is emitted as if it were UTC.
+  A log line joins its conversation by time and text only; every entry is kept, the Debug blocks'
+  prompts and replies among them, since a deleted conversation's text may survive nowhere else.
 
 #### Sync, relay and origin rows
 
@@ -596,9 +687,13 @@ plan names no deletion row.
 
 #### Bad-line rows
 
-The one source read is a single JSON value, and a value that does not decode is one whole-file
-`parser:` row; no line-oriented file is read. The log channel, the one line-oriented source, would
-need a bad-line row per line that does not match if it were read.
+The `rjmacarthy.twinny` value and each `agent-changes/` record are single JSON values: one that does
+not decode is one whole-file `parser:` row (`parser: agent-changes record is not valid JSON
+(<reason>)` for a record). The log channel is line-oriented: a line that is neither an entry
+header nor a continuation of an open entry (indented or empty) is a bad line,
+`parser: unparseable line (no log line header): <line>`, and the entries before and after it
+are still yielded; a continuation that follows a bad line is a bad line too, since it has no entry
+to join.
 
 #### Fixtures
 
@@ -606,6 +701,39 @@ Fixture, the `value` of the `rjmacarthy.twinny` row:
 
 ```json
 {"twinny.conversations":{"7d1c2b3a-1111-4000-8000-000000000001":{"id":"7d1c2b3a-1111-4000-8000-000000000001","title":"List the tests","updatedAt":1759999205000,"messages":[{"role":"user","content":"which tests fail?"},{"role":"assistant","content":"<think>run the suite</think>Two tests fail.","meta":{"model":"qwen2.5-coder:7b","provider":"Ollama","durationMs":5200},"toolSteps":[{"id":"step-1","name":"run_command","summary":"ran `npm test`","args":{"command":"npm test"},"output":"2 failing","status":"done"}]}]}},"twinny.active-conversation":{"id":"7d1c2b3a-1111-4000-8000-000000000001"},"twinny.inference-providers":{"p1":{"id":"p1","label":"Ollama","provider":"ollama","type":"chat","modelName":"qwen2.5-coder:7b","apiHostname":"localhost","apiPort":11434,"apiKey":"REDACTME"}}}
+```
+
+Since 4.3.5, keys of the same value (standing grants and a team policy) and an assistant message
+with `changes`, from the types cited in [Standing permission grants](#standing-permission-grants)
+and [Record schema](#record-schema):
+
+```json
+{"twinny-global-context-agentMode":true,"twinny-global-context-autoRunCommands":false,"twinny-global-context-alwaysRunCommands":["npm test"],"twinny-global-context-alwaysRunMcpTools":["github/list_issues"],"twinny.teamPolicy":{"url":"https://gateway.example.invalid","policy":{"teamOnly":true,"agent":{"commands":"ask","blockedPaths":[".env"]}},"providerIds":["team-0a1b-chat"],"fetchedAt":"2026-10-03T09:00:00.000Z"}}
+{"role":"assistant","content":"Fixed both.","meta":{"model":"qwen2.5-coder:7b"},"changes":{"id":"5f0e9d8c-2222-4000-8000-000000000001","files":[{"path":"src/a.ts","status":"modified","added":3,"removed":1}]}}
+```
+
+An `agent-changes/<id>.json` record
+([Per-reply file-change records](#per-reply-file-change-records)):
+
+```json
+{"id":"5f0e9d8c-2222-4000-8000-000000000001","root":"/srv/proj","createdAt":1791029098000,"files":[{"path":"src/a.ts","status":"modified","added":3,"removed":1,"undone":true,"before":"export const a = 1\n","afterHash":"<sha256 hex>"}]}
+```
+
+`Twinny.log` entries ([Twinny log channel](#twinny-log-channel)):
+
+```text
+2026-10-03 14:00:01.250 [info] Chat → qwen2.5-coder:7b (Ollama) · 2 messages, 41 chars
+2026-10-03 14:00:01.251 [debug] Chat messages
+    [user]
+    which tests fail?
+2026-10-03 14:00:06.400 [info] Chat ← 5.1s · 15 chars
+```
+
+The workspace state value of the review tab
+([Pull request review repository](#pull-request-review-repository)):
+
+```json
+{"twinny-workspace-context-reviewOwner":"acme","twinny-workspace-context-reviewRepo":"widgets"}
 ```
 
 #### Steps typed mid-reply
@@ -617,10 +745,46 @@ it as a `user` row with the `summary` as its text, in its place among the reply'
 ([`src/extension/chat/tool-steps.ts:101-104`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L101-L104),
 [`src/common/types.ts:129-133`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L129-L133));
 before the fix for [issue 171](https://github.com/seanthegeek/doubleagent/issues/171) it was a
-`tool_use` named `said` and an empty `tool_result`. `changes`,
+`tool_use` named `said` and an empty `tool_result`. `changes` is read
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources));
 `mcpTool`, `meta.outOfSteps` and `meta.instructions` are not read. The `said` step layout is not
 observed on any real install, source-derived (twinnydotdev/twinny at
 [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)).
+
+#### Source host rows
+
+The extension connects to GitHub only for its pull request review, with the personal access token
+of the `twinny.githubToken` editor setting ([Credentials](#credentials)) sent as a bearer token,
+or none
+([src/extension/review/service.ts:154-177](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/review/service.ts#L154-L177)).
+No account login is stored: the extension never asks GitHub who the token is. The repository the
+review tab last listed is in the workspace state
+([Pull request review repository](#pull-request-review-repository)); the pull request list is
+fetched each time, and a review becomes an ordinary conversation whose first user message begins
+`**Code review: PR #<number> <title>**`
+([:199-218](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/review/service.ts#L199-L218),
+[:303](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/review/service.ts#L303);
+[src/extension/review/diff.ts:255-260](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/review/diff.ts#L255-L260)).
+The parser yields `source host repository: https://github.com/<owner>/<repo> type=review (from
+workspaceStorage state.vscdb rjmacarthy.twinny, file mtime)` when both keys are set, a `system` row
+with an empty `session_id` at the modification time of that `state.vscdb`; source-derived; not
+observed on any real install. It never reads `settings.json`.
+
+On a `twinny-server` gateway host, the GitHub, GitLab, Gitea and Bitbucket plugins
+([src/gateway/plugins/index.ts:18-21](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/plugins/index.ts#L18-L21))
+keep each forge's watched repositories and saved access tokens in
+`~/.twinny/server/plugins/<id>/repos.json`, `{version, repos[], tokens[], settings}`, a repository
+`{id, fullName, auth, tokenId, addedAt, addedBy, autoReview, autoPost, autoTriage}` and a token
+`{id, token, label, login, addedAt, addedBy, replacedAt}`, `login` being the account the host said
+the token belongs to
+([src/gateway/plugins/forge.ts:109-143](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/plugins/forge.ts#L109-L143),
+[518-526](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/plugins/forge.ts#L518-L526);
+[src/gateway/plugins/pulls.ts:33-35](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/plugins/pulls.ts#L33-L35),
+[165](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/plugins/pulls.ts#L165)).
+The collector flags the file as a secret (`.twinny/server/plugins/*/repos.json`). The parser does
+not read it: a self-hosted forge's address is in the plugin's `settings`, which this review did
+not trace, so the `source host:` and `source host repository:` rows for it are left for the
+gateway's own round.
 
 ## Confidence
 

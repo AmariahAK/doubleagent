@@ -5,7 +5,10 @@ Gemini CLI (catalog agent `gemini-cli`) is Google's open-source command-line age
 together with Qwen Code, which forked Gemini CLI; see [`qwen-code.md`](qwen-code.md) for how far
 the fork has drifted. Zed's agent panel can also drive it ([Driven from Zed](#driven-from-zed)).
 Paths cited are relative to the repository clone. The agent is parsed: the `gemini-cli` parser
-reads the session files, `logs.json` and `trustedFolders.json` ([Parser plan](#parser-plan)).
+reads the session files, the past-use copies beside them (`logs.json`, `shell_history`, the
+`/chat save` checkpoints and the `/bug` history exports) and the standing permission files
+(`trustedFolders.json`, `settings.json`, the policy files, `trusted_hooks.json` and
+`acknowledgments/agents.json`) ([Parser plan](#parser-plan)).
 
 ## Source and evidence
 
@@ -25,6 +28,14 @@ link to it; every citation of the first commit still resolves there.
 
 ### Source reviews
 
+- 2026-10-21: google-gemini/gemini-cli at
+  [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d)
+  (0.66.0-nightly.20261013): the parser now reads the standing permission files, `shell_history`,
+  the `/chat save` checkpoints and the `/bug` history exports, from source alone; the review added
+  the user policy files and the policy rule schema
+  ([Standing permission files](#standing-permission-files)), the `.gemini/worktrees` exclusion
+  ([Exclusions](#exclusions)) and the source-host statement
+  ([Source host rows](#source-host-rows)).
 - 2026-10-19: HEAD
   [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d)
   (version 0.66.0-nightly.20261013) against
@@ -218,7 +229,9 @@ the `--worktree` checkout inside the project, covered in
 
 `.gemini/whisper_models`, `.gemini/bin` (litert models), `.gemini/tmp/bin`,
 `.gemini/extensions/*/node_modules`, `.gemini/extensions/*/.git`,
-`.gemini/cli-browser-profile` (Chromium profile). `history/*/.git` is a
+`.gemini/cli-browser-profile` (Chromium profile), `.gemini/worktrees` (the `--worktree` checkouts
+inside a project, [Project-local files](#project-local-files); the pattern matches relative to a
+home and to each project). `history/*/.git` is a
 shadow copy of the project at each checkpoint: large but evidentiary; keep,
 rely on the size cap.
 
@@ -250,8 +263,9 @@ shapes in [Standing permission files](#standing-permission-files)), collected by
 worktree on branch `worktree-<name>` that `gemini --worktree` creates when
 `experimental.worktrees` is on
 ([`core/src/services/worktreeService.ts:117-134`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/services/worktreeService.ts#L117-L134)).
-No exclusion covers it, so the project entry collects every worktree checkout in full, as
-`.claude/worktrees` and `.codex/worktrees` would be without theirs. How a session runs there is in
+It is a copy of the repository, so the `.gemini/worktrees` exclusion skips it with one
+`skipped_excluded` row, as `.claude/worktrees` and `.codex/worktrees` are skipped; what the agent
+changed there is recovered from the transcript. How a session runs there is in
 [Worktree sessions](#worktree-sessions).
 
 ### Where the project path is recorded
@@ -350,9 +364,17 @@ no time or session id; the `/chat save` checkpoints, removed only by
 agent writes no deletion marker, and the requests already sent to Code Assist and Clearcut
 under the session's `sessionId` are server-side records held by Google, which a responder can
 only ask Google for ([Sync, relay and origin](#sync-relay-and-origin-rows)). The analyzer reads
-`logs.json` as a secondary source (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)) and none of the
-others ([Parser plan](#parser-plan)).
+`logs.json`, `shell_history`, the `/chat save` checkpoints and the `/bug` history exports as
+secondary sources (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)), and not the shadow
+repository or `memory/` ([Parser plan](#parser-plan)).
+
+So a session missing from `chats/` on a host whose `settings.json` sets no
+`general.sessionRetention` was either deleted by the user or more than 30 days old when the agent
+last started in that project, and the retention rows of the parser
+([Deletion rows](#deletion-rows)) name the window that applied when the file sets one: an
+expired session's prompts are still in `logs.json` and its shell commands in `shell_history`, and
+its turns are in a `/chat save` checkpoint or a `/bug` export when one was taken.
 
 #### Worktree sessions
 
@@ -460,8 +482,9 @@ session to its parent.
 No SQLite store. `~/.gemini/history/<slug>` is a shadow git repository; treat it as
 binary.
 
-Past use beyond the session file, at [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d). Each is collected under `.gemini`; only
-`logs.json` is parsed.
+Past use beyond the session file, at [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d). Each is collected under `.gemini`;
+`logs.json`, `shell_history`, the `/chat save` checkpoints and the `/bug` history exports are
+parsed.
 
 #### logs.json
 
@@ -478,10 +501,11 @@ so it is the only prompt record of an expired or deleted session.
 #### shell_history
 
 `tmp/<slug>/shell_history`
-([storage.ts:480-482](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/storage.ts#L480-L482)) (secondary, not parsed):
-the commands the user ran in shell mode (`!`), plain text,
-oldest first, one command per line with a trailing `\` joining a continued line, deduplicated and
-capped at 100, no time and no session id
+([storage.ts:480-482](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/storage.ts#L480-L482)) (secondary, parsed):
+the commands the user ran in shell mode (`!`), plain text, written as the list joined with `\n` and
+no final newline, read back by splitting on `\n` or `\r\n`, skipping blank lines and joining a line
+whose predecessor ends in an odd number of backslashes to it with a space, the backslash dropped;
+oldest first, deduplicated and capped at 100, no time and no session id
 ([`cli/src/ui/hooks/useShellHistory.ts:12`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/hooks/useShellHistory.ts#L12),
 [31-71](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/hooks/useShellHistory.ts#L31-L71),
 [89-100](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/hooks/useShellHistory.ts#L89-L100)).
@@ -489,16 +513,34 @@ The session file repeats each command inside a synthetic user message
 `I ran the following shell command: ...`
 ([`cli/src/ui/hooks/useExecutionLifecycle.ts:44-69`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/hooks/useExecutionLifecycle.ts#L44-L69);
 [`core/src/core/geminiChat.ts:1304-1316`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/core/geminiChat.ts#L1304-L1316)),
-so it joins on text only. It survives deletion and retention, since it is per project, not per
-session.
+so it joins the session on text only, and not even there: the session's copy wraps the command in
+that sentence. The command itself is also a `logs.json` prompt, since the prompt is logged before
+the shell-mode branch
+([`cli/src/ui/hooks/useGeminiStream.ts:1108-1112`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/hooks/useGeminiStream.ts#L1108-L1112);
+[`cli/src/ui/components/InputPrompt.tsx:419-421`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/components/InputPrompt.tsx#L419-L421)),
+so a `shell_history` line and the `logs.json` entry of the same command are two copies of one
+event. It survives deletion and retention, since it is per project, not per session.
 
 #### /chat save checkpoints
 
 `tmp/<slug>/checkpoint-<encodeURIComponent(tag)>.json` from `/chat save`
 ([logger.ts:285-295](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/core/logger.ts#L285-L295),[329-343](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/core/logger.ts#L329-L343);
 [`cli/.../chatCommand.ts:142`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/chatCommand.ts#L142))
-(secondary, not parsed): a full `history` array with no
-time or session id ([Record schema](#record-schema)). Removed only by `/chat delete <tag>`
+(secondary, parsed): a full `history` array with no
+time or session id ([Record schema](#record-schema)), written with `JSON.stringify` of
+`{history, authType}` in that order, the tag encoded with `encodeURIComponent`
+([`core/src/core/logger.ts:46-48`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/core/logger.ts#L46-L48),
+[329-343](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/core/logger.ts#L329-L343);
+[`cli/src/ui/commands/chatCommand.ts:139-142`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/commands/chatCommand.ts#L139-L142)).
+Each `history` item is a `Content`, `{role: "user"|"model", parts: Part[]}`, the parts carrying
+`text` (with `thought: true` for a thought), `functionCall {id, name, args}` or
+`functionResponse {id, name, response}`
+([`core/src/core/geminiChat.ts:1270-1272`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/core/geminiChat.ts#L1270-L1272));
+the first item is a `user` item holding the environment context (the workspace directories and
+their structure) the CLI sends before the first prompt
+([`core/src/utils/environmentContext.ts:13`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/utils/environmentContext.ts#L13),
+[101-108](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/utils/environmentContext.ts#L101-L108)).
+Removed only by `/chat delete <tag>`
 ([`core/src/core/logger.ts:393`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/core/logger.ts#L393)),
 so it survives the session's deletion and expiry; joins on text.
 
@@ -547,14 +589,20 @@ The delete command removes it with the session
 
 #### Bug reports
 
-`bug-report-history-<epoch ms>.json` from `/bug` (secondary, not parsed) and
+`bug-report-history-<epoch ms>.json` from `/bug` (secondary, parsed) and
 `bug-memory-<epoch ms>.heapsnapshot` from `/bug-memory`. `/bug` opens a GitHub new-issue URL
 carrying the CLI version and the session id, and, when the history is longer than the initial
 context, writes the history to `~/.gemini/tmp/<slug>/bug-report-history-<epoch ms>.json` and asks
 the user to attach it by hand
 ([`cli/src/ui/commands/bugCommand.ts:63-125`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/bugCommand.ts#L63-L125)).
-That file is a copy of the conversation in the `exportHistoryToFile` JSON form and outlives a
-deleted session; it says nothing about whether it was uploaded. `/bug-memory` writes a V8 heap
+That file is a copy of the conversation in the `exportHistoryToFile` JSON form, the bare
+`Content[]` array of `chat.getHistory()` written with `JSON.stringify`, the same items as a
+`/chat save` checkpoint, and is written only when the history holds more than the initial context
+item
+([`cli/src/ui/commands/bugCommand.ts:85-91`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/commands/bugCommand.ts#L85-L91);
+[`cli/src/ui/utils/historyExportUtils.ts:61-70`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/utils/historyExportUtils.ts#L61-L70)).
+It outlives a deleted session and says nothing about whether it was uploaded; the epoch
+milliseconds in its name are when `/bug` ran. `/bug-memory` writes a V8 heap
 snapshot, `bug-memory-<epoch ms>.heapsnapshot`, to the same directory
 ([`cli/src/ui/commands/bugMemoryCommand.ts:26-41`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/bugMemoryCommand.ts#L26-L41)).
 The heap snapshot is a dump of the CLI process's memory and a credential store in effect
@@ -562,7 +610,7 @@ The heap snapshot is a dump of the CLI process's memory and a credential store i
 
 #### Standing permission files
 
-Shapes at [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d); none is parsed yet ([Permission rows](#permission-rows)).
+Shapes at [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d); every file here is parsed ([Permission rows](#permission-rows)).
 
 `policies/auto-saved.toml`, in `~/.gemini/policies/` for a grant the user saved for every project
 and in `<project>/.gemini/policies/` for one saved for the workspace
@@ -580,16 +628,41 @@ An unparseable file is copied to `auto-saved.toml.bak` and replaced by a fresh o
 ([824](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/config.ts#L824)),
 so the `.bak` holds the grants from before.
 
-`settings.json` (home and project): `general.defaultApprovalMode` (`default`, `auto_edit` or `plan`;
+The CLI loads every `*.toml` file in the policies directory, not only `auto-saved.toml`
+([`core/src/policy/toml-loader.ts:165-175`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/toml-loader.ts#L165-L175)),
+so a policy file the user wrote there holds standing rules too. Its `rule` tables take `toolName`
+(a string or an array), `decision` (`allow`, `deny` or `ask_user`), `priority`, and optionally
+`subagent`, `mcpName`, `argsPattern`, `commandPrefix`, `commandRegex`, `modes`, `interactive`,
+`toolAnnotations`, `allowRedirection` and `denyMessage`; a `safety_checker` array names the
+checkers that vet a tool call
+([`toml-loader.ts:39-70`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/toml-loader.ts#L39-L70),
+[75-106](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/toml-loader.ts#L75-L106);
+[`core/src/policy/types.ts:10-14`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/types.ts#L10-L14)).
+
+`settings.json` (home and project), read as JSON with comments stripped
+([`cli/src/config/settings.ts:949`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settings.ts#L949)):
+`general.defaultApprovalMode` (`default`, `auto_edit` or `plan`;
 YOLO only from the command line)
 ([`cli/src/config/settingsSchema.ts:228-245`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L228-L245);
 the runtime enum `default`, `autoEdit`, `yolo`, `plan` is at
 [`core/src/policy/types.ts:48-53`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/types.ts#L48-L53)),
-`tools.allowed`, `tools.confirmationRequired` and `tools.exclude`
-([1682-1719](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1682-L1719)),
-`security.disableYoloMode`, `security.disableAlwaysAllow`, `security.enablePermanentToolApproval`,
-`security.autoAddToPolicyByDefault` and `security.folderTrust.enabled`
-([1845-1925](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1845-L1925)).
+the sandbox settings `tools.sandbox` (a boolean, a profile path or a sandbox command such as
+`docker`), `tools.sandboxAllowedPaths` and `tools.sandboxNetworkAccess`
+([1557-1590](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1557-L1590)),
+the tool lists `tools.core`, `tools.allowed`, `tools.confirmationRequired` and `tools.exclude`
+([1669-1719](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1669-L1719)),
+the MCP server lists `mcp.allowed` and `mcp.excluded`
+([1794-1813](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1794-L1813)),
+and `security.toolSandboxing`, `security.disableYoloMode`, `security.disableAlwaysAllow`,
+`security.enablePermanentToolApproval`, `security.autoAddToPolicyByDefault`,
+`security.blockGitExtensions`, `security.allowedExtensions`, `security.folderTrust.enabled` and
+`security.enableConseca`
+([1835-1925](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L1835-L1925),
+[2007-2016](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L2007-L2016)).
+The same file holds the retention settings `general.sessionRetention.enabled`, `maxAge`,
+`maxCount` and `minRetention`
+([389-440](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/settingsSchema.ts#L389-L440);
+[What survives a delete](#what-survives-a-delete)).
 
 `trusted_hooks.json`: `{"<project path>": ["<hook name>:<command>", ...]}`, the project hooks the
 user trusted
@@ -631,15 +704,20 @@ output.
 
 ### Parser plan
 
-Globs (home-relative): `.gemini/tmp/*/chats/**/*.jsonl`,
-`.gemini/tmp/*/chats/**/*.json`, `.gemini/tmp/*/logs.json`,
-`.gemini/tmp/*/checkpoints/*.json`, `.cache/.gemini/tmp/*/chats/**/*.jsonl`.
+Globs (home-relative, each `tmp` glob also under `.cache/.gemini`):
+`.gemini/tmp/*/chats/**/*.jsonl`, `.gemini/tmp/*/chats/**/*.json`, `.gemini/tmp/*/logs.json`,
+`.gemini/tmp/*/shell_history`, `.gemini/tmp/*/checkpoint-*.json`,
+`.gemini/tmp/*/bug-report-history-*.json`, `.gemini/trustedFolders.json`,
+`.gemini/settings.json` and `.gemini/policies/*.toml` (also `auto-saved.toml.bak`, in the home
+and in a project), `.gemini/trusted_hooks.json` and `.gemini/acknowledgments/agents.json` (home
+only). `.gemini/tmp/*/checkpoints/*.json` is not read.
 
 Rows: one per user, info, error or warning message; one `assistant` row per
 gemini message plus one `thinking` row per `thoughts[]` entry; one `tool_use`
 per `toolCalls[]` element and one `tool_result` when `result` is non-null,
 sharing the `tool_use_id`; `logs.json` entries as `user` rows when no session
-file covers that `sessionId`.
+file covers that `sessionId`; the secondary sources and standing files as in the subsections
+below.
 
 | Column | Source |
 | --- | --- |
@@ -683,23 +761,33 @@ Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96
   observed on any real install, source-derived.
   A file that still does not decode, or is not a JSON object, is one
   `parser: <file> is not a JSON object` row.
-- Not read: `policies/auto-saved.toml` (the saved "always allow"
-  policies), `policy_integrity.json`, `trusted_hooks.json` and
-  `acknowledgments/agents.json`; their shapes are in
-  [Standing permission files](#standing-permission-files).
+The standing grants below are source-derived; not observed on any real install. Each is a
+`system` row at the file's modification time, saying so, line 1, no session id; the shapes are in
+[Standing permission files](#standing-permission-files).
 
-Proposed rows for the standing grants, not yet parsed:
-
-- `policies/auto-saved.toml`:
-  `permission setting: policy allow <toolName> [mcp=<mcpName>]
-  [prefix=<commandPrefix>|args=<argsPattern>] [modes=<modes>] (from
-  <file>, file mtime)`, one per `rule` entry, `project_path` the
-  project for the workspace file. Reading it needs a TOML reader
-  (Python 3.11's `tomllib`; the analyzer supports 3.10).
-- `settings.json`: one `permission setting: <key>=<value> (from <file>, file
-  mtime)` row per key present.
-- `trusted_hooks.json` and `acknowledgments/agents.json`: one `permission setting:` row per
-  entry, `project_path` the key.
+- `.gemini/policies/*.toml` and `auto-saved.toml.bak`, in the home and in a project:
+  `permission setting: policy <decision> <toolName> <key>=<value> ... (from <file>, file mtime)`,
+  one per `rule` table, its other keys in file order, values as recorded (an array as compact
+  JSON), `project_path` the project for a workspace file. Read with Python's `tomllib`, so on
+  Python 3.10, which lacks it, each policy file is one row
+  `parser: <file> not read: its [[rule]] tables need Python 3.11 or later (tomllib)`; a file
+  `tomllib` cannot read (the corrupt one a `.bak` preserves) is one `parser: unreadable <file>:
+  <reason>` row. `safety_checker` tables are not read.
+- `settings.json`, in the home and in a project: one `permission setting: <key>=<value> (from
+  <file>, file mtime)` row per entry of `tools.sandboxAllowedPaths`, `tools.core`,
+  `tools.allowed`, `tools.confirmationRequired`, `tools.exclude`, `mcp.allowed`, `mcp.excluded`
+  and `security.allowedExtensions`, and per set value of `general.defaultApprovalMode`,
+  `tools.sandbox`, `tools.sandboxNetworkAccess` and the `security` flags named in
+  [Standing permission files](#standing-permission-files). No other key is read, since
+  `mcpServers` embeds credentials ([Credentials](#credentials)). A file that is not a JSON object
+  is one `parser: <file> is not a JSON object` row.
+- `trusted_hooks.json`: `permission setting: trustedHooks=<name>:<command> (from
+  .gemini/trusted_hooks.json, file mtime)` per entry, `project_path` the project key.
+- `acknowledgments/agents.json`: `permission setting: acknowledgedAgents.<agent>=<hash> (from
+  .gemini/acknowledgments/agents.json, file mtime)` per entry, `project_path` the project key.
+- Not read: `policy_integrity.json`, one hash per `<scope>:<identifier>` key (a policy scope and,
+  for a project, its path), against which the CLI checks whether a policy directory changed
+  ([`core/src/policy/integrity.ts:27-29`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/integrity.ts#L27-L29)).
 - Per-call decisions: unchanged. The session file records the call's
   `status` only; which button the user pressed is not recorded.
 
@@ -725,11 +813,27 @@ Proposed rows for the standing grants, not yet parsed:
 `logs.json` is read as a secondary source: its entries become `user` rows when no session file
 covers that `sessionId` (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-`shell_history`, `checkpoint-<tag>.json` and
-`checkpoints/*.json` are secondary sources to add, rows with an empty
-`timestamp_utc` matched on text; `memory/` and the activity log are
-candidates after a real-install round shows them
-([Other stores](#other-stores)).
+Three more secondary sources are read, source-derived; not observed on any real install. Their
+records carry no time, so their rows have an empty `timestamp_utc`, no session id and the
+project of their `tmp/<slug>` directory, and they match the session file on text, tool rows on
+`tool_use_id` ([Other stores](#other-stores)):
+
+- `shell_history`: one `user` row per command, `source_line` the command's first line. A command
+  matches no session row (the session wraps it in a sentence) but pairs with its `logs.json`
+  copy, so a timeline shows it once.
+- `checkpoint-<tag>.json`: a first `system` row `chat checkpoint: tag <tag> authType=<authType>
+  (from <file>, file mtime)` at the file's modification time (`-` when the file names no
+  `authType`, the tag decoded from the file name), then per `history` item its text parts as one
+  `user` or `assistant` row, a `thinking` row per thought part when thinking is asked for, and a
+  `tool_use` or `tool_result` row per `functionCall` or `functionResponse` part with its `id` and
+  `name`; `source_line` is the item's 1-based position. The environment-context item becomes a
+  `user` row of its own.
+- `bug-report-history-<epoch ms>.json`: the same item rows after a first `system` row
+  `bug report history: exported (from <file>, time in the file name)`, timestamped with the
+  milliseconds in the name.
+
+`checkpoints/*.json` (deleted at every start), `memory/` and the activity log are not read; they
+are candidates after a real-install round shows them.
 
 #### Sync, relay and origin rows
 
@@ -811,18 +915,29 @@ A session whose `.project_root` lies under
 
 #### Deletion rows
 
-No row; a deletion leaves no marker to read. A default install deletes sessions older than 30
-days at each start, and `logs.json`, `shell_history` and the `/chat save` checkpoints are what
-remains ([What survives a delete](#what-survives-a-delete)).
+No row for a deletion itself; it leaves no marker to read. A default install deletes sessions
+older than 30 days at each start, and `logs.json`, `shell_history`, the `/chat save` checkpoints
+and the `/bug` exports are what remains ([What survives a delete](#what-survives-a-delete)).
+
+The retention window is named instead, source-derived; not observed on any real install: each
+of `general.sessionRetention.enabled`, `maxAge`, `maxCount` and `minRetention` that a
+`settings.json` sets is one `system` row
+`session retention: general.sessionRetention.<key>=<value> (from <file>, file mtime)` at the
+file's modification time ([Standing permission files](#standing-permission-files)). No row means
+the defaults: retention on, 30 days.
 
 #### Bad-line rows
 
 The parser covers the session file, `logs.json` and `trustedFolders.json`, the last including the
-trailing commas and byte-order mark Qwen Code allows ([Permission rows](#permission-rows)); the
-sources proposed in this section need the same
-treatment when they are parsed.
-`shell_history` has no structure to break, but a line that
-is not valid UTF-8 must still become a row carrying the line.
+trailing commas and byte-order mark Qwen Code allows ([Permission rows](#permission-rows)).
+In `shell_history` a line that is not valid UTF-8 is a row
+`parser: unparseable line (not valid UTF-8): <line>`, the line decoded with replacement
+characters, and the commands around it are kept. A `/chat save` checkpoint or `/bug` export cut
+mid-write keeps its complete leading items and adds `parser: unparseable record <N> (<reason>):
+<text from the cut item to the end>` or `parser: array cut off after record <N>`; an item that is
+not an object is `parser: unparseable record <N> (not a JSON object): <item>`, and a file that is
+neither form is one `parser: not a chat history: ...` row. The standing files each yield one
+`parser:` row when they cannot be read ([Permission rows](#permission-rows)).
 
 #### Fixtures
 
@@ -842,6 +957,53 @@ Fixture (one JSON object per line):
 ```json
 [{"sessionId":"a1b2c3d4-0000-4000-8000-000000000001","messageId":0,"timestamp":"2026-10-01T09:00:05.000Z","type":"user","message":"list files in src"}]
 ```
+
+`checkpoint-my%20tag.json` (the `bug-report-history-<ms>.json` form is the bare `history` array):
+
+```json
+{"history":[{"role":"user","parts":[{"text":"list files in src"}]},{"role":"model","parts":[{"text":"Listing now."},{"functionCall":{"id":"list_directory-1759309207000","name":"list_directory","args":{"path":"/srv/proj/src"}}}]},{"role":"user","parts":[{"functionResponse":{"id":"list_directory-1759309207000","name":"list_directory","response":{"output":"main.ts\nutil.ts"}}}]}],"authType":"oauth-personal"}
+```
+
+`shell_history` (no final newline; `make\` continues on the next line):
+
+```text
+ls -la
+git status
+make\
+test
+```
+
+`policies/auto-saved.toml`:
+
+```toml
+[[rule]]
+decision = "allow"
+priority = 2.95
+toolName = "run_shell_command"
+commandPrefix = [ "git", "status" ]
+```
+
+`trusted_hooks.json` and `acknowledgments/agents.json`:
+
+```json
+{"/srv/proj": ["lint:npm run lint"]}
+{"/srv/proj": {"reviewer": "0123abcd"}}
+```
+
+#### Source host rows
+
+The agent records no source-host integration. A grep of
+[`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d)
+for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and
+`clone` found no connected account, stored token or cached repository list: the only GitHub token
+is `GITHUB_TOKEN` read from the environment to download extensions, never written
+([`cli/src/config/extensions/github_fetch.ts:15-18`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/config/extensions/github_fetch.ts#L15-L18)),
+and `/setup-github` writes GitHub Actions workflow and command files into the repository's
+`.github/workflows` and `.github/commands` and opens the repository's Actions secrets page in the
+browser, keeping nothing under `~/.gemini`
+([`cli/src/ui/commands/setupGithubCommand.ts:48-65`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/commands/setupGithubCommand.ts#L48-L65),
+[240-252](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/ui/commands/setupGithubCommand.ts#L240-L252)).
+OAuth in the CLI is the Google sign-in and MCP or A2A server tokens ([Credentials](#credentials)).
 
 ## Confidence
 

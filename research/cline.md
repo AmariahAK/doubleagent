@@ -6,7 +6,8 @@ Cline (catalog agent `cline`) is an open-source coding agent with a VS Code exte
 still shares its task layout ([`roo-code.md`](roo-code.md)), PearAI bundles a fork of Roo Code
 ([`pearai.md`](pearai.md)), and Kilo Code has since moved to an OpenCode-derived store
 ([`kilo-code.md`](kilo-code.md)). The analyzer parses Cline's legacy tasks, its SDK sessions and
-their secondary stores, from source and fixtures only.
+their secondary stores, its permission settings and decisions and its Cline Cloud state, from
+source and fixtures only.
 
 ## Source and evidence
 
@@ -24,6 +25,16 @@ No real install.
 
 ### Source reviews
 
+- 2026-10-21: cline/cline at
+  [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33)
+  (4.1.25), with the release tags from
+  [v3.0.0](https://github.com/cline/cline/commit/7fa399c6af3995c1628f0240de894dedb84b9053) to
+  [v4.0.0](https://github.com/cline/cline/commit/1e88a708bde949cf92808c1638d8fb869dc55e05) for the
+  share-task question: the parser now reads the hook audit log, the rejected and blocked SDK calls,
+  the standing permission settings, the Cline Cloud state and the import marker, the Parser plan
+  says so, and [Sync, relay and origin rows](#sync-relay-and-origin-rows) records that no release
+  shipped a share-task feature; the `prompt_submit` audit line and the suffix on a missing-callback
+  rejection were added.
 - 2026-10-19: [cline/cline](https://github.com/cline/cline) at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33) against
   [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c). Added Cline Cloud and its local state, imported sessions, the permission
   records and settings, the hook audit log and the `.claude/skills` project directory
@@ -289,9 +300,10 @@ session's turns until the hub next runs, at its start and every five minutes
 ([`session-search.db`](#session-searchdb)), and a Cloud session deleted on the server drops out of
 `globalState.json` at the next listing. A session the SDK imported from Claude Code, Codex or
 OpenCode is a copy of that agent's transcript under a new id. The analyzer reads
-`user_input_history.jsonl` and `session-search.db` as secondary sources, the upload queue for its
-own rows, an imported session as any SDK session, and `logs/hooks.jsonl` and `cloudSessionStatuses`
-not at all (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+`user_input_history.jsonl`, `session-search.db` and `logs/hooks.jsonl` as secondary sources, the
+upload queue and `cloudSessionStatuses` for their own rows, and an imported session as any SDK
+session with its source named on the start row (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 #### Imported sessions
 
@@ -602,7 +614,7 @@ every session that has no runtime hooks configured, which is the default
 ([`sdk/packages/core/src/services/local-runtime-bootstrap.ts:447-454`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/local-runtime-bootstrap.ts#L447-L454)).
 Each line is appended, never rewritten
 ([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)),
-and carries `ts`, `clineVersion`, `timestamp`, `taskId` (the conversation id),
+and carries `ts` and `timestamp` (both ISO 8601), `clineVersion`, `taskId` (the conversation id),
 `sessionContext.rootSessionId` (the session id), `workspaceRoots`, `userId` (`CLINE_USER_ID`, else
 `USER`), `agent_id` and `parent_agent_id`
 ([`:234-254`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L234-L254)),
@@ -610,7 +622,13 @@ plus a `hookName`: `agent_start`; `tool_call` with `tool_call{id, name, input}`;
 `tool_result` (the call record) and
 `postToolUse{toolName, parameters, result, success, executionTimeMs}`; `agent_end` with
 `turn.outputText`; `agent_abort` with `reason`; or `agent_error` with `error{name, message, stack}`
-([`:652-730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L652-L730)).
+([`:652-730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L652-L730));
+or `prompt_submit` with `userPromptSubmit.prompt`, the text blocks of each user message that is not
+an injected hook-context block
+([`:734-756`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L734-L756),
+[`:568-575`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L568-L575)).
+The `tool_result` call record is `{id, name, input, output, error?, durationMs, startedAt, endedAt}`
+([`:54-65`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L54-L65)).
 The session store appends `session_shutdown` lines `{ts, hookName, reason, sessionId, pid, source}`
 for stale sessions it finds
 ([`sdk/packages/core/src/session/stores/session-manifest-store.ts:320-341`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/session/stores/session-manifest-store.ts#L320-L341)).
@@ -637,7 +655,11 @@ SECRETS_KEYS):
 `apiKey, clineApiKey, clineAccountId, openRouterApiKey, awsAccessKey, awsSecretKey, awsSessionToken, openAiApiKey, geminiApiKey, ..., mcpOAuthSecrets, openai-codex-oauth-credentials, ocaRefreshToken`.
 Also `messages.json.system_prompt`, `manifest.prompt`, `schedules.system_prompt`,
 `session-search.db` content, `images[]` base64, and file contents and command output in every
-transcript.
+transcript. `logs/hooks.jsonl` repeats tool inputs and outputs and the final replies, and its
+`userId` is the `CLINE_USER_ID` or `USER` value; a `cloud-pending-starts/*.json` record's `account`
+names the Cline account scope (user and organisation) the sandbox was started under
+([`apps/vscode/src/sdk/cloud-pending-starts.ts:5-12`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/cloud-pending-starts.ts#L5-L12)).
+Neither is a credential; the parser prints both.
 
 Two files that the upload features use hold credentials and are collected without the secret flag.
 The VS Code extension caches each organisation's remote config, `promptUploading` access keys
@@ -662,7 +684,10 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `.cline/data/`, `.cline/data/sessions/*/*.json`,
 `.cline/data/sessions/*/*.messages.json`, `.cline/data/db/sessions.db`,
 `.cline/data/db/session-search.db`, `.cline/data/cache/user_input_history.jsonl`,
-`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`.
+`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`, `.cline/data/logs/hooks.jsonl`,
+`.cline/data/globalState.json`, `.cline/data/settings/global-settings.json`,
+`settings/cline_mcp_settings.json` under `.cline/data/` or `<GS>/saoudrizwan.claude-dev/`, and
+`.cline/data/cloud-pending-starts/*.json`.
 
 Rows: one per `ui_messages` entry for legacy tasks (preferred over the API
 history because it has `ts`), one per content block of SDK messages.
@@ -685,31 +710,37 @@ Legacy: the first `task_metadata.json` `model_usage[]` entry's `mode` yields a `
 `permission mode: <mode>` and a later entry whose `mode` differs yields `permission mode: <old> ->
 <new>`, so an entry that changes only the mode still has a row ([Model](#model-rows)).
 
-The rest, at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33); the parser reads none of it yet:
+The rest is read from [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33),
+source-derived; not observed on any real install:
 
 - Per call, SDK sessions. A call the policy does not auto-approve asks the host; a call that is not
-  run gets a `tool_result` block with `is_error` true and content `{error: <reason>}`
+  run gets a `tool_result` block with `is_error` true and content `{error: <reason>}`, persisted as
+  that object's JSON string
   ([`sdk/packages/agents/src/agent-runtime.ts:2475-2492`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2475-L2492),
   [`:2555-2559`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2555-L2559),
-  [`sdk/packages/core/src/runtime/config/agent-message-codec.ts:296-303`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/runtime/config/agent-message-codec.ts#L296-L303)).
-  A rejection's reason ends with
+  [`sdk/packages/core/src/runtime/config/agent-message-codec.ts:296-303`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/runtime/config/agent-message-codec.ts#L296-L303),
+  [`sdk/packages/core/src/session/persisted-tool-result-content.ts:9-24`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/session/persisted-tool-result-content.ts#L9-L24)).
+  Every approval that comes back not approved gets the suffix
   ` -- NOT a tool or system failure. Clarify with user before proceeding.`
-  ([`sdk/packages/shared/src/llms/tools.ts:95-105`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/llms/tools.ts#L95-L105))
-  and starts with `This tool call was rejected by the user and not executed.`,
+  ([`sdk/packages/shared/src/llms/tools.ts:95-105`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/llms/tools.ts#L95-L105)),
+  and its reason starts with `This tool call was rejected by the user and not executed.`,
   `The user denied this edit. The file was NOT modified...` (with `<feedback>` when the user typed
   some) or `Tool execution was cancelled because the user sent a follow-up message.`
   ([`apps/vscode/src/sdk/tool-approval-denial.ts:4-25`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/tool-approval-denial.ts#L4-L25)),
-  or `Tool approval request timed out`
-  ([`sdk/packages/core/src/runtime/tools/tool-approval.ts:101`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/runtime/tools/tool-approval.ts#L101)).
-  A blocked call has no suffix: `Tool "<name>" is disabled by policy`,
-  `Tool <name> was blocked by a runtime hook`, or
-  `Tool "<name>" requires approval but no approval callback is configured`
+  is `Tool approval request timed out`
+  ([`sdk/packages/core/src/runtime/tools/tool-approval.ts:101`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/runtime/tools/tool-approval.ts#L101)),
+  or is the runtime's own `Tool "<name>" requires approval but no approval callback is configured`
+  or `Tool "<name>" approval request failed: <error>`
+  ([`agent-runtime.ts:2502-2541`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2502-L2541)).
+  A call skipped without asking has no suffix: `Tool "<name>" is disabled by policy`, or
+  `Tool <name> was blocked by a runtime hook` unless the hook gave a reason of its own
   ([`agent-runtime.ts:2469`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2469),
-  [`:2481`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2481),
-  [`:2512`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2512)).
-  An approved call, by the user or by policy, leaves no mark. A parser can yield
-  `permission decision: rejected` (or `blocked`) beside the `tool_result` row by matching these
-  prefixes.
+  [`:2481`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/agents/src/agent-runtime.ts#L2481)).
+  An approved call, by the user or by policy, leaves no mark. The parser yields a `system` row
+  after the `tool_result` row, with its `tool_use_id`, `tool_name`, time and model:
+  `permission decision: rejected reason=<reason without the suffix>` for a reason with the
+  suffix, and `permission decision: blocked reason=<reason>` for the two fixed skip reasons. A
+  hook's own reason matches neither and yields no row.
 - Standing, CLI and SDK: `~/.cline/data/settings/global-settings.json` (`CLINE_GLOBAL_SETTINGS_PATH`
   overrides,
   [`sdk/packages/shared/src/storage/paths.ts:439-445`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/storage/paths.ts#L439-L445))
@@ -719,20 +750,36 @@ The rest, at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb
   The CLI auto-approves every tool unless a flag or `toolAutoApprove: false` says otherwise
   ([`apps/cli/src/main.ts:880-894`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/cli/src/main.ts#L880-L894),
   [`apps/cli/src/runtime/interactive/approvals.ts:39-52`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/cli/src/runtime/interactive/approvals.ts#L39-L52)).
-- Standing, VS Code and JetBrains: `~/.cline/data/globalState.json` key `autoApprovalSettings`,
+  The parser reads every key of this list, one row per value or list entry; `telemetryOptOut`,
+  `autoUpdateEnabled`, the compaction keys and `tuiTheme` are not permissions and are not read.
+- Standing, VS Code and JetBrains: `~/.cline/data/globalState.json`, a flat JSON object keyed by
+  state key
+  ([`apps/vscode/src/shared/storage/ClineFileStorage.ts:92`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/ClineFileStorage.ts#L92)),
+  key `autoApprovalSettings`,
   `{version, enabled, favorites, maxRequests, actions: {readFiles, readFilesExternally, editFiles, editFilesExternally, executeSafeCommands, executeAllCommands, useBrowser, useMcp}, enableNotifications}`,
   whose default approves reads, edits, all commands, the browser and MCP
   ([`apps/vscode/src/shared/AutoApprovalSettings.ts:1-44`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/AutoApprovalSettings.ts#L1-L44),
   [`apps/vscode/src/shared/storage/state-keys.ts:265-267`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L265-L267)),
   and key `mode` (`plan` or `act`,
   [`:286`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L286)).
+  The parser reads `enabled`, `maxRequests`, each `favorites` entry and each `actions.<name>`
+  (`version` and `enableNotifications` are not permissions), and `mode`; no other key of the file.
 - Standing, MCP: each server in `settings/cline_mcp_settings.json` has `autoApprove`, a list of tool
   names run without asking, and `disabled`
   ([`apps/vscode/src/services/mcp/schemas.ts:10`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/services/mcp/schemas.ts#L10),
   [`:17-19`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/services/mcp/schemas.ts#L17-L19)).
+  The file is under `~/.cline/data/settings/` and, from extension builds before the move to
+  `~/.cline/data`, under the extension's globalStorage `settings/`
+  ([`apps/vscode/src/core/storage/disk.ts:128-129`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/core/storage/disk.ts#L128-L129),
+  [`:190-194`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/core/storage/disk.ts#L190-L194));
+  the parser reads both, `autoApprove` and `disabled` only, never the server's command, `env`,
+  `headers` or `oauth`.
 
-Each standing entry can be one `permission setting: <key>=<value> (from
-<file>, file mtime)` row, as the `claude-code` parser writes them.
+Each standing entry is one `permission setting: <key>=<value> (from <file>, file mtime)` row, as
+the `claude-code` parser writes them, at the file's modification time with no session or project:
+`autoApprovalSettings.actions.readFiles=true`, `mode=act`, `toolAutoApprove=false`,
+`disabledTools=<name>`, `tools.<name>.enabled=false`, `mcpServers.<server>.autoApprove=<tool>`,
+`mcpServers.<server>.disabled=false`. A file that is not a JSON object is one `parser:` row.
 
 #### Model rows
 
@@ -792,6 +839,24 @@ source that a primary store records too,
   When a prompt is in this file and in `session-search.db` too, whichever
   secondary row the duplicate rule reaches first takes the transcript row,
   and in the fixture the index's copy is the one left over.
+- Secondary: `logs/hooks.jsonl` ([Hook audit log](#hook-audit-log)), source-derived; not observed
+  on any real install. One row per line, at its `ts`, with `session_id`
+  `sessionContext.rootSessionId` (else `taskId`, else the shutdown line's
+  `sessionId`), the session directory name the messages reader uses, and
+  `project_path` the first `workspaceRoots` entry: `prompt_submit` a `user`
+  row with the prompt; `tool_call` a `tool_use` row with `tool_name`, the
+  call id as `tool_use_id` and the input summarised as the transcript's
+  `tool_use` row is; `tool_result` a `tool_result` row with the call id and
+  `postToolUse.result`, or `[error] <error>` when the record has an
+  `error`; `agent_end` an `assistant` row with `turn.outputText`. The tool
+  rows pair with the transcript's on the call id, the prompt and the reply
+  on text, within one hour, since a call line is stamped when the call
+  starts or ends and the transcript message when the turn is written. Every
+  other line is a `system` row `hook audit: <hookName>` with
+  `cline_version=`, `user=`, `agent=`, `parent_agent=`, `reason=`, `pid=`
+  and `source=` when present and `error=<name>: <message>` (never the
+  stack); no transcript row repeats them, so they stay. What it survives is
+  in [What survives a delete](#what-survives-a-delete).
 
 The API history is not a second copy of `ui_messages.json` that the rule could pair, so it stays a
 fallback for a task without `ui_messages.json`. The two record different texts for the same turn:
@@ -805,16 +870,14 @@ record per tool with JSON text, and its records carry no time. In the fixture th
 row is `<task>fix tests</task>` beside the UI row `fix tests | [1 image(s)]`, and its tool rows have
 no UI twin with the same text.
 
-`logs/hooks.jsonl` ([Hook audit log](#hook-audit-log)) is a secondary source the parser does
-not read. Its `tool_call` and `tool_result` lines join a transcript's
-`tool_use` and `tool_result` blocks on the call id and session id, its
-`agent_end` line repeats the final reply, and every line has its own
-time; what it survives is in [What survives a delete](#what-survives-a-delete).
 `<sessionId>.compaction.json` repeats turns the messages file keeps, and
-stays unread. An imported session is read as any SDK session; its
-`metadata.importedFrom` can be one `system` row naming the source agent,
-session id and path, since the transcript is then a copy of another
-agent's.
+stays unread. An imported session is read as any SDK session, and its
+start row names the source, source-derived; not observed on any real
+install: `metadata.importedFrom` adds `imported_from=<tool>
+imported_session=<sourceSessionId> imported_path=<sourcePath>
+imported_at=<importedAt> imported_provider=<sourceProvider>
+imported_model=<sourceModel>`, so the copy of another agent's transcript
+is not read as Cline's own work.
 
 #### Sync, relay and origin rows
 
@@ -893,17 +956,35 @@ set
 The task history (`HistoryItem`) has no share, sync or remote field
 ([`apps/vscode/src/shared/HistoryItem.ts:1-26`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/HistoryItem.ts#L1-L26)),
 and no share-task feature or `shareUrl` exists at this commit (searched `share`, `shareUrl`,
-`shareTask` in `apps/` and `sdk/`).
+`shareTask` in `apps/` and `sdk/`). No earlier release shipped one either: the same search finds
+nothing at the release tags v3.0.0, v3.10.0, v3.20.0, v3.30.0, v3.40.0, v3.60.0, v3.80.0, v3.89.2
+and v4.0.0 (from [`7fa399c`](https://github.com/cline/cline/commit/7fa399c6af3995c1628f0240de894dedb84b9053),
+December 2024, to [`1e88a70`](https://github.com/cline/cline/commit/1e88a708bde949cf92808c1638d8fb869dc55e05),
+June 2026), and the extension's changelog, which runs back to 0.0.6, names no share or share-link
+feature, so a Cline install of any release holds no share marker to parse.
 
 Origin: a Cline Cloud session ([Cline Cloud](#cline-cloud))
-originated on the vendor's servers and has no local transcript. Each
-`cloudSessionStatuses` entry of `globalState.json` can be one `system`
-row, `session origin: remote cline-cloud <ses- id> status <status> (from
-globalState.json cloudSessionStatuses, observedAt)` at its `observedAt`,
-with the id as `session_id`, and each record of a
-`cloud-pending-starts/*.json` file one row at the file's modification
-time; the parser would then set `records_origin`. Not seen on a real
-install, so a real-install round of the Cloud surface comes first.
+originated on the vendor's servers and has no local transcript. The parser
+yields two `system` rows per `cloudSessionStatuses` entry of
+`globalState.json`, at its `observedAt` with the id as `session_id`:
+`session origin: remote cline-cloud session <ses- id> status <status>
+(from .cline/data/globalState.json cloudSessionStatuses, observedAt)` and
+`session synced: cline-cloud holds session <ses- id>, no local transcript
+(from .cline/data/globalState.json cloudSessionStatuses, observedAt)`,
+since the vendor holds the session. Each record of a
+`cloud-pending-starts/*.json` file yields the same pair at the file's
+modification time, the origin row reading `sandbox start pending
+account=<account> endpoint=<endpoint>` in place of the status and both
+ending `(from <file>, file mtime)`; a file that is not a JSON array is one
+`parser:` row and a record without a `sessionId` one row each. The
+`cloudTaskTarget` is one `cloud task target: target=<target>
+repository_id=<repositoryId> branch=<branch> (from
+.cline/data/globalState.json, file mtime)` row. The parser sets
+`records_origin`, so every other Cline session's `origin` is `local`. All
+of it is source-derived; not observed on any real install. A session
+deleted on the server leaves `cloudSessionStatuses` at the next listing,
+so the rows show only the sessions the account still listed when the file
+was last written.
 
 #### Scratch directory rows
 
@@ -924,9 +1005,10 @@ yields no deletion row.
 
 #### Bad-line rows
 
-Every file the parser reads is covered; `logs/hooks.jsonl`, which it does not read, is JSON Lines
-and needs the same per-line handling when it is read. How a bad line changes the history rows and
-the upload queue rows is under
+Every file the parser reads is covered. `logs/hooks.jsonl` is read line by line with each bad line
+its own `system` row; a settings file or `globalState.json` that is not a JSON object, and a
+pending-start file that is not a JSON array, is one `parser:` row. How a bad line changes the
+history rows and the upload queue rows is under
 [Past-use rows and secondary sources](#past-use-rows-and-secondary-sources) and
 [Sync, relay and origin](#sync-relay-and-origin-rows).
 
@@ -942,7 +1024,39 @@ Fixtures (invented content, real field names):
 {"_file":"state/taskHistory.json","record":{"id":"1760000000000","ulid":"01JAX3Q8M4","ts":1760000000000,"task":"fix tests","tokensIn":1200,"tokensOut":80,"totalCost":0.0041,"cwdOnTaskInitialization":"/home/u/proj","modelId":"claude-sonnet-4-5","apiProvider":"anthropic"}}
 {"_file":"sessions/<id>/<id>.json","record":{"version":1,"session_id":"1760000000000_k3x9q","source":"cli","pid":4242,"started_at":"2026-10-03T09:00:00.000Z","status":"completed","interactive":true,"provider":"anthropic","model":"claude-sonnet-4-5","cwd":"/home/u/proj","workspace_root":"/home/u/proj","enable_tools":true,"enable_spawn":false,"enable_teams":false,"prompt":"fix tests","metadata":{"title":"fix tests"},"messages_path":"/home/u/.cline/data/sessions/1760000000000_k3x9q/1760000000000_k3x9q.messages.json"}}
 {"_file":"sessions/<id>/<id>.messages.json","record":{"version":1,"updated_at":"2026-10-03T09:00:05.000Z","agent":"lead","sessionId":"1760000000000_k3x9q","origin":{"source":"cli","mode":"user","sessionId":"1760000000000_k3x9q"},"messages":[{"id":"m1","role":"user","content":"fix tests","ts":1760000000000},{"id":"m2","role":"assistant","content":[{"type":"thinking","thinking":"run the suite"},{"type":"tool_use","id":"call_1","name":"bash","input":{"command":"pytest -q"}}],"modelInfo":{"id":"claude-sonnet-4-5","provider":"anthropic"},"metrics":{"inputTokens":1200,"outputTokens":80,"cost":0.0041},"ts":1760000002000},{"id":"m3","role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","name":"bash","content":"3 passed","is_error":false}],"ts":1760000003000}]}}
+{"_file":"logs/hooks.jsonl","record":{"ts":"2026-10-03T09:00:02.500Z","clineVersion":"4.1.25","timestamp":"2026-10-03T09:00:02.500Z","taskId":"1760000000000_k3x9q","sessionContext":{"rootSessionId":"1760000000000_k3x9q"},"workspaceRoots":["/home/u/proj"],"userId":"u","agent_id":"agent_lead","hookName":"tool_call","iteration":1,"tool_call":{"id":"call_1","name":"bash","input":{"command":"pytest -q"}},"preToolUse":{"toolName":"bash","parameters":{"command":"pytest -q"}}}}
+{"_file":"logs/hooks.jsonl","record":{"ts":"2026-10-03T09:10:00.000Z","hookName":"session_shutdown","reason":"stale_process","sessionId":"1760000000000_k3x9q","pid":4100,"source":"cli"}}
+{"_file":"sessions/<id>/<id>.messages.json","record":{"id":"m5","role":"user","content":[{"type":"tool_result","tool_use_id":"call_2","name":"web_fetch","content":"{\"error\":\"Tool \\\"web_fetch\\\" is disabled by policy\"}","is_error":true}],"ts":1760000004000}}
+{"_file":"globalState.json","record":{"autoApprovalSettings":{"version":1,"enabled":true,"favorites":[],"maxRequests":20,"actions":{"readFiles":true,"editFiles":true,"executeSafeCommands":false,"executeAllCommands":true,"useBrowser":true,"useMcp":true},"enableNotifications":false},"mode":"act","cloudTaskTarget":{"target":"cloud","repositoryId":812345678,"branch":"main"},"cloudSessionStatuses":{"ses-01JCLOUDDONE":{"status":"completed","observedAt":1760000100000}}}}
+{"_file":"settings/global-settings.json","record":{"telemetryOptOut":false,"autoUpdateEnabled":true,"planActMode":"plan","toolAutoApprove":false,"disabledTools":["browser_action"],"tools":{"web_fetch":{"enabled":false}}}}
+{"_file":"settings/cline_mcp_settings.json","record":{"mcpServers":{"github":{"command":"npx","autoApprove":["list_issues"],"disabled":false}}}}
+{"_file":"cloud-pending-starts/<pid>-<uuid>.json","record":[{"sessionId":"ses-01JCLOUDWAIT","account":"user:usr_0f9e8d7c","endpoint":"https://api.cline.bot"}]}
+{"_file":"sessions/<id>/<id>.json","record":{"metadata":{"title":"port the parser","importedFrom":{"tool":"claude-code","sourceSessionId":"5f0c1d2e-0000-4000-8000-00000000c1a0","sourcePath":"/home/u/.claude/projects/-home-u-proj/5f0c1d2e.jsonl","importedAt":"2026-10-03T09:20:00.000Z","sourceProvider":"anthropic","sourceModel":"claude-opus-4-5"}}}}
 ```
+
+#### Source host rows
+
+Cline Cloud runs a task against a GitHub repository through the vendor's GitHub App: connecting
+opens the App's install page in the browser
+([`apps/vscode/src/core/controller/cloud/connectGitHub.ts:5-10`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/core/controller/cloud/connectGitHub.ts#L5-L10),
+[`apps/vscode/src/services/cloud/CloudSessionsService.ts:166-187`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/services/cloud/CloudSessionsService.ts#L166-L187)),
+so the grant is server-side only, held by the App installation on GitHub and the Cline account,
+and no GitHub token or login is written locally; the extension signs in to the Cline account
+with the `secrets.json` credentials ([Credentials](#credentials)). The list of repositories the
+App can reach comes from the Cline API
+([`CloudSessionsService.ts:146-164`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/services/cloud/CloudSessionsService.ts#L146-L164))
+and is cached in memory for 60 seconds, never on disk
+([`apps/vscode/src/sdk/sdk-cloud-task-target.ts:50`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-cloud-task-target.ts#L50),
+[`:218-249`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-cloud-task-target.ts#L218-L249)).
+The repository-bound conversations are the Cline Cloud sessions, stored server-side; locally there
+are only their ids and statuses and the user's last choice of repository id and branch
+([Cline Cloud](#cline-cloud)), which the parser reads as the origin, sync and `cloud task target:`
+rows of [Sync, relay and origin rows](#sync-relay-and-origin-rows). With no account on disk the
+parser writes no `source host:` row. A GitHub MCP server's token in
+`settings/cline_mcp_settings.json` `env` is a credential of that server, not an integration of
+Cline's (grepped `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `clone`
+in `apps/vscode/src` and `sdk/packages` at
+[`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33)).
 
 ## Confidence
 

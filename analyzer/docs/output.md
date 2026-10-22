@@ -612,8 +612,8 @@ analyzer 0.14.0, before `relayed_sessions`, `remote_sessions`,
 existed; those keys are filled in by applying the 0.15.0 rules to the
 agents and sessions the run shows, not by a run. `scratch_directories`
 is `{}` the same way, by the 0.18.0 rules: none of the example's paths
-lies under a home catalog entry, and none of its agents wrote a
-`scratch directory:` row. Its keys, in order:
+lies under a home or project catalog entry, and none of its agents wrote
+a `scratch directory:` row. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -698,7 +698,7 @@ sessions, whose `cwd` on Windows is the app's install directory). A
 project is a directory the user pointed the agent at. The two are kept
 apart because a scratch directory says what the agent did on its own
 account, which can still matter to the investigation. A path is a
-scratch directory when either holds:
+scratch directory when any of these holds:
 
 1. A parser says so: a `system` row whose `text` starts with
    `scratch directory:` names it in its own `project_path`. The
@@ -709,7 +709,20 @@ scratch directory when either holds:
    `copilot-cli` parser writes `scratch directory: <cwd> (working
    directory of a session the app pre-created and never prompted: no
    events.jsonl)` for a session directory that holds a `workspace.yaml`
-   with a `cwd` and no `events.jsonl`.
+   with a `cwd` and no `events.jsonl`. The `opencode` and `kilo-code`
+   parsers write `scratch directory: <directory> (git worktree of
+   <project> strategy=<strategy>) (from <database> worktree,
+   time_created)` for each worktree the agent made, from the `worktree`
+   or `project_directory` table. Since 0.20.1 the `continue` parser
+   writes one for a `cn review` worktree, the `zed` parser for a
+   thread's sandboxed-terminal temp directory and a git worktree Zed
+   created, the `hermes` parser for a git worktree the agent created
+   (`<repo>/.worktrees/<name>` on a `hermes/<name>` branch), the
+   `openhands` parser for a conversation in the Agent Server's default
+   worktree root `/tmp/conversation-worktrees`, and the `agent-zero`
+   parser for an editor (ACP) chat's container working directory; each
+   paragraph under [Row order and system rows](#row-order-and-system-rows)
+   gives the row's text.
 2. The catalog says so: the path is in or under a directory that a home
    entry of the bundled catalog names, in one of the input's homes. The
    path relative to the home is matched segment by segment against each
@@ -721,8 +734,22 @@ scratch directory when either holds:
    in loose mode it applies only where the analyzer could infer the
    home's path from the tree, and not at all when the input is a home
    itself.
+3. The project catalog says so: the path is under a directory that a
+   project entry of one agent in the bundled catalog names, inside
+   another directory, with at least one segment below the entry. This is
+   the worktree an agent makes inside the user's project:
+   `/srv/proj/.claude/worktrees/feat` is under the `claude-code` entry
+   `.claude`, and `/srv/proj/.kilo/worktrees/k1`,
+   `/srv/proj/.gemini/worktrees/g1`, `/srv/proj/.qwen/worktrees/q1` and
+   `/srv/proj/.codex/worktrees/c1` under the `kilo-code`, `gemini-cli`,
+   `qwen-code` and `codex-cli` entries, while `/srv/proj/.kilo` itself
+   and `/srv/proj/src` are not scratch directories. The entries that
+   belong to no single agent (`AGENTS.md`, `.agents`, the agent `project`
+   in `--list`) do not count. A Windows path is compared ignoring case.
+   The rule needs no home path, so it applies in loose mode as well.
+   Since 0.20.1 ([issue 227](https://github.com/seanthegeek/doubleagent/issues/227)).
 
-Neither rule looks at the collector's list of project directories, so a
+No rule looks at the collector's list of project directories, so a
 scratch directory the collector gathered project files from is listed
 under `scratch_directories` with `status` `collected`. A scratch
 directory the collector gathers as the agent's own files (the Codex
@@ -846,7 +873,7 @@ alike. [searching.md](searching.md) has recipes.
 | `text` | string | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. It is never truncated, so the timeline is a complete transcript, one event per line. |
 | `source_file` | string | Path of the record on the source host, as in the manifest. In loose mode it is the path relative to the input root with a leading `/`, or relative to the home when the input root is the home or an agent directory. |
 | `source_line` | integer | Where the record is in that file, so the full record can be read. For line-oriented files (JSONL, Markdown, text) the 1-based line number. For SQLite stores it is the record's `rowid` (Tabby events: the event id), and for JSON documents an array index or `1`. Each parser's module docstring says which. `0` when no position applies. |
-| `recovered` | string | `yes` when the row is an event (any `turn_type` but `system`) from a secondary source of its agent (see [Secondary sources](#secondary-sources)) that survived deduplication, so the agent's primary store does not hold the event; since 0.20.0 also the `user` and `assistant` rows the `cursor` parser takes from the `agentKv` prompt blobs of a conversation deleted in the editor, which the editor's database still holds although the conversation's own records are gone. `""` for every other row, including every `system` row of a secondary source (an index header, a thread record, a snapshot, a session-start or permission row, a `parser:` problem), which describes the source or the session rather than a turn the primary store lost. Since analyzer 0.15.0. |
+| `recovered` | string | `yes` when the row is an event (any `turn_type` but `system`) from a secondary source of its agent (see [Secondary sources](#secondary-sources)) that survived deduplication, so the agent's primary store does not hold the event; since 0.20.0 also the `user` and `assistant` rows the `cursor` parser takes from the `agentKv` prompt blobs of a conversation deleted in the editor, which the editor's database still holds although the conversation's own records are gone; since 0.20.1 also the turns the `kiro` parser recovers from a conversation's checkpoint snapshots or tangent-mode main history, which the conversation's own history no longer holds. `""` for every other row, including every `system` row of a secondary source (an index header, a thread record, a snapshot, a session-start or permission row, a `parser:` problem), which describes the source or the session rather than a turn the primary store lost. Since analyzer 0.15.0. |
 
 The field names each parser relies on are listed in its module docstring
 under `doubleagent/parsers/`. Thinking and reasoning blocks are left out
@@ -1008,6 +1035,38 @@ call under review in that window (else `exec -` and an empty
 whose text the parser cannot read is a `parser: unreadable approval log
 row (<target>): <text>` row.
 
+From Codex source, with no real install yet to confirm them, and for
+Open Interpreter's home as well where the fork keeps the code: an
+`apply_patch` approval in `logs_<N>.sqlite` is `permission decision:
+<decision> patch <item id> (from logs_<N>.sqlite logs, ts)`, with the
+thread as `session_id` and the `FileChange` item's id as `tool_use_id`;
+each record of the `guardian_review_feedback` table of `state_5.sqlite`,
+an automatic review that did not allow the action, is a row at the
+record's capture time with the reviewed thread as `session_id` and the
+governed item as `tool_use_id`. A `denied` record whose decision is the
+reviewer's JSON verdict reads exactly as the guardian review thread's
+row, so the timeline keeps one of the two; any other reads
+`permission decision: <status> (auto_review feedback model=<model>) exec
+<item id> turn=<turn id> reviewer <review thread id>: <decision> action:
+<reviewed command>`, `<status>` being `denied`, `invalid_decision`,
+`missing_decision`, `failed`, `timed_out` or `aborted`. The standing
+grants are one row each, `permission setting: <key>=<value> (from
+.codex/config.toml, file mtime)` for `approval_policy`,
+`approvals_reviewer`, `sandbox_mode`, `default_permissions`,
+`projects.<path>.trust_level` (with `project_path` the path) and each MCP
+or app tool's `approval_mode`, and `permission setting: <statement> (from
+.codex/rules/<file>, file mtime)` for each statement of a rules file
+(`prefix_rule(...)` for an "approve and remember" answer,
+`network_rule(...)` for a network answer), at the file's modification
+time with an empty `session_id`; a project's own `.codex/config.toml` and
+`.codex/rules/` give the same rows with the project as `project_path`.
+No other key of `config.toml` is shown. A `thread_goal_updated` event is
+`thread goal: status=<status> turn=<turn id> objective: <objective>`, and
+each `.codex/memories/rollout_summaries/<file>.md` is one row
+`memory summary: thread <thread id> rollout=<path> (from <file>,
+updated_at): <summary>` at the summary's `updated_at`, with the thread as
+`session_id`; it repeats no event, so it is never dropped as a copy.
+
 Each `/feedback` report recorded in `logs_<N>.sqlite`
 is one row `session synced: feedback report uploaded to Sentry,
 attachments <uploaded_attachments> failed <attachments_failed> (from
@@ -1071,13 +1130,78 @@ the entry's `sessionId` as `session_id` and its `cwd` as
 `project_path`, at `startedAt`, or at the file's modification time with
 the text ending `file mtime)`; the daemon form names its `routes.json`.
 Since 0.19.0 both parsers read a `trustedFolders.json` with a byte-order
-mark, comments or trailing commas, as Qwen Code does. A Qwen Code `user`
+mark, comments or trailing commas, as Qwen Code does. The `gemini-cli`
+parser also reads Gemini CLI's other standing permission files, one
+`system` row per entry at the file's modification time with an empty
+`session_id`: from `.gemini/settings.json` in the home or a project,
+`permission setting: <key>=<value> (from <file>, file mtime)` for each
+entry of `tools.sandboxAllowedPaths`, `tools.core`, `tools.allowed`,
+`tools.confirmationRequired`, `tools.exclude`, `mcp.allowed`,
+`mcp.excluded` and `security.allowedExtensions` and each set value of
+`general.defaultApprovalMode`, `tools.sandbox`,
+`tools.sandboxNetworkAccess`, `security.toolSandboxing`,
+`security.disableYoloMode`, `security.disableAlwaysAllow`,
+`security.enablePermanentToolApproval`,
+`security.autoAddToPolicyByDefault`, `security.blockGitExtensions`,
+`security.folderTrust.enabled` and `security.enableConseca`, and
+`session retention: general.sessionRetention.<key>=<value> (from <file>,
+file mtime)` for each of `enabled`, `maxAge`, `maxCount` and
+`minRetention` that is set; from each `.gemini/policies/*.toml` (and
+`auto-saved.toml.bak`) in the home or a project, `permission setting:
+policy <decision> <toolName> <key>=<value> ... (from <file>, file
+mtime)` per rule, its other keys in file order; from
+`.gemini/trusted_hooks.json`, `permission setting:
+trustedHooks=<name>:<command> (from <file>, file mtime)`; and from
+`.gemini/acknowledgments/agents.json`, `permission setting:
+acknowledgedAgents.<agent>=<hash> (from <file>, file mtime)`. A
+project's file carries the project as `project_path`, and the last two
+files the project each entry names. Policy files are read with Python's
+`tomllib`, so under Python 3.10 each is one row `parser: <file> not
+read: its [[rule]] tables need Python 3.11 or later (tomllib)`. No
+`session retention:` row means the defaults: Gemini CLI deletes a
+project's sessions older than 30 days each time it starts there, so a
+session missing from `chats/` may have expired rather than been deleted,
+and its prompts remain in `logs.json`. Gemini CLI's `shell_history`
+yields one `user` row per shell-mode command, and a `/chat save`
+checkpoint or a `/bug` history export yields a `system` row naming it
+(`chat checkpoint: tag <tag> authType=<authType> (from <file>, file
+mtime)` at the file's modification time, or `bug report history:
+exported (from <file>, time in the file name)` at the time in its name)
+and then, for each saved turn, its text as one `user` or `assistant` row
+and a `thinking` (when asked for), `tool_use` or `tool_result` row per
+thought, call or response part, with no timestamp; all three are
+secondary sources (see [Secondary sources](#secondary-sources)). A Qwen Code `user`
 record the user did not type is a `system` row `<subtype>
 (provenance=<provenance> agent=<agentName> agentId=<agentId>): <text>`,
 the parts the record lacks left out: a `cron` or `notification` record
 (`cron (provenance=system): ...`), an `agent_message` or `agent_mention`
 another workspace agent wrote (`provenance=external_agent`), and a
 record of `goal_runtime` provenance; the user's own `agent_mention` stays a `user` row.
+A Qwen Code record's `executionContext` (on user prompts) feeds the same
+model tracking, as `model: <id> auth=<authType>` or `model: <old> ->
+<new> auth=<authType>` (the `auth=` part left out when not recorded),
+and an approval-mode tracking per session, `permission mode: <mode>` the
+first time and `permission mode: <old> -> <new>` on a change, before the
+record's own rows; a `session_approval_mode` record reads `permission
+mode: <mode>` or `permission mode: <old> -> <mode>`, followed by
+` prePlanMode=<mode>` and ` planExecutionMode=<mode>` when recorded. A
+`ui_telemetry` record of a tool call the user was asked about keeps its
+`ui_telemetry: <JSON>` row and is followed by `permission decision:
+<decision> (tool_call ui_telemetry)`, `<decision>` one of `accept`,
+`reject`, `modify` or `auto_accept` (an "allow always" answer), with the
+call's `tool_name` and `tool_use_id`. Each entry of `permissions.allow`,
+`permissions.ask` and `permissions.deny` in `.qwen/settings.json`, in
+the home or a project, is one row `permission setting:
+permissions.<list>=<rule> (from .qwen/settings.json, file mtime)`, and
+`tools.approvalMode` one row `permission setting:
+tools.approvalMode=<mode> (from .qwen/settings.json, file mtime)`, at the
+file's modification time with an empty `session_id` (`project_path` the
+project for a project's file). Each line of `.qwen/usage_record.jsonl`
+is one row `session usage: project <project> duration <ms>ms models
+<id>,... tools <tool>=<count>,... (from usage_record.jsonl, startTime)`,
+with `-` for an absent part, the record's `sessionId` and `project`, at
+its `startTime`; the line is written when a session ends, at `/clear`
+and before a session is deleted, so it can be all that is left of one.
 
 The `antigravity` parser writes `model: <id>` before the rows of a
 conversation's first step that the `gen_metadata` table names a model for
@@ -1123,8 +1247,34 @@ turn: Crush's `prism_model_id` for a Hyper Prism turn, else `model`.
 Since 0.19.0 the row ends with ` requested=<model>` when the requested
 `model` differs from the served one, and the `model` column reads
 `<provider>/<served model>`, or the served model alone when no provider
-is recorded. It writes no permission rows, because Crush
-records no permission state the research names.
+is recorded. After a `tool_result` row it writes `permission decision:
+denied by user` when the result is Crush's `User denied permission`
+error, `permission decision: <allow|deny|halt> by hook <names>
+reason=<reason>` from the result's hook metadata (` reason=` only when
+the hook gave one), and `permission decision: <deny|halt> by hook` for a
+hook's block or halt message with no metadata, each with the call's
+`tool_name` and `tool_use_id`. Standing entries are `permission setting:
+<key>=<value> (from <file>, file mtime)`, one per entry of
+`permissions.allowed_tools`, `options.disabled_tools`,
+`mcp.<name>.disabled_tools`, `mcp.<name>.enabled_tools` and
+`hooks.<event>` in each `crush.json`, of `permissions allow` (as
+`permissions.allowed_tools`) and `permissions deny` (as
+`options.disabled_tools`) lines in a `crushrc`, where the file reads
+`<file> line <n>`, and of the `mcp_enabled_servers` and
+`mcp_disabled_servers` tables of `crush.db`, at the file's modification
+time with an empty `session_id`. A session bound to an MCP channel gets
+`session relayed: channel <server> (from crush.db sessions.channel, as
+of updated_at)`, and the first user message a channel pushed for each
+source, sender and group `session relayed: channel <source> sender
+<sender> group <group> (from crush.db message <id>)`, `sender` and
+`group` only when present; the parser records relay state. A sub-agent
+session whose parent is gone gives `session deleted: <parent>
+(parent_session_id of sub-agent session <id> names no session in
+crush.db; time is the sub-agent's updated_at)` with `session_id` the
+parent. Each `files` snapshot is `file version: <path> version=<n>
+bytes=<length> (from crush.db files)` at its `created_at`, and each
+`read_files` entry `file read: <path> (from crush.db read_files,
+read_at)` at its `read_at`.
 The `opencode` and `kilo-code` parsers write, after a database's
 session-start rows, `session synced: share <id> url <url> (from
 <database> session_share, time_created)` for each session published to
@@ -1139,6 +1289,48 @@ it, `<database>` being the file name (`opencode.db`, `kilo.db`). The
 <ingestPath> share <url> (from storage/session_share/<sessionID>.json,
 file mtime)` for each Kilo cloud session marker, at the file's
 modification time, `-` for an absent value.
+
+The `opencode` and `kilo-code` parsers write a `system` row
+`permission decision: rejected`, `permission decision: rejected with
+feedback`, `permission decision: denied by rule` or `permission
+decision: rejected (permission.rejected)` after the `tool_result` row of
+a tool call the user or a deny rule refused, with the call's `tool_name`,
+`tool_use_id` and result time; an approval leaves no record. After a
+database's session-start and sync rows they write `session archived
+(from <database> <table>, time_archived)` at the time a session was
+archived, `permission setting: session <permission> <pattern>=<effect>
+(from <database> <table>.permission, time_updated)` for each rule of a
+session's rule list, `scratch directory: <directory> (git worktree of
+<project> strategy=<strategy>) (from <database> worktree,
+time_created)` (or `project_directory`) for each worktree the agent
+made, with that directory as `project_path` and no session, and
+`permission setting: <action> <resource>=allow (from <database>
+permission, time_created)` for each saved "always" grant, with the
+project as `project_path`. From the terminal UI's state directory they
+read `prompt-history.jsonl`, a secondary source whose lines are `user`
+rows, or `tool_use` rows with tool `shell` for a shell command, with an
+empty `timestamp_utc`; `prompt-stash.jsonl`, one `prompt stashed
+(unsent): <text> (from <file>, timestamp)` row per prompt set aside; and,
+for OpenCode, `session.json`, one `session pinned: <id> (from <file>
+pinned, file mtime)` row per pinned session, which outlives a deleted
+session. The `kilo-code` parser also writes `permission setting:
+permission.<permission>.<pattern>=<action> (from <file>, file mtime)`
+(or `permission.<permission>=<action>`) for each rule of the
+`permission` key of a global config file in `.config/kilo`, where an
+"always" approval writes it; `permission setting: sandbox.<key>=<value>
+(from <file>, file mtime)` for each key of a sandbox policy file and
+`permission setting: sandbox.enabled=<value>` for a sandbox preference;
+`sessions deleted by retention: deleted=<n> scanned=<n>
+skippedActive=<n> failed=<n> durationMs=<n> (from retention/state.json,
+at)` for the last automatic deletion pass, with no session; and, from
+`log/<time>.log`, `remote control: connection enabled connected=<v>`,
+`remote control: connection disabled`, `remote control: session started
+model=<model> directory=<directory>` and `remote control: session ended
+reason=<reason> durationMs=<n> startedAt=<time>`, each ending `(from
+log/<file>, <time basis>)`, the session rows with the session's id.
+Remote control lets Kilo Cloud drive this host's sessions; it is not a
+sync, since the transcript stays in `kilo.db`. These rows are
+source-derived; no real install has shown them.
 
 The pi session reader (the `pi` parser, the little-coder sessions in
 pi's directory, which stay agent `pi`, and Letta's local-backend
@@ -1168,12 +1360,94 @@ later line of the session names another model. The `pi` parser reads
 share, as one `permission setting: <path>=<true|false> (from
 .pi/agent/trust.json, file mtime)` row per project, with `project_path`
 the project, the file's modification time and an empty `session_id`.
+
+The `openclaw` parser also writes, each text ending in
+`(from <file> <table>, <time column>)`, which names the source and the time the row
+carries. After the start row of a session's current generation, from the
+session's `session_nodes.entry_json` at `updated_at`:
+`model: <modelOverride> provider=<providerOverride>
+source=<modelOverrideSource>` (with ` fallback_from=<provider>/<model>`
+when a fallback replaced the user's choice; the entry keeps no previous
+model), one `permission setting: <key>=<value>` per `elevatedLevel`,
+`execHost`, `execNode`, `execCwd`, `toolOverrides` and `sendPolicy`, and
+`session archived: <archiveReason> by <type>:<id>` at `archivedAt`. One
+`session relayed: <channel> account <account> <kind> peer <peer>
+thread <thread> role <role>` per chat-platform conversation linked to a
+generation, else `session relayed: <channel>
+account <account> <chat_type>` from its window, else `session relayed: <channel>
+account <account> <chatType> from <from> to <to>` from the session's external
+delivery route, and `session relayed: gmail hook` for a session a Gmail
+hook started; the Control UI (`webchat`) and the internal wake channels
+give none, and `sessions.jsonl` `relayed` reads `no` for a session
+without the row. `session deleted: <session_id> archive <archive_name>`
+follows each deleted archive's rows, and `session forgotten from
+memory: <session_id> agent <agent_id> reason=<reason>` marks each memory
+tombstone. A prompt in `session_pending_inputs` that no transcript entry
+consumed gives a `user` row and `pending input: <state>, not consumed by
+the transcript (input <input_id> run <run_id>; ...)`; one consumed by an
+entry the database no longer holds gives its `user` row, and a full-text
+index entry the transcript no longer holds its `user`, `assistant` or
+`system` row, both marked `recovered`. `channel
+delivery: <kind> <status> channel <channel> conversation <id> platform message <id>` and
+`channel delivery reply: <text> (reply message <id>; ...)` record the
+sends to a platform conversation and the platform's replies. From
+`state/openclaw.sqlite`: `permission decision: <decision>
+status=<status> kind=<kind> resolver=<resolver_kind>
+reason=<terminal_reason> approval <id>` per approval, at its resolution
+(its request while pending), with the governed call's `session_id`,
+`tool_name` and `tool_use_id`; one `permission
+setting: <scope>.<setting>` per default and per-agent exec policy value,
+allowlist entry and MCP tool grant (the approvals socket token is never
+read), per `allow-always` standing grant (`permission setting: standing
+grant <id> ...`) and per allowed channel sender (`permission setting:
+channel <channel> account <account> allowFrom=<sender>`); `channel
+ingress: <channel> account <account> status <status>: <payload>` per
+inbound channel message, the payload whole and with no session; and
+`source host: github account <login> id <id> identity <source>;
+publication <status> repository <repo> branch <branch> pull
+request <url>` per push or pull request the Gateway made on GitHub, with the
+session's id. An agent or state database that is only a PostgreSQL
+engine anchor is one row, `parser: agent database is a PostgreSQL anchor
+(store <store_id>, schema <schema>): transcripts are on the database
+server` (`state database ... the Gateway state is on the database
+server`).
 For a `/bug` report recorded in a session, the `pi` parser writes
 `session synced: bug report <id> uploaded to radius.pi.dev
 transcript=<true|false> summary=<true|false> (from session entry
 pi.bug-report, entry timestamp)` when it was uploaded and `bug report
 exported: <id> path=<path> (from session entry pi.bug-report, entry
 timestamp)` when it was written to a zip, at the entry's time.
+The `pi` parser also writes `permission setting:
+defaultProjectTrust=<ask|always|never> (from .pi/agent/settings.json,
+file mtime)` when `.pi/agent/settings.json` sets that key, at the file's
+modification time with an empty `session_id`; `permission decision:
+denied (<reason>)` after the `tool_result` row of a call little-coder's
+permission gate refused (an error result reading `edit cancelled by
+user`, `command cancelled by user` or starting `shell whitelist:`), with
+the call's `tool_name` and `tool_use_id`; one `crash: <kind> <message>
+version=<version> sessionFile=<file> (from .pi/agent/crashes.json,
+record timestamp)` row per `.pi/agent/crashes.json` record, the stack on
+the lines after it, at the record's time, with the record's `cwd` as
+`project_path`, the id in its session file name as `session_id` and `-`
+for an absent value; and, for `.pi/agent/pi-debug.log`, one `debug
+snapshot: /debug wrote <N> message(s) of the open session, which the log
+does not name (from .pi/agent/pi-debug.log, Debug output at line)` row
+at the time the log was written, before the log's messages, which have
+no `session_id` or `project_path`. The `little-coder` parser reads the
+v0.0.x releases' `~/.little-coder`: each saved session starts with
+`session saved: little-coder v0.0.x session <id> turn_count=<n>
+input_tokens=<n> output_tokens=<n> (saved_at <saved_at>, host local
+time)`, and every row of the session carries `saved_at`, host local
+time written as if it were UTC, and an empty `project_path`; a refused
+call is followed by `permission decision: denied (Denied: user rejected
+this operation)`; each checkpoint snapshot is `little-coder v0.0.x
+checkpoint <id>: turn_count=<n> prompt=<prompt> files=<path> (backup
+<name>|did not exist); ... (created_at host local time)`; and
+`.little-coder/config.json` gives `session synced: gist <id>`, `session
+relayed: telegram chat <id>` and `permission setting:
+permission_mode=<mode>`, each ending `(from .little-coder/config.json,
+file mtime)`, at the file's modification time with an empty
+`session_id`.
 The `letta` parser writes `session synced: server conversation
 <conversation id> agent <agent id> server <server> (from
 .letta/transcripts path, first captured_at)` before the first row of
@@ -1185,6 +1459,45 @@ for the agent; and `session synced: last session on <server> agent
 each `sessionsByServer` entry of `.letta/settings.json` and of a
 project's `.letta/settings.local.json` that is not the local backend's,
 at the file's modification time, with the conversation as `session_id`.
+Each `.letta/sessions.jsonl` line, which Letta writes when a session
+ends with `/exit` or `/logout`, is `letta session end: agent=<agent id>
+exit_reason=<reason> messages=<n> tool_calls=<n> wall_ms=<ms>` at the
+time of exit. Since the review of Letta Code 0.34.17 the `letta` parser
+also writes, from source: `permission setting:
+permissions.<key>=<value> (from <file>, file mtime)` per entry of the
+`permissions` object (`mode`, `allow`, `deny`, `ask`, `alwaysAsk`,
+`additionalDirectories`) of `.letta/settings.json`,
+`.config/letta/settings.json` and a project's `.letta/settings.json` and
+`.letta/settings.local.json`, at the file's modification time with an
+empty `session_id`; `session relayed: <channel> chat <chatId> type
+<chatType> thread <threadId> account <accountId> agent <agentId>
+enabled=<enabled> outbound=<outboundEnabled> detached=<detached>
+updated=<updatedAt> (from .letta/channels/<channel>/routing.json,
+createdAt)` per route, at `createdAt`, with the conversation as
+`session_id`; `scheduled task: <id> name=<name> status=<status>
+cron=<cron> timezone=<timezone> recurring=<true|false>
+scheduled_for=<time> agent=<agent id> conversation=<conversation id>
+fire_count=<n> last_fired=<time> last_run=<time> outcome=<outcome>
+reason=<reason> error=<error> cancel_reason=<reason> (from
+.letta/crons.json, created_at) description: <description> prompt:
+<prompt>` per task of `.letta/crons.json`, at its creation time;
+`scheduled task run: <task id> action=<action> status=<status>
+outcome=<outcome> reason=<reason> agent=<agent id>
+conversation=<conversation id> run=<run id> scheduled_for=<time>
+fired=<time> missed=<n> summary=<summary> error=<error> (from
+.letta/runs/<task id>.jsonl, ts)` per run log line, at its time; and,
+for a turn the remote listener did not finish,
+`.letta/listener-state/<hash>/<agent>_<conversation>.json`, `interrupted
+turn: agent <agent id> conversation <conversation id> run <run id>
+tool_calls=<ids> unstarted=<ids> results=<n> working_directory=<dir>
+acting_user=<id> (from <file>, file mtime)` followed by `permission
+decision: <approve|deny> reason=<reason> (from <file>, interrupted
+turn, file mtime)` per recorded decision and a `tool_result` row per
+recorded tool result, each with the call's id as `tool_use_id`, at the
+file's modification time, with the conversation as `session_id` and
+the working directory as `project_path`. A record without a time of its
+own takes the file's modification time and its text ends `file mtime)`;
+`-` stands for an absent value.
 
 The `cline`, `continue` and `pearai` parsers write the same `model:`
 rows, with the `model` column the new model. Cline's SDK sessions write
@@ -1205,8 +1518,29 @@ also writes per-call decisions with the call's `tool_use_id` and
 `tool_name`: `permission decision: accepted=<accepted>` after each
 `dev_data` `toolUsage.jsonl` record's `tool_result` row, at the record's
 time and with an empty `session_id` (the record names none), and
-`permission decision: canceled` after a session tool call whose
-`toolCallStates[]` status is `canceled`, at the session time. A Cline
+`permission decision: canceled reason=user` (the CLI's `Permission
+denied by user`), `permission decision: canceled reason=policy`
+(`Command blocked by security policy`) or `permission decision:
+canceled` after a session tool call whose `toolCallStates[]` status is
+`canceled`, and `permission decision: errored reason=policy` after an
+`errored` one whose output is the extension's `Security Policy
+Violation`, at the session time. A Continue session with a `mode`
+writes `permission mode: <mode>` after its `model:` row, and one whose
+`workspaceDirectory` ends in `cn-review-<digits>-<digits>` writes
+`scratch directory: <workspaceDirectory> (cn review worktree)`, both
+at the session time. Each rule of the CLI's `.continue/permissions.yaml`
+is `permission setting: <list>=<rule> (from .continue/permissions.yaml,
+file mtime)`, `<list>` being `allow`, `ask` or `exclude`, at the file's
+modification time; a file in any other YAML layout is one `parser:
+unsupported YAML at line <N> (only allow, ask and exclude lists of
+strings are read)` row. Each `dev_data` `editOutcome.jsonl` line is
+`permission decision: edit accepted=<accepted> file=<filepath> lines
+<previousCodeLines> -> <newCodeLines>`, each `editInteraction.jsonl`
+line `edit interaction: file=<filepath>` before its prompt (`user`) and
+edited file (`assistant`), and each `chatFeedback.jsonl` line `chat
+feedback: feedback=<true|false|-> model=<modelTitle>` after its prompt
+and reply, all at the line's time and with `-` for an absent value. A
+Cline
 SDK session whose metadata has the `enterprise.blobUpload` key gets
 `session synced: enterprise prompt upload to <adapterType> bucket
 <bucket> object sessions/<userDistinctId or unknown>/<session_id>/messages.json
@@ -1221,16 +1555,185 @@ enterprise.blobUpload, started_at)` for a session known only from
 saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, prefixed
 `session synced: ` only when `<status>` is `synced` (a `pending` or
 `failed` item has not reached the bucket), with the item's `taskId` as
-`session_id`, at the item's time. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
+`session_id`, at the item's time. A Cline SDK tool result for a call
+the runtime did not run is followed by `permission decision: rejected
+reason=<reason>` when the reason ends with the runtime's `-- NOT a tool
+or system failure. Clarify with user before proceeding.` (written
+without it), or `permission decision: blocked reason=<reason>` for
+`Tool "<name>" is disabled by policy` and `Tool <name> was blocked by a
+runtime hook`, with the result's `tool_use_id`, `tool_name` and time.
+Cline's standing settings are one `permission setting: <key>=<value>
+(from <file>, file mtime)` row each, at the file's modification time:
+`autoApprovalSettings.enabled`, `.maxRequests`, `.favorites` (per entry)
+and `.actions.<name>` and `mode` from `.cline/data/globalState.json`;
+`toolAutoApprove`, `planActMode`, `disabledTools`, `disabledPlugins` and
+`disabledAgentPlugins` (per entry) and `tools.<name>.enabled` from
+`.cline/data/settings/global-settings.json`; and
+`mcpServers.<name>.autoApprove` (per entry) and
+`mcpServers.<name>.disabled` from `settings/cline_mcp_settings.json`.
+Each Cline Cloud session in `globalState.json` `cloudSessionStatuses`
+gets `session origin: remote cline-cloud session <id> status <status>
+(from .cline/data/globalState.json cloudSessionStatuses, observedAt)`
+and `session synced: cline-cloud holds session <id>, no local transcript
+(from ...)` at its `observedAt`, with the id as `session_id`, and each
+record of a `.cline/data/cloud-pending-starts/*.json` file the same pair,
+the origin row reading `sandbox start pending account=<account>
+endpoint=<endpoint>`, at the file's modification time, so such a session
+has `origin` `remote` and `synced` `yes`; every other Cline session has
+`origin` `local`. The `cloudTaskTarget` is `cloud task target:
+target=<target> repository_id=<id> branch=<branch> (from
+.cline/data/globalState.json, file mtime)`. A Cline session imported
+from another agent names it on its start row: `imported_from=<tool>
+imported_session=<id> imported_path=<path> imported_at=<time>
+imported_provider=<provider> imported_model=<model>`. The hook audit log
+`.cline/data/logs/hooks.jsonl` gives a `hook audit: <hookName> ...` row
+for each `agent_start`, `agent_abort`, `agent_error` and
+`session_shutdown` line, with `cline_version=`, `user=`, `agent=`,
+`parent_agent=`, `reason=`, `pid=`, `source=` and `error=<name>:
+<message>` when present. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
 files it is rotated to, give `agent metadata posted: agent <agentId>
 keys <metadataKeys> <status> (from logs/cn.log, log line time,
 host-local)` for each metadata post of `cn serve --id`, `<status>`
 being `Success`, `Unexpected response`, `Auth required`, `Failed`,
 `Error` or `-` when no result line follows, and `storage upload
-requested, skipped (from logs/cn.log, log line time, host-local)`, both
-with an empty `session_id` and the log's host-local time written as if
-it were UTC. `roo-code`,
-`aider`, `shellgpt` and `tabby` record no model and write no such row.
+requested, skipped (from logs/cn.log, log line time, host-local)`, and
+for each rule a "don't ask again" answer added to `permissions.yaml`
+`permission decision: allow always rule=<rule> (from logs/cn.log, log
+line time, host-local)`, all with an empty `session_id` and the log's
+host-local time written as if it were UTC. `roo-code` records no
+model and writes no such row.
+
+The `aider` parser reads the announcement lines Aider writes to
+`.aider.chat.history.md` at startup and after each `/model`,
+`/weak-model`, `/editor-model` or `/chat-mode` switch, and after the
+`tool_result` row of the blockquote run that holds them writes
+`model: <name>` at a session's first announcement and `model: <old> ->
+<new>` on each later one that names another main model, the same text
+followed by ` (editor model)` or ` (weak model)` for those two roles,
+with the new model in the `model` column; a `Model:` line, which means
+no separate weak model, sets the weak model to the main one without a
+row unless it replaces a separate weak model. Each confirmation line
+is `permission decision: <decision> (<question>) answer=<letter>
+default=<default>` after the same kind of `tool_result` row, with
+`<decision>` `yes`, `no`, `all`, `skip all` or `no, don't ask again`;
+a `y` or `n` answer ends `; may be automatic (--yes-always)`, because
+Aider writes the same line when `--yes-always` answers for the user.
+Both take the run's time, a session header's or the last prompt's.
+
+The `shellgpt` chat files record no model, permission or time. From
+`.config/shell_gpt/.sgptrc` the parser reads four keys and no other,
+since the file also holds the API key: `DEFAULT_MODEL` is `model:
+<value> (configured default, from .config/shell_gpt/.sgptrc, file
+mtime)`, with the value in the `model` column, and
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD` and
+`SHELL_INTERACTION` are each `permission setting: <key>=<value> (from
+.config/shell_gpt/.sgptrc, file mtime)`, in file order. A line of that
+file with no `=` is `parser: unparseable line <n> (no "=" separator; not
+shown, the file holds the API key)`, without the line. Each file in the
+function store is `permission setting: function <file name> (from
+.config/shell_gpt/functions, file mtime)`; the function calls in the
+chat files ran with no confirmation. All of these rows carry the file's
+modification time and an empty `session_id`.
+
+The `tabby` parser records no model per message and writes no `model:`
+row. From the server's `.tabby/config.toml` it writes one row per
+configured model, `model configured: <group> <model_name or model_id>
+via <http|local>[ kind=<kind>][ endpoint=<api_endpoint>][
+supported_models=<a,b>] (from config.toml [model.<group>.<http|local>],
+file mtime)`, `<group>` being `completion`, `chat` or `embedding`, at the
+file's modification time; under Python 3.10, which has no `tomllib`, the
+one row `parser: config.toml model tables not read: Python 3.11 or later
+needed` instead. From the database it writes `page start | title <title>
+| author <email (name)> | code_source <id>` for each AI-written page,
+with `session_id` `page:<id>`, followed by the page content and its
+sections as `assistant` rows; `source host: <host> integration
+<display_name> kind=<kind> api_base=<api_base> (account not recorded;
+from integrations table, created_at)` for each GitHub or GitLab
+integration, `<host>` being `github.com`, `gitlab.com` or the host of a
+self-hosted `api_base`; and `source host repository: <git_url>
+type=<kind> name=<name> active=<yes|no> (integration <display_name>;
+from provided_repositories table, updated_at)` for each repository
+cached from one, both at their own times. The editor plugins'
+inline-edit command histories, from the IntelliJ plugin's
+`intellij-tabby-command-history.xml` and the `edit.recentlyCommand` key
+of the `TabbyML.vscode-tabby` row of a VS Code or fork `state.vscdb`,
+give `inline edit command history: <N> commands, newest first (from
+<source>, no times)` followed by one `user` row per command, newest
+first, with an empty `timestamp_utc`.
+
+The `pearai` parser writes per-call decisions on the agent surface, from
+the Roo Code 3.15.3 result texts of `api_conversation_history.json`: a
+tool result that starts `The user denied this operation.` is followed by
+`permission decision: denied`, one that starts `The user denied this
+operation and provided the following feedback:` by `permission decision:
+denied with feedback`, and one that starts `The user approved this
+operation and provided the following context:` by `permission decision:
+approved with feedback`, each with the call's `tool_name` and
+`tool_use_id` at the API message's time; beside a `ui_messages.json` the
+API history yields these rows only, with the `tool_use_id` of the last
+tool ask of `ui_messages.json` before the message. An approval with no
+note leaves no mark. The `pearai.pearai-roo-cline` row of the editor's
+`state.vscdb` gives one `task: <task> | tokensIn=<n> tokensOut=<n>
+totalCost=<n> number=<n>` row per `taskHistory` entry at the entry's
+`ts`, with the task id as `session_id`, ending ` | creator mode:
+newProjectType=<type> newProjectPath=<path>` for a task PearAI Creator
+started, and one `permission setting: <key>=<value> (from state.vscdb
+pearai.pearai-roo-cline, file mtime)` per standing auto-approval key
+(`autoApprovalEnabled`, `alwaysAllowReadOnly`, `alwaysAllowExecute`,
+`allowedCommands` and the other `alwaysAllow` keys) at the file's
+modification time. On the chat surface, the `PearAI` output channel log
+gives `model: <id>` and `model: <old> -> <new>` from each request's
+`Settings:` block, tracked over the file; a request whose prompt is not in
+the `<user>` and `<assistant>` block form (an autocomplete request) is
+`model request: <prompt>` and its reply `model completion: <reply>`.
+`dev_data/chat.jsonl` gives `user feedback: <true|false> (from
+dev_data/chat.jsonl)` after each rated reply, with the line's
+`sessionId`, and `dev_data/tokens_generated.jsonl` one `tokens
+generated: model=<model> provider=<provider> promptTokens=<n>
+generatedTokens=<n>` row per request; all of these rows have an empty
+`timestamp_utc`, since neither file records a time.
+
+The `roo-code` parser writes Roo Code's permission state as `system`
+rows. In a task's `ui_messages.json`, a tool approval ask marked
+`isAnswered` gives `permission decision: approved isAnswered=true (user
+or auto-approval)` after the ask's `tool_use` row, with its `tool_use_id`
+and `tool_name`: the record does not say whether the user clicked or the
+auto-approval settings approved it. In the API history, a `tool_result`
+that opens with Roo Code's denial or approval JSON gives `permission
+decision: denied` or `permission decision: approved`, with ` feedback=<text>`
+when the user typed a note, joined on the call's `tool_use_id` and
+`tool_name`; it follows the `tool_result` row when the API history is
+the task's only transcript, and is the API history's only row beside a
+`ui_messages.json`. Each task row from `history_item.json` or
+`tasks/_index.json` is followed by `permission mode: <mode>`, the task's
+mode slug (`code`, `architect`, `ask`, `debug` or a custom mode). The
+standing settings are `permission setting: <key>=<value> (from <file>,
+file mtime)`, one row per scalar or list entry, at the file's modification
+time and with an empty `session_id`: the auto-approval switches, command
+allow and deny lists and the current `mode` from the extension's global
+state (the `RooVeterinaryInc.roo-cline` row of an editor's
+`state.vscdb`, named `<file> ItemTable RooVeterinaryInc.roo-cline`) and
+the CLI's `.vscode-mock/global-storage/global-state.json`;
+`requireApproval`, `dangerouslySkipPermissions` and `mode` from
+`.roo/cli-settings.json`; and `mcpServers.<name>.alwaysAllow=<tool>` from
+`settings/mcp_settings.json` and a project's `.roo/mcp.json`, with the
+project as `project_path`. Releases up to 3.53.0 also signed in to Roo
+Code Cloud, the vendor's hosted service, and uploaded each task message
+while task sync was on; no file records which tasks were uploaded, so the
+parser writes no `session synced:` row. It writes the settings cache that
+decided it, `sync setting: user-settings.settings.taskSyncEnabled=<value>`
+(`unset (defaults to true)` when the key is absent) and `sync setting:
+organization-settings.cloudSettings.<key>=<value>` for `recordTaskMessages`,
+`enableTaskSharing`, `allowPublicTaskSharing`, `taskShareExpirationDays`,
+`allowMembersViewAllTasks` and `workspaceTaskVisibility`, each ending
+`(from <file>, Roo Code Cloud settings cache, file mtime)`, and, for each
+upload that failed and was queued for retry in the workspace state,
+`cloud upload queued: <event> task=<task id> type=<type>
+retries=<retryCount> url=<url> lastError=<error> (Roo Code Cloud retry
+queue, from <file> roo.retryQueue, request timestamp)` at the time it was
+queued, with the task as `session_id`, ` lastError=<error>` only when one
+is recorded, and `-` for an absent value. The queued request's headers and
+body are never written.
 
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
@@ -1238,7 +1741,12 @@ the assistant message `model` (Cody, per chat) and `meta.model` (Twinny,
 per conversation), before the rows of the request or message that
 names the model. VS Code also writes `permission mode: <mode>` and
 `permission mode: <old> -> <new>` from the request's chat mode (`ask`,
-`agent`, `edit`, `custom`). Per-call decisions are `permission
+`agent`, `edit`, `custom`), then `permission level: <level>` and
+`permission level: <old> -> <new>` from the request's permission level
+(`default`, `assisted`, `autoApprove`, `autopilot`); when the request
+records the model's options, they follow the model id on the model row
+as sorted `key=value` pairs (`model: <id> <key>=<value>`), and a change
+of options alone is a model change. Per-call decisions are `permission
 decision:` rows. In VS Code, a tool call's confirmation follows its
 `tool_result` row with the call's `tool_use_id`: `permission decision:
 confirmed=true` or `confirmed=false` (before VS Code 1.104), else
@@ -1259,14 +1767,55 @@ the step's description and content on the next lines. Since 0.19.0
 unanswered` for a `pending` step, because Cody saves an approval and an
 unanswered request the same way; any other step reads `permission
 decision: confirmation state=<state> ...` with no separate decision
-word. VS Code's session-start row ends with `workspace=<path>` when the
+word. Cody's standing settings in the editor's `User/settings.json` are
+`permission setting: <key>=<value> (from <file>, file mtime)` rows, one
+per leaf of `cody.agentic.context.experimentalOptions` (such as
+`cody.agentic.context.experimentalOptions.shell.allow=["git"]`), for
+`cody.agentic.context.experimentalShell` and `cody.chat.agenticContext`,
+and for `disabled` and `disabledTools` of each `cody.mcpServers.<server>`;
+its model preferences are `model setting: <selected|defaults>.<usage>=<id>
+endpoint=<endpoint> (from <file>, file mtime)`, from
+`JetBrains-globalState/cody-model-preferences` or, ending `(from <file>
+cody-model-preferences, file mtime)`, from the `state.vscdb` row, with
+the `model` column the id. Both kinds have an empty `session_id` and the
+file's modification time, not the time the setting was made. A JetBrains
+project's legacy `.idea/cody_history.xml` gives, per chat, `chat:
+<internalId> | account=<accountId> | messages=<n> (legacy JetBrains
+history)`, `model: <id>` before the first assistant message, and the user
+and assistant rows, with the chat's `updatedAt` as `session_id` and time
+and the project as `project_path`. VS Code's session-start row ends with `workspace=<path>` when the
 chat's workspace is a `.code-workspace` file (since 0.19.0); the
 `project_path` is the session's `workingDirectory`, else the
 workspace's folder, never that file. Twinny's tool steps saved while waiting for the user's Run or
 Skip, or skipped, are `permission decision: waiting` and `permission
 decision: skipped`, each with ` approval=<command|change>` when the
 step records what was asked, after the step's `tool_result` row with
-its `tool_use_id`.
+its `tool_use_id`. Twinny's standing grants are `system` rows with an
+empty `session_id` at the modification time of the editor's
+`globalStorage/state.vscdb`, each ending ` (from state.vscdb
+rjmacarthy.twinny, file mtime)`: `permission mode: agentMode=<true|false>`,
+`permission setting: autoRunCommands=<true|false>`, one `permission
+setting: alwaysRunCommands=<command>` per command the user chose Always
+run for, one `permission setting: alwaysRunMcpTools=<server/tool>` per
+MCP tool, and one `permission setting: twinny.teamPolicy.<dotted
+key>=<value>` per leaf of the team gateway policy the user accepted (a
+list gives one row per entry). Each file a reply changed is `file
+changed: <status> <path> +<added> -<removed> reply=<id>`, with
+` undone=true` and ` noUndo=true` when set: in the conversation, after
+the reply's tool steps, and again from the reply's `agent-changes/`
+record with the record's `root` as `project_path`, its `createdAt` as the
+time and an empty `session_id`; `reply=<id>` joins the two, which
+deduplication cannot pair because the conversation records neither the
+project nor the reply's time. Each entry of the Twinny log channel is
+`log <level>: <message> (from <file name>, log line time, host-local)`,
+its continuation lines (a Debug block's prompt or reply) on the
+following lines, with an empty `session_id`, `source_line` the entry's
+first line and the log's host-local time written as if it were UTC.
+The `rjmacarthy.twinny` row of a workspace's
+`workspaceStorage/<id>/state.vscdb` gives `source host repository:
+https://github.com/<owner>/<repo> type=review (from workspaceStorage
+state.vscdb rjmacarthy.twinny, file mtime)` for the repository the pull
+request review tab last listed, at that file's modification time.
 The `vscode` parser writes `session synced: remote session
 <cloudSessionId> task <cloudTaskId> (from
 User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)`
@@ -1284,6 +1833,37 @@ the same time and session, `session origin: remote GitHub cloud agent
 (from state.vscdb GitHub.copilot-chat
 github.copilot.cloudAgent.ownedTasks, recordedAt)`, records where it
 began, so its `origin` is `remote`.
+VS Code's standing tool approvals are one row per entry, `permission
+setting: <key>.<id>=<value> (from User/<path>/state.vscdb, file
+mtime)`, for the keys `chat/autoconfirm`, `chat/autoconfirm-post`,
+`chat/servers/autoconfirm`, `chat/servers/autoconfirm-post` and
+`chat/autoconfirm-combination` of a profile's or a workspace's
+`state.vscdb`, `<value>` being `true`, the tool's label or
+`{"arguments":...,"label":...}`; `permission setting:
+chat.tools.global.autoApprove.optIn=<value>` and one `permission
+setting: chat.externalPath.workspaceAllowlist=<path>` per allowed
+folder end the same way. Each auto-approve setting of a profile's
+`settings.json` (the keys matching `chat.tools.*autoApprov*`) and
+`chat.permissions.default` is `permission setting: <key>=<value>`, or
+one `permission setting: <key>.<entry>=<value>` per entry of an object,
+and `chat.defaultModel` is `model setting: chat.defaultModel=<value>`,
+each ending `(from User/<path>/settings.json, file mtime)`. All of them
+carry the file's modification time and an empty `session_id`; a
+workspace's rows carry the workspace's folder as `project_path`. The
+GitHub account VS Code signed in with is `source host: <host> account
+<login> extension=<id> scopes=<scopes> (from state.vscdb
+github-<login>-usages, lastUsed)`, or `mcp_server=<id>` from
+`github-<login>-mcpserver-usages`, one per extension or MCP server that
+used the account, at its last use, and each repository picked for a
+cloud agent task in the last week is `source host repository: <owner/repo>
+type=cloud agent selection (from state.vscdb GitHub.copilot-chat
+userSelectedRepositories, timestamp)`, both with an empty `session_id`.
+The chat editing state gives `edit state: <Modified|Accepted|Rejected>
+<path> request=<requestId> model=<modelId> (from chatEditingSessions
+state.json, file mtime)`, with ` deleted=true` before the parenthesis
+for a file the edit deleted, one per file of the session's most recent
+snapshot, with the chat session id and the workspace's folder, at the
+file's modification time.
 
 The `chatgpt-desktop` parser reads the ChatGPT desktop app's list of
 the account's ChatGPT conversations, the `chatgpt` rows of
@@ -1338,7 +1918,9 @@ before a message whose recorded model differs, with
 `kiro` writes `model: <id>` and `model: <old> -> <new>` before the rows of
 the history entry whose `request_metadata.model_id` names it, ending
 ` source=model_info` or ` source=model` when the entry had none and the
-conversation-level field stood in. `hermes` writes them from the
+conversation-level field stood in; the entries it recovers from a
+checkpoint snapshot or the tangent-mode main history track their own
+model sequence. `hermes` writes them from the
 `session_model_usage` table at each model's first use, with
 ` provider=<billing_provider>`, or one `model: <id>` from the session row
 at its start. Since 0.19.0 a switch made in the Hermes TUI or desktop
@@ -1350,31 +1932,186 @@ neither is known, and `model_switch: <text>` when the stored message
 does not parse. Such a switch can therefore appear twice, once from the
 stored message and once from the usage table at the model's first use.
 `ollama` writes them before the assistant message whose
-`model_name` names the model. `goose` also writes
+`model_name` names the model; it also writes one `permission setting:
+integrations.<name>.automode=<true|false> (from .ollama/config.json, file
+mtime)` row per integration whose launcher configuration holds the key,
+and `permission setting: autoModeEnabled=<true|false> (set by Ollama's
+Claude Desktop launcher, from <file>, file mtime)` from the Claude Desktop
+profile `configLibrary/00000000-0000-4000-8000-000000000114.json` under a
+`Claude-3p` base, a file the catalog attributes to `claude-desktop`; both
+at the file's modification time with an empty `session_id`. `goose` also writes
 `permission mode: <goose_mode>` after each session's start row, and,
 for a session the gateway relayed through its Telegram bot, `session
 relayed: gateway <platform> user <user_id> display <display name> (from
-sessions.db session_type gateway, created_at)`. `zed`
+sessions.db session_type gateway, created_at)`. A tool confirmation in
+`sessions.db` is `permission request: <toolName> | <prompt> |
+<arguments>` (an empty prompt left out) and its answer `permission
+decision: <permission> (toolConfirmationResponse)`, `<permission>` one
+of `allow_once`, `always_allow`, `deny_once`, `always_deny` and
+`cancel`, both with the tool call's `tool_use_id` and `tool_name`; a
+tool call the permission check refused or held, marked
+`goose.executable` `false` and never answered, is followed by
+`permission decision: not executable (goose.executable=false)`. Its
+standing lists are `permission setting: <category>.<level>=<tool> (from
+<file>, file mtime)` per tool in `permission.yaml` (`user` or
+`smart_approve`, then `always_allow`, `ask_before` or `never_allow`)
+and `permission setting: roaming_trust.<allowed|revoked_keys>=<key>
+(from <file>, file mtime)` per peer key in `roaming_trust.json`, and
+each job in `schedule.json` is `scheduled task: <id> <cron>
+paused=<true|false> running=<true|false> source=<recipe file>
+last_run=<time> current_session=<session id> recipe_base_dir=<dir>
+(from <file>, file mtime)`, with ` parameters=<compact JSON>` before
+`(from` when the job has parameters and `-` for an absent value; these
+rows carry the file's modification time and an empty `session_id`. `zed`
 writes one `permission setting: <key>=<value> (thread blob, as of
 updated_at)` row per grant the user gave for the rest of a thread
 (`profile`, each `sandbox_grants.write_paths` and `network_hosts` entry,
 and each `sandbox_grants` escape flag that is `true`): unlike the
 settings-file rows these live in the thread blob, so their `session_id` is
 the thread id and their `timestamp_utc` is the thread's `updated_at`, the
-blob's last write rather than the time of the grant. `hermes` also
+blob's last write rather than the time of the grant. It also writes, after
+a failed tool result whose text is Zed's denial, `permission decision:
+denied` (the user denied the call) or `permission decision: auto_denied
+reason=<text>` (a rule denied it), with the call's `tool_name` and
+`tool_use_id`; an approval leaves no record. From the user settings files
+(`settings.json`, `global_settings.json`) it writes one `permission
+setting: <key>=<value> (from <file>, file mtime)` row per entry of
+`agent.tool_permissions` and `agent.sandbox_permissions`, per
+`agent_servers.<id>.default_mode` and per `session.trust_all_worktrees`,
+the key prefixed with the override block or profile it sits in
+(`stable.agent.tool_permissions.default`), and from `db.sqlite` one
+`permission setting: trusted_worktrees.<path>=true[ host=<user>@<host>]
+(from <file> trusted_worktrees, file mtime)` row per trusted project, with
+the path as `project_path`. Its other `db.sqlite` rows are `sidebar thread:
+title=<title> archived=<true|false> interacted_at=<time|->
+main_worktree=<path|->` per native thread, at the sidebar row's
+`updated_at`; `unsent draft: <text>` per draft prompt, at the draft's
+`updated_at`, or ending ` (from <file> agent_draft_prompts, file mtime)`
+when the draft's sidebar row is gone, and `unsent draft: <text> (thread
+blob, as of updated_at)` for a thread blob's own draft; `archived worktree:
+<worktree> of <main repository> branch=<branch> staged=<hash>
+unstaged=<hash> original=<hash> ref=refs/archived-worktrees/<id> (from
+<file> archived_git_worktrees, file mtime)` per archived worktree and
+linked thread; and `sidebar terminal: <title> cwd=<directory>` per
+sidebar terminal at its `created_at`. Its `scratch directory:` rows are
+`scratch directory: <path> (sandboxed terminal temp directory of thread
+<id>) (thread blob, as of updated_at)` for a macOS thread's sandbox temp
+directory and `scratch directory: <worktree> (Zed-created git worktree
+of <main repository>) (from <file> created_git_worktrees, created_at)` for each
+linked worktree Zed made, at its creation time, with `host=<host>` after
+the main repository for a remote one; both have an empty `session_id`. These rows rest on source
+alone. `hermes` also
 writes one `debug report uploaded: <url> (from pastes/pending.json,
 expire_at minus 6 hours)` row per paste.rs link that `hermes debug
 share` uploaded and that is still due for deletion, at the upload time,
 with an empty `session_id`: the uploaded logs hold recent messages but
-name no session.
+name no session. Since 0.20.1 `hermes` also writes, at a session's
+`started_at` after its model rows, `session relayed: <source> chat
+<chat_id> type <chat_type> thread <thread_id> user <user_id> name
+<user_name> display <display_name> (from state.db sessions, started_at)`
+for a session carried through a messaging platform, so its `relayed` is
+`yes` and every other Hermes session's `no`; `permission setting:
+yolo_mode=<true|false> (from state.db sessions.model_config,
+started_at)` when the session's `/yolo` bypass (every approval off) is
+recorded; and `scratch directory: <cwd> (git worktree the agent created
+in <repo>, branch <git_branch>)` for a session run in a worktree Hermes
+made under `<repo>/.worktrees/`. The session-start row ends
+` | archived=1` for an archived session and ` | imported from <tool>
+<path> session <id>` for a session Hermes copied from Claude Code or
+Codex CLI. After a `terminal` tool result that records the approval
+outcome, a `permission decision: approved (<approval note>)`,
+`permission decision: blocked <error>` (with ` user_summary=<summary>`
+when a person was asked) or `permission decision: pending
+pattern=<pattern_key> smart_denied=<true|false>` row carries the call's
+`tool_use_id`. Standing approvals are `permission setting:
+command_allowlist=<pattern> (from config.yaml, file mtime)` per pattern
+an "always" answer allowed, and `permission setting:
+pairing.<platform>.<user id> user_name=<name> (from
+pairing/<platform>-approved.json, approved_at)` (or
+`platforms/pairing/...`) per messaging user the gateway's owner
+approved, at the approval time. `session deleted: <id>
+(from state.db state_meta gateway.retired_session.v1, retired_at)`, with
+` sweep` after the id when the idle sweep rather than a delete removed
+the session, is the deletion record Hermes keeps after the rows are
+gone, at the deletion time and with the deleted session's id. `relay
+peer: <source> <session_key> generation <n> (from state.db
+conversation_generations)`, with no time or session, names a messaging
+chat that ever had a conversation; `bot mode room <name> (<room_id>)
+seq <seq> <kind> actor <actor kind>:<actor id> (<display_name>): <text>`
+is one event of a desktop Bot Mode group chat, at its time; and
+`remote backend: <kind> <label> <url or user@host:port> (from
+connections.json, file mtime)`, with ` org=`, ` name=` and ` profile=`
+when recorded, is a remote, SSH or Hermes Cloud backend the desktop app
+was connected to, with no session. In the secondary sources, a prompt
+history entry that starts with `/` is `slash command: <entry>`, each
+cron run file starts with `cron run: job <job id> (from cron/output,
+file name time, host-local)` and a run document with no prompt section
+is one row `cron run output: <document>`, each `response_store.db`
+response is `api server response <id> status=<status> model=<model>
+conversation=<name> (from response_store.db responses, created_at)`, and
+each trajectory line is `trajectory: model=<model> completed=<true|false>
+(from <file>, timestamp host-local)` before its turns, whose system
+prompt is `trajectory system prompt: <text>`. `-` stands for an absent
+value.
+
+The `kiro` parser follows each `cancelled` `tool_result` of an Amazon Q
+Developer CLI conversation with a row carrying its `tool_use_id` and
+`tool_name`: `permission decision: denied by=n` when the user answered
+the approval prompt with a bare `n`, `permission decision: denied
+by=deny-rule tool=<name>` when a deny rule of the agent configuration
+rejected the call, `permission decision: cancelled by=interrupt` for an
+interrupt during tool execution, `permission decision: denied
+by=user-text` when the user typed something else instead of approving,
+and `permission decision: cancelled` when the message has no prompt; a
+deny-rule rejection stored as a plain prompt gives the same deny-rule row
+with the tool name and no id. Each agent configuration
+(`.aws/amazonq/cli-agents/*.json`, or a project's
+`.amazonq/cli-agents/*.json` with `project_path` the project) gives
+`permission setting: allowedTools=<entry> (from <file>, file mtime)` per
+entry and `permission setting: toolsSettings.<tool>.<key>=<value> (from
+<file>, file mtime)` per tool setting, with an empty `session_id`. The
+turns it recovers from a conversation's checkpoint snapshots or the main
+history held aside in tangent mode follow the conversation's own rows,
+each group behind `checkpoint snapshot: tag=<tag>[ tool=<tool_name>]
+recovered=<n> entries[: <description>]` at the checkpoint's time or
+`tangent mode: main conversation held aside, recovered=<n> entries`. A
+project's `.amazonq/.subagents/<agent>.json` gives `delegate task
+launched: agent=<agent> pid=<pid>[ trust_all_tools=true]: <task>` at the
+launch, `trust_all_tools=true` marking the default agent, which the
+delegate tool runs with `--trust-all-tools`, and, once the task ended,
+`delegate task <status>: agent=<agent> exit_code=<code>` followed by
+`summary:` and `output:` lines at its completion, with `project_path` the
+task's working directory and no `session_id`.
 
 OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
 `openhands` writes `model: <id>` after each conversation's header row, at
-the header's time, from `agent.llm.model` in `base_state.json`; a
+the header's time: the model of the first response (`token_usages[]` in
+`base_state.json`, joined on `llm_response_id`), else `agent.llm.model`.
+It writes `model: <old> -> <new>` before the first event of a response
+whose model changed, `model: <old> -> <new> profile=<profile>[
+class=<chosen_class>]` after the agent's own switch
+(`SwitchLLMObservation`, `ClassifyAndSwitchLLMObservation`), and, on
+`base_state.json` at its modification time, `model: <old> -> <new> (from
+base_state.json agent.llm, file mtime)` when the file names a model the
+events do not reach (a switch over the Agent Server's REST endpoints). A
 rejected call's `tool_result` is followed by `permission decision:
 rejected rejection_source=<source> <reason>` with the call's `tool_name`
 and `tool_use_id`, and an action's `tool_use` text ends with
-` security_risk=<value>` when the event has one. `agent-zero` writes
+` security_risk=<value>` when the event has one. Each entry of a security
+analyzer's verdict is `permission decision: analyzed risk=<risk>
+analyzer=<analyzer> policy=<policy>[ details=<JSON>]` with the analysed
+action's `tool_name` and `tool_use_id` (` action_id=<id>` when the action
+is not on disk). At `base_state.json`'s modification time it writes
+`permission setting: confirmation_policy=<kind>[ threshold=<threshold>][
+confirm_unknown=<true|false>] (from base_state.json, file mtime)`,
+`permission setting: security_analyzer=<kind> (from base_state.json,
+file mtime)` (`none` when no analyzer is set) and `permission setting:
+blocked_actions.<action id>=<reason> (from base_state.json, file mtime)`
+per hook-blocked action. A conversation whose working directory is under
+the Agent Server's default worktree root gets `scratch directory:
+<working_dir> (conversation worktree under the Agent Server's default
+conversation_worktree_root /tmp/conversation-worktrees)` after its model
+row. `agent-zero` writes
 `model: <id>` before an agent's first reply and `model: <old> -> <new>`
 on a change, tracked per chat and agent number, with ` agent=<n>` for a
 subordinate agent. After the chat start row, at the file's modification
@@ -1386,9 +2123,72 @@ stored, and for a chat carried by a messaging plugin `session relayed:
 telegram bot <bot> chat <chat id> user <user id> @<username>`,
 `session relayed: whatsapp chat <chat id> number <number>` or `session
 relayed: email thread <thread id> from <sender>`, each ending `(from
-chat.json data, file mtime)`. `nanobot` writes `model: <preset> (preset)` after
+chat.json data, file mtime)`. After those, at the file's modification
+time and holding the latest value only, an editor (ACP) session gives
+`permission mode: <acp_mode> (acp, as of file mtime)`, `model: requested
+<acp_model_id> (acp, as of file mtime)` and `scratch directory:
+<workdir_path> (acp container transport, from chat.json
+data.workdir_path, as of file mtime)`, whose `project_path` is that
+directory, while the chat's other rows carry the editor's workspace
+`acp_cwd` as their `project_path`; a model chosen for the chat gives
+`model: requested preset <name> (chat override, as of file mtime)`, or
+`model: requested chat=<provider>/<name> utility=<provider>/<name> (chat
+override, as of file mtime)` for a custom choice, never its API key. A
+`warning` log item that records a permission decision is followed, at its
+time, by `permission decision: blocked tool=<name> profile=<profile>`
+(with `tool_name`), `permission decision: denied automatically (provider
+MCP approval request)` or `permission decision: <clarify, passed or
+terminated> (infection check)`. Standing settings are `permission
+setting: tool_access.<key>=<value>`, `permission setting:
+orchestrator.<cli>.<key>=<value>` and `permission setting:
+<infection_check|orchestrator>=<enabled|disabled>`, each followed by
+` profile=<profile>` and ` project=<name>` when the file is scoped and
+ending `(from <file>, file mtime)`, with an empty `session_id`. The
+scheduler's `tasks.json` gives `scheduled task: <name> type=<type>
+state=<state>` at the task's `created_at` and, for a failed run,
+`scheduled task failed: <error>` at `last_run`; the Telegram chat map
+gives `session deleted: telegram bot <bot> chat <chat id> user <user id>
+ctxid <ctxid> (from state.json, no chat.json in the input, file mtime)`
+for a mapped chat whose `chat.json` is not in the input; and the A0 CLI
+connector's `.agent-zero/.env` gives `session origin: remote agent-zero
+instance <host> context <id> (from .agent-zero/.env, file mtime)` for
+the last chat it used, so `agent-zero` sessions read `origin` `remote`
+or `local`. `nanobot` writes `model: <preset> (preset)` after
 the session start row: the value is a model preset of nanobot's
-configuration, not a model id. `muse-code` writes, per session log,
+configuration, not a model id. A `/model <name>` switch gives
+`model: <old> -> <new> (preset) requested=<name> resolved=<model id>`
+after the reply that confirms it; the session records only its last
+preset, so in a switched session the first switch reads `model: <new>
+(preset) requested=<name> resolved=<model id>` and the start row's
+`model:` row is not written. After the session start row, at its time,
+nanobot also writes `session relayed: <channel> chat <chat id> (from
+session key)` for a session keyed to a messaging channel (Telegram,
+Discord, Slack, WhatsApp, email and the other chat services it answers
+through), `session relayed: <channel> chat <chat id> (from
+metadata.last_channel)` when the session's last delivery route is such a
+channel and differs from its key, and `permission mode:
+access_mode=<restricted|full> project=<path> (from session metadata
+workspace_scope)` for the last workspace scope a WebUI chat set. Its
+`config.json` gives `permission setting: <key>=<value> (from <path>,
+file mtime)` per standing setting (`tools.restrictToWorkspace`,
+`tools.ssrfWhitelist`, `tools.webuiAllowLocalServiceAccess`,
+`tools.webuiAllowRemotePackageInstall`, `tools.exec.enable`,
+`tools.exec.sandbox`, each `tools.exec.allowPatterns`, `denyPatterns`,
+`sandboxRoBinds`, `sandboxRwBinds` and `allowedEnvKeys` entry, and each
+`channels.<name>.allowFrom` entry), `<path>` relative to the home and the
+key spelled as the file spells it; its `pairing.json` gives `permission
+setting: pairing.approved.<channel>=<sender id> (from <path>, file
+mtime)` per approved chat sender and `permission setting:
+pairing.pending.<channel>=<sender id> expires_at=<time>
+delivery_status=<status> (from <path>, created_at)` per pending request,
+at its `created_at`. A cron run record gives `cron run: job <job name>
+(<job id>) run <run id> status=<status>` and a trigger run record
+`trigger run: trigger <trigger name> (<trigger id>) delivery <delivery
+id> status=<status> attempts=<n>`, each with ` error=<error>` when the
+run failed, beside the run's prompt and reply; the WebUI sidebar cache
+gives `webui sidebar entry: key=<key> title=<title> preview=<preview>
+model_preset=<preset> updated_at=<time> (from .webui_session_index.json
+version <n>)` per cached chat, absent fields left out. `muse-code` writes, per session log,
 `permission mode: approval=<approval> reviewer=<reviewer>
 profile=<profile id>` followed by ` cause=<cause>` and
 ` format=<format>` from the log's permission frame,
@@ -1518,7 +2318,14 @@ event rows it took from the secondary copy `recovered` `yes` in the same
 way: since 0.19.0 the `opencode` parser reads the 1.x
 `message` and `part` tables of a database upgraded to OpenCode 2.0 only
 for a session its `session_message` table does not hold, matched exactly
-on the session id. [`sessions.jsonl`](#sessionsjsonl)
+on the session id, the `kiro` parser reads a conversation's checkpoint
+snapshots and tangent-mode main history only for the turns the
+conversation's history no longer holds, matched on the user message and
+its time and the assistant message, and the `openclaw` parser reads the
+full-text index (`session_transcript_fts_content`) and the consumed
+pending inputs of an agent database only for an entry whose session and
+entry id the database's transcript does not hold.
+[`sessions.jsonl`](#sessionsjsonl)
 `recovered` says whether a session was rebuilt from such rows alone
 (`yes`) or in part (`partial`):
 `jq -c 'select(.recovered == "yes")' out/sessions.jsonl` lists the
@@ -1535,26 +2342,38 @@ beside its `session synced: server conversation` row.
 
 | Agent | Secondary source | Primary store |
 | --- | --- | --- |
+| `agent-zero` | `usr/scheduler/tasks.json` of the install directory or volume (each task's prompt, with no timestamp, matches on text within the task's chat; its last result is stamped when the run ends: a 60-second window); the Telegram plugin's `usr/plugins/_telegram_integration/state.json` (only `system` rows, for a mapped chat that is gone) | `usr/chats/<ctxid>/chat.json` |
 | `aider` | `.aider.input.history` and `.aider.llm.history`, in a home or a repository | `.aider.chat.history.md` beside them |
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl`; the brain mirror `.gemini/<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else its chunks, else `transcript.jsonl`, else its chunks, `<dir>` each of `antigravity-cli`, `antigravity`, `antigravity-ide` and `antigravity-backup` (600 seconds: the mirror records a step's start, the database row its completion) | `.gemini/<dir>/conversations/<uuid>.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
-| `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
-| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone); `.cline/data/logs/hooks.jsonl` (tolerance one hour; tool rows match on the call id) | `.cline/data/sessions/<id>/<id>.messages.json` |
+| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread); `.codex/db-backups/<folder>/state_5.sqlite` (a copy Codex set aside as corrupt, read as `state_5.sqlite`) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `cody` | a JetBrains project's `.idea/cody_history.xml`, the pre-agent plugin's history (the migration's chat id `updatedAt` as session and time; complete pairs match the migrated chat, an unpaired message is recovered) | the `sourcegraph.cody-ai` row of the editor's `state.vscdb` and `Cody-nodejs/[Data/]JetBrains-globalState/cody-local-chatHistory-v2` |
+| `continue` | `.continue/input_history.json` (the CLI's prompt history, no session or project: matches on text at any distance in time); `.continue/dev_data/<schema>/chatFeedback.jsonl` (a rated reply's prompt and completion, stamped at the click: matches within the session at any distance in time) | `.continue/sessions/<id>.json` and the `dev_data` `chatInteraction.jsonl` lines |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
-| `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
-| `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
-| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
+| `gemini-cli` | `.gemini/tmp/<slug>/logs.json`; `shell_history` (no timestamp or session: matches on text and project, and pairs with the `logs.json` copy of the command), `checkpoint-<tag>.json` from `/chat save` and `bug-report-history-<ms>.json` from `/bug` (no timestamp or session: match on text and project, tool rows on `tool_use_id`) in the same directory; each also under `.cache/.gemini` | `.gemini/tmp/<slug>/chats/*.jsonl` |
+| `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone); `.local/state/goose/logs/llm_request.<N>.jsonl` (`AppData/Roaming/Block/goose/data/logs/` on Windows; the last 10 provider calls, with no session or project: a 600-second window; streamed chunks of one message are assembled first; the `llm request` row has no twin and is always kept) | `.local/share/goose/sessions/sessions.db` |
+| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full` before collector 1.18.0) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session); since 0.20.1 also `.hermes/.hermes_history` (no session or project: matches on text and time), `.hermes/cron/output/<job>/<time>.md` (no session: matches on text and time), `.hermes/response_store.db` (no timestamp per message: matches on text within the session) and the `trajectory_samples.jsonl` and `failed_trajectories.jsonl` files of a project (no timestamp per turn: matches on text within the project); all but the trajectory files also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
+| `kilo-code` | `.local/state/kilo/prompt-history.jsonl` (no timestamp, session or project: matches on text alone) | `.local/share/kilo/kilo.db` |
+| `kiro` | `.aws/amazonq/.cli_bash_history`, the chat prompt history (no timestamp, session or project: matches on text alone); in each conversation, the checkpoint snapshots and the tangent-mode main history, read only for the turns the conversation no longer holds and paired by the parser itself | `data.sqlite3` `conversations` under `amazon-q/` or `kiro-cli/`, and `/save` exports |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
+| `little-coder` | the v0.0.x `.little-coder/sessions/history.json` and `sessions/mr_sessions/session_latest.json` (the same sessions under the same id and `saved_at`); `.little-coder/input_history.txt` (no timestamp, session or project: matches on text alone) | the v0.0.x `.little-coder/sessions/daily/<date>/session_*.json` and the `/save` files under `sessions/` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
-| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
-| `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
+| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0); a workspace's `cron/runs/*.json` and `triggers/runs/*.json` run records (tolerance 15 hours, as for the WebUI transcript: true UTC); `.nanobot*/sessions/<workspace-id>/.webui_session_index.json` (`system` rows only, which never pair) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
+| `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite`; `.openinterpreter/db-backups/<folder>/state_5.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
-| `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
-| `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
+| `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0); `.local/state/opencode/prompt-history.jsonl` (no timestamp, session or project: matches on text alone); `.local/state/opencode/session.json` (its `session pinned:` rows are `system` rows and never pair) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
+| `openhands` | `.openhands/projects/<sha256 of cwd>/prompt_history.json`, the CLI's last 100 prompts per working directory (no conversation id: matches on text and time; `project_path` is the working directory of a conversation whose SHA-256 is the directory name) | `.openhands/conversations/<hex>/events/event-*.json` |
+| `pearai` | the `PearAI` output channel log `<editor>/logs/<session>/window<N>/exthost/output_logging_<time>/<n>-PearAI.log` (no timestamp, session or project: matches on text alone; a prompt sent with context items carries them and never pairs); `.pearai/dev_data/chat.jsonl` (the rated replies, no timestamp: matches on text within the session) | `.pearai/sessions/<sessionId>.json` |
+| `pi` | `.pi/agent/pi-debug.log`, the last `/debug` snapshot of the open session's messages (no session or project; one hour: a message's own time is its start, the session entry's its end) | `.pi/agent/sessions/<cwd>/<time>_<id>.jsonl` |
+| `qwen-code` | `.qwen/tmp/<hash>/logs.json`; `.qwen/usage_record.jsonl` (per-session summaries, `system` rows that no transcript row repeats) | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
-| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
+| `shellgpt` | the response cache `AppData/Local/Temp/shell_gpt/cache/<md5>`, one answer per file (no timestamp, session or project: matches on text alone; the answer after a function call is cached without the chat file's `> @FunctionCall` marker, so it never pairs and is kept) | the chat files `chat_cache/<id>` |
+| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads, pages, events and integrations); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair); the IntelliJ `intellij-tabby-command-history.xml` and the VS Code `state.vscdb` `edit.recentlyCommand` (no timestamp; the server keeps no copy of an inline-edit instruction, so they never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
+| `twinny` | the editor's `User/workspaceStorage/<id>/rjmacarthy.twinny/agent-changes/<id>.json` (or under `globalStorage/rjmacarthy.twinny/`; `system` rows with the project root and no session, which never pair); the log channel `logs/.../rjmacarthy.twinny/Twinny.log` and `Twinny.log_<n>` (`system` rows with no session, which never pair) | the `rjmacarthy.twinny` row of the editor's `User/globalStorage/state.vscdb` |
+| `vscode` | `User/workspaceStorage/<hash>/chatEditingSessions/<id>/state.json`, the chat editing state (only `edit state:` `system` rows, which never pair and are never marked `recovered`; it outlives a deleted chat) | `User/workspaceStorage/<hash>/chatSessions/<id>.jsonl` or `.json` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under
@@ -1562,10 +2381,10 @@ a second from the database step. Qwen Code's `logs.json` rows have no
 project path and match by `sessionId` only. A known miss: a prompt the
 agent queued and sent later (Claude Code queues input typed while it
 works) can be minutes from its transcript record, and is then shown
-twice, the history row at the time it was typed. Hermes's quick
-snapshots (`state-snapshots/`) are excluded by the collector unless it
-runs with `--full`, so they appear only in a full collection or loose
-input.
+twice, the history row at the time it was typed. Collectors before
+1.18.0 excluded Hermes's quick snapshots (`state-snapshots/`) unless run
+with `--full`, so in their collections the snapshots appear only in a
+full collection or loose input.
 
 Some sources have a wider window, because they stamp an event later
 than the primary store does or more coarsely. Cursor's agent transcript
@@ -1577,15 +2396,39 @@ ends, so its window is one hour; a turn longer than that leaves its
 earlier lines shown twice. Copilot CLI's session store writes a turn
 when it ends, so its `turns` rows and its rewind snapshots match within
 one hour, and only against an identical event of the same session.
+Cline's hook audit log `logs/hooks.jsonl` stamps a tool call when it
+starts or ends and the transcript stamps the message when the turn is
+written, so its rows match within one hour; its call rows match on the
+call id.
+Goose's request logs stamp a message with the time of its first
+streamed chunk, while `sessions.db` stores the later of that time and
+the session's newest stored message, so a database row can follow its
+log copy by as long as the tool calls before it ran; their window is
+600 seconds.
 nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
 an hour of turn); a WebUI row kept because no session row matched
-carries true UTC, unlike every other nanobot row.
+carries true UTC, unlike every other nanobot row. Continue's two
+secondary sources have a window of ten years, in effect none: its
+session rows carry the session's creation time rather than the prompt's,
+so a prompt history entry is later by as long as the session ran, and a
+`chatFeedback` line is stamped when the user rated the reply, any time
+after its `chatInteraction` line; a history entry still never matches a
+session row with no time, as a session the index lost has. Hermes's
+`.hermes_history` (the classic CLI's entries) and cron run files record
+host local time, emitted as if UTC, against the true UTC of `state.db`,
+so their window is 14 hours plus 2 seconds; the TUI's history entries
+are true UTC and fall within it as well. nanobot's cron and trigger run
+records stamp in true UTC as well and use the same window; their prompt
+row carries the text the session stores for the turn, rebuilt from the
+record, and a trigger's content or reply longer than the 4,000
+characters nanobot keeps in its record is shown twice.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
-`history.txt` and Roo Code's `cli-history.json` record none at all;
+`history.txt`, Kiro's `.cli_bash_history` and Roo Code's
+`cli-history.json` record none at all;
 Claude Desktop's Cowork session record keeps its first prompt with no
 time of its own; Cline's `session-search.db` records none per message,
 and its CLI `user_input_history.jsonl` only on its newest line, since
@@ -1600,7 +2443,8 @@ once, against the earliest database row.
 Some secondary rows never match, because the primary store has no twin
 for them or renders the event differently, and are always kept: Tabby's
 event-log `system` rows, which name the server user by an encoded id
-where the database gives an email; Cline's `session-search.db` messages
+where the database gives an email, and its editor command histories,
+whose inline-edit instructions the server does not store; Cline's `session-search.db` messages
 stored as content blocks, which the index keeps with their block type
 names and tool ids; a nanobot WebUI prompt whose session copy has
 runtime context appended (a quoted reply, an automation template);
@@ -1654,9 +2498,9 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `cursor`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
-| `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). Since analyzer 0.15.0. |
-| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account; since analyzer 0.20.0 also by the `cursor` parser, for a conversation whose header names an agent location other than `local`, and since analyzer 0.20.1 for a Cursor cloud agent, `session origin: remote cursor cloud agent`); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote `vscode`, `chatgpt-desktop` or `cursor` session is also `synced` `yes`, since the vendor holds its copy; since analyzer 0.20.1 every other Cursor session's `synced` is `no`. Since analyzer 0.15.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `cursor`, `kilo-code`, `letta`, `little-coder`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers, and since analyzer 0.20.1 by the `crush`, `hermes`, `letta`, `little-coder`, `nanobot` and `openclaw` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). The `little-coder` rows in both fields come from the v0.0.x `.little-coder/config.json` and name no session, so every little-coder session reads `no` in both. Since analyzer 0.15.0. |
+| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account; since analyzer 0.20.0 also by the `cursor` parser, for a conversation whose header names an agent location other than `local`, and since analyzer 0.20.1 for a Cursor cloud agent, `session origin: remote cursor cloud agent`, by the `cline` parser, for a Cline Cloud session, and by the `agent-zero` parser, for the chat the A0 CLI connector last used on an Agent Zero instance); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote `vscode`, `chatgpt-desktop` or `cursor` session is also `synced` `yes`, since the vendor holds its copy; since analyzer 0.20.1 every other Cursor session's `synced` is `no`. Since analyzer 0.15.0. |
 | `recovered` | string | Whether the session was rebuilt from secondary sources (see [Secondary sources](#secondary-sources)): `yes` when every one of its records in `timeline.jsonl` has `recovered` `yes`, so its primary transcript is gone and only secondary sources hold it; `partial` when some do, so the primary was cut or rewound and a secondary source kept turns it lost; `no` when none does and the agent's parser reads at least one secondary source; `""` when the agent's parser reads no secondary source, so nothing is known. Computed after the filters, over the session's event records only (`system` rows left out), so a secondary source's header, record or `parser:` row never makes a complete session `partial`, and a session with no event record reads `no` or `""`. Because deduplication matches on text, `partial` also results when a secondary source records an event in another form than the primary store does (an index that compresses a tool call into one line), so it marks a session to compare against its secondary sources, not proof of a cut; and a Letta session on the server backend, whose local transcript mirrors the server's store of record, reads `yes` or `partial` by design. Since analyzer 0.15.0. |
 
 ## Compatibility

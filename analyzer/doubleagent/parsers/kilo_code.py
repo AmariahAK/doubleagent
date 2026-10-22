@@ -61,6 +61,47 @@ Files, relative to the home directory:
   The upstream `session_share` table, which Kilo leaves empty, and the
   `session.updated.1` event rows are read by the OpenCode reader, so a
   public URL recorded there gives the OpenCode sync rows too.
+
+Issues 192 and 221, source-derived; not observed on any real install
+(Kilo-Org/kilocode at 87cc35c). The OpenCode reader's refusal rows, archive,
+session rule, worktree and grant rows and the terminal UI's
+`.local/state/kilo/prompt-history.jsonl` (secondary, `{input, mode?,
+parts}`) and `prompt-stash.jsonl` (`{input, parts, timestamp}`) apply here
+(see `opencode.py`); Kilo keeps no pinned-session file. Kilo's own files,
+each row `system` with no `session_id` unless said:
+
+* `.config/kilo/{kilo.jsonc, kilo.json, opencode.jsonc, opencode.json,
+  config.json}`, read as JSONC: the `permission` key that an "always"
+  approval writes, `{<permission>: {<pattern>: <action>} or <action>}` or
+  one action (`ConfigPermissionV1.Info`, `null` the delete sentinel). One
+  row per rule at the file's modification time, `permission setting:
+  permission.<permission>.<pattern>=<action> (from <file>, file mtime)`,
+  `permission.<permission>=<action>` or `permission=<action>`. A file that
+  does not decode is one `parser:` row.
+* `.local/state/kilo-sandbox-policy/<sha256>/<sha256>.json`, `{enabled,
+  mode, allowedHosts, writablePaths, version}`: one `permission setting:
+  sandbox.<key>=<value> (from <file>, file mtime)` row per key; and
+  `.local/state/kilo-sandbox-preference/<sha256>.json`, `true` or `false`:
+  `permission setting: sandbox.enabled=<value> (from <file>, file mtime)`.
+  The names are hashes of the session id and directory, so no session.
+* `.local/share/kilo/retention/state.json`, `{at, scanned, deleted,
+  skippedActive, failed, durationMs, cancelled?, reclaimedBytes?}`: one row
+  at `at`, `sessions deleted by retention: deleted=<n> scanned=<n>
+  skippedActive=<n> failed=<n> durationMs=<n>[ cancelled=<v>][
+  reclaimedBytes=<n>] (from retention/state.json, at)`.
+* `.local/share/kilo/log/<time>.log`, lines `<LEVEL> <UTC time> +<n>ms
+  <key>=<value>... <message>`: the remote control lines only, `remote
+  control: connection enabled connected=<v>`, `remote control: connection
+  disabled` (line time), `remote control: session started model=<model>
+  directory=<directory>` (at `startedAt`, with `sessionID` and the
+  directory as `project_path`) and `remote control: session ended
+  reason=<reason> durationMs=<n> startedAt=<time>` (line time, with
+  `sessionID`), each ending `(from log/<file>, <time basis>)`. Remote
+  control lets Kilo Cloud drive and create sessions on this host over a
+  live channel; the transcript stays in `kilo.db` and the vendor's copy is
+  the ingest sync the cloud session marker records, so these rows are
+  neither sync nor relay rows. A line ending with one of the four messages
+  without its fields is a `parser: unparseable line` row.
 """
 
 from __future__ import annotations
@@ -73,12 +114,53 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, compact_json, error_rows, file_mtime, tail_text, text_of
+from . import gemini_cli  # module import: gemini_cli imports this module too
+from .base import (
+    Options,
+    compact_json,
+    error_rows,
+    file_mtime,
+    line_text,
+    setting_value,
+    tail_text,
+    text_of,
+)
 from .opencode import OpenCodeParser, tool_summary
 
 TASK_RX = re.compile(
     r"(?:^|/)User/globalStorage/kilocode\.kilo-code/tasks/([^/]+)/api_conversation_history\.json$"
 )
+# The global config files an "always" approval writes the `permission` key of,
+# the first that exists in this order (packages/opencode/src/config/config.ts
+# globalConfigFile at 87cc35c).
+CONFIG_RX = re.compile(
+    r"^\.config/kilo/(?:kilo\.jsonc|kilo\.json|opencode\.jsonc|opencode\.json|config\.json)$"
+)
+# Beside the state directory, not inside it (`path.dirname(Global.Path.state)`).
+SANDBOX_POLICY_RX = re.compile(r"^\.local/state/kilo-sandbox-policy/[^/.][^/]*/[^/.][^/]*\.json$")
+SANDBOX_PREFERENCE_RX = re.compile(r"^\.local/state/kilo-sandbox-preference/[^/.][^/]*\.json$")
+# A log line: `<LEVEL> <UTC time to the second> +<n>ms <key>=<value>... <message>`.
+LOG_HEAD_RX = re.compile(r"^(?:DEBUG|INFO|WARN|ERROR)\s+(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d) \+\d+ms ")
+REMOTE_MESSAGES = (
+    "remote connection enabled",
+    "remote connection disabled",
+    "remote session started",
+    "remote session ended",
+)
+REMOTE_RX = {
+    "remote connection enabled": re.compile(
+        r" connected=(?P<connected>\S+) remote connection enabled$"
+    ),
+    "remote connection disabled": re.compile(r" remote connection disabled$"),
+    "remote session started": re.compile(
+        r" sessionID=(?P<sid>\S+) startedAt=(?P<started>\S+)(?: model=(?P<model>\S+))?"
+        r"(?: directory=(?P<directory>.+?))? remote session started$"
+    ),
+    "remote session ended": re.compile(
+        r" sessionID=(?P<sid>\S+) startedAt=(?P<started>\S+) durationMs=(?P<duration>\d+)"
+        r" reason=(?P<reason>\S+) remote session ended$"
+    ),
+}
 
 
 def iter_json_array(raw: str, errors: list) -> list[object]:
@@ -141,31 +223,233 @@ class KiloCodeParser(OpenCodeParser):
     data_dir = ".local/share/kilo"
     db_prefixes = ("kilo", "opencode")
     # Kilo Code at 87cc35c has no `session_v2` table and no pre-release
-    # database that a later build imports, so it reads no secondary source:
-    # every database under its directory, `opencode-next.db` included, is
-    # primary, and `sessions.jsonl` `recovered` stays "".
-    has_secondary = False
+    # database that a later build imports, so every database under its
+    # directory, `opencode-next.db` included, is primary. Its one secondary
+    # source is the terminal UI's `prompt-history.jsonl` (see `opencode.py`).
+    has_secondary = True
     next_db = ""
+    state_dir = ".local/state/kilo"
+    # Kilo's terminal UI keeps no `session.json` of pinned sessions.
+    pinned_sessions = False
 
     def __init__(self) -> None:
         super().__init__()
-        self.share_rx = re.compile(
-            r"^%s/storage/session_share/([^/]+)\.json$" % re.escape(self.data_dir)
-        )
+        dd = re.escape(self.data_dir)
+        self.share_rx = re.compile(r"^%s/storage/session_share/([^/]+)\.json$" % dd)
+        self.log_rx = re.compile(r"^%s/log/([^/]+\.log)$" % dd)
+        self.retention_rx = re.compile(r"^%s/retention/state\.json$" % dd)
 
     def wants(self, artifact: Artifact) -> bool:
+        rel = artifact.rel
         return bool(
-            TASK_RX.search(artifact.rel) or self.share_rx.match(artifact.rel)
+            TASK_RX.search(rel)
+            or self.share_rx.match(rel)
+            or self.log_rx.match(rel)
+            or self.retention_rx.match(rel)
+            or CONFIG_RX.match(rel)
+            or SANDBOX_POLICY_RX.match(rel)
+            or SANDBOX_PREFERENCE_RX.match(rel)
         ) or super().wants(artifact)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        m = self.share_rx.match(artifact.rel)
-        if TASK_RX.search(artifact.rel):
+        rel = artifact.rel
+        m = self.share_rx.match(rel)
+        if TASK_RX.search(rel):
             yield from self._parse_task(artifact, opts)
         elif m:
             yield from self._parse_share(artifact, m.group(1))
+        elif self.log_rx.match(rel):
+            yield from self._parse_log(artifact)
+        elif self.retention_rx.match(rel):
+            yield from self._parse_retention(artifact)
+        elif CONFIG_RX.match(rel):
+            yield from self._parse_config(artifact)
+        elif SANDBOX_POLICY_RX.match(rel) or SANDBOX_PREFERENCE_RX.match(rel):
+            yield from self._parse_sandbox(artifact)
         else:
             yield from super().parse(artifact, opts)
+
+    def _setting_row(self, artifact: Artifact, ts: str, text: str, session_id: str = "") -> Row:
+        row = self.base_row(artifact)
+        row.session_id, row.source_line, row.turn_type = session_id, 1, "system"
+        row.timestamp_utc = ts
+        row.text = compact(text)
+        return row
+
+    # -- standing permission state ----------------------------------------------------
+    def _parse_config(self, artifact: Artifact) -> Iterator[Row]:
+        """A global config file of `~/.config/kilo`: one `permission setting:
+        permission.<permission>.<pattern>=<action> (from <file>, file mtime)`
+        row per rule of its `permission` key, `permission.<permission>=<action>`
+        for a rule given as one action and `permission=<action>` for a
+        `permission` key that is one action, at the file's modification time.
+        An "always" approval writes `{<permission>: {<pattern>: "allow"}}`
+        here; `null` is Kilo's delete sentinel. A file that does not decode
+        as JSONC is one `parser:` row; a file with no `permission` key yields
+        nothing."""
+        ts = file_mtime(artifact)
+        try:
+            doc = gemini_cli.parse_jsonc(artifact.disk_path.read_bytes())
+        except (OSError, ValueError) as e:
+            yield self._setting_row(
+                artifact, ts, "parser: %s could not be decoded (%s)" % (artifact.rel, e)
+            )
+            return
+        if not isinstance(doc, dict):
+            yield self._setting_row(artifact, ts, "parser: %s is not a JSON object" % artifact.rel)
+            return
+        if "permission" not in doc:
+            return
+        src = "(from %s, file mtime)" % artifact.rel
+        perm = doc["permission"]
+        if not isinstance(perm, dict):
+            yield self._setting_row(
+                artifact, ts, "permission setting: permission=%s %s" % (setting_value(perm), src)
+            )
+            return
+        for name, rule in perm.items():
+            if isinstance(rule, dict):
+                for pattern, action in rule.items():
+                    yield self._setting_row(
+                        artifact,
+                        ts,
+                        "permission setting: permission.%s.%s=%s %s"
+                        % (name, pattern, setting_value(action), src),
+                    )
+            else:
+                yield self._setting_row(
+                    artifact,
+                    ts,
+                    "permission setting: permission.%s=%s %s" % (name, setting_value(rule), src),
+                )
+
+    def _parse_sandbox(self, artifact: Artifact) -> Iterator[Row]:
+        """A sandbox policy file (`kilo-sandbox-policy/<sha256 of session
+        id>/<sha256 of directory>.json`, `{enabled, mode, allowedHosts,
+        writablePaths, version}`) gives one `permission setting:
+        sandbox.<key>=<value> (from <file>, file mtime)` row per key; a
+        sandbox preference file (`kilo-sandbox-preference/<sha256 of
+        directory>.json`, `true` or `false`) one `permission setting:
+        sandbox.enabled=<value>` row. Both at the file's modification time,
+        with no `session_id`, since the file names are hashes. A file that
+        is not the expected JSON is one `parser:` row."""
+        ts = file_mtime(artifact)
+        src = "(from %s, file mtime)" % artifact.rel
+        doc = _read_json(artifact.disk_path)
+        if SANDBOX_PREFERENCE_RX.match(artifact.rel):
+            if isinstance(doc, bool):
+                yield self._setting_row(
+                    artifact,
+                    ts,
+                    "permission setting: sandbox.enabled=%s %s" % (setting_value(doc), src),
+                )
+            else:
+                yield self._setting_row(
+                    artifact, ts, "parser: %s is not true or false" % artifact.rel
+                )
+            return
+        if not isinstance(doc, dict):
+            yield self._setting_row(artifact, ts, "parser: %s is not a JSON object" % artifact.rel)
+            return
+        for key, value in doc.items():
+            yield self._setting_row(
+                artifact,
+                ts,
+                "permission setting: sandbox.%s=%s %s" % (key, setting_value(value), src),
+            )
+
+    # -- deletion -------------------------------------------------------------------
+    def _parse_retention(self, artifact: Artifact) -> Iterator[Row]:
+        """`retention/state.json`, the counts of the last automatic deletion
+        pass: one `system` row at its `at` (epoch ms), `sessions deleted by
+        retention: deleted=<n> scanned=<n> skippedActive=<n> failed=<n>
+        durationMs=<n>` with ` cancelled=true` and ` reclaimedBytes=<n>` when
+        present and `-` for an absent count, then `(from retention/state.json,
+        at)`, with no `session_id`, since the file names no session. A file
+        that is not a JSON object is one `parser:` row."""
+        doc = _read_json(artifact.disk_path)
+        if not isinstance(doc, dict):
+            yield self._setting_row(
+                artifact, file_mtime(artifact), "parser: retention/state.json is not a JSON object"
+            )
+            return
+        parts = [
+            "%s=%s" % (k, setting_value(doc[k]) if doc.get(k) is not None else "-")
+            for k in ("deleted", "scanned", "skippedActive", "failed", "durationMs")
+        ]
+        parts += [
+            "%s=%s" % (k, setting_value(doc[k]))
+            for k in ("cancelled", "reclaimedBytes")
+            if doc.get(k) is not None
+        ]
+        yield self._setting_row(
+            artifact,
+            to_utc(doc.get("at")),
+            "sessions deleted by retention: %s (from retention/state.json, at)" % " ".join(parts),
+        )
+
+    # -- remote control -------------------------------------------------------------
+    def _parse_log(self, artifact: Artifact) -> Iterator[Row]:
+        """`log/<time>.log`: the remote control lines only, one `system` row
+        each, `remote control: ...` and `(from log/<file>, <time basis>)`:
+        `connection enabled connected=<true|false>` and `connection disabled`
+        at the line's time; `session started model=<model>
+        directory=<directory>` at its `startedAt`, with the session as
+        `session_id` and the directory as `project_path`; `session ended
+        reason=<reason> durationMs=<n> startedAt=<time>` at the line's time,
+        with the session. Remote control lets Kilo Cloud drive and create
+        sessions on this host; the transcript stays in `kilo.db`, so these
+        are not sync rows. A line that ends with one of the four messages
+        and lacks the fields it should carry is a `parser: unparseable line`
+        row with the line in full; every other line is not read."""
+        name = artifact.rel.rsplit("/", 1)[-1]
+        errors: list = []
+        with open(artifact.disk_path, "rb") as fh:
+            for n, raw in enumerate(fh, 1):
+                line = line_text(raw)
+                msg = next((m for m in REMOTE_MESSAGES if line.endswith(" " + m)), "")
+                if not msg:
+                    continue
+                row = self._remote_row(artifact, name, n, line, msg)
+                if row is None:
+                    errors.append((n, "unparseable line (%s without its fields)" % msg, line))
+                else:
+                    yield row
+        yield from error_rows(self, artifact, errors)
+
+    def _remote_row(self, artifact: Artifact, name: str, n: int, line: str, msg: str):
+        head = LOG_HEAD_RX.match(line)
+        fields = REMOTE_RX[msg].search(line) if head else None
+        if head is None or fields is None:
+            return None
+        f = fields.groupdict()
+        row = self.base_row(artifact)
+        row.source_line, row.turn_type = n, "system"
+        row.timestamp_utc = to_utc(head.group(1))
+        if msg == "remote connection enabled":
+            text = "connection enabled connected=%s" % f["connected"]
+            basis = "line time"
+        elif msg == "remote connection disabled":
+            text, basis = "connection disabled", "line time"
+        elif msg == "remote session started":
+            row.session_id = f["sid"]
+            row.project_path = f.get("directory") or ""
+            row.timestamp_utc = to_utc(f["started"]) or row.timestamp_utc
+            text = "session started model=%s directory=%s" % (
+                f.get("model") or "-",
+                f.get("directory") or "-",
+            )
+            basis = "startedAt"
+        else:
+            row.session_id = f["sid"]
+            text = "session ended reason=%s durationMs=%s startedAt=%s" % (
+                f["reason"],
+                f["duration"],
+                f["started"],
+            )
+            basis = "line time"
+        row.text = compact("remote control: %s (from log/%s, %s)" % (text, name, basis))
+        return row
 
     # -- cloud session marker -------------------------------------------------------
     def _parse_share(self, artifact: Artifact, session_id: str) -> Iterator[Row]:

@@ -6,7 +6,9 @@ others under `nanobot/channels/`); it is open source, written in Python, and not
 agent. It stores each conversation as a JSONL file of OpenAI chat-completions messages behind one
 metadata line, rewritten whole on every save, and at the 2026-10-19 commit in a SQLite session
 database ([Session database](#session-database)). Parsed: the nanobot parser reads the session
-database, the session JSONL files, the memory journal, the WebUI transcript and the CLI history.
+database, the session JSONL files, the memory journal, the WebUI transcript, the CLI history, the
+cron and trigger run records, the WebUI sidebar cache, and the permission settings of `config.json`
+and `pairing.json`.
 
 ## Source and evidence
 
@@ -33,6 +35,13 @@ so the database may not be in a release yet.
 
 ### Source reviews
 
+- 2026-10-21: HKUDS/nanobot at
+  [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
+  (0.3.5 in `pyproject.toml`), and the `oauth-cli-kit` 0.1.6 wheel it depends on: the relay,
+  permission, model switch, run record and sidebar cache plans of [Parser plan](#parser-plan) are
+  now in the parser, the run record and sidebar cache shapes are in [Other stores](#other-stores),
+  and the GitHub Copilot sign-in is in [Credentials](#credentials) and
+  [Source host rows](#source-host-rows).
 - 2026-10-19: [HKUDS/nanobot](https://github.com/HKUDS/nanobot) at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) against [`acdae3d`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f). Source
   only. The review added the SQLite session store and its JSONL import
   ([SQLite session store](#sqlite-session-store), [Session database](#session-database)), the
@@ -110,6 +119,25 @@ history), legacy `sessions/<safe key>.jsonl`, the default `workspace/`, and laun
 ([`config/paths.py:51-71`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L51-L71);
 [`gateway/service.py:135-139`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L135-L139)).
 
+Outside the instance root, the two OAuth model providers keep their tokens through the
+`oauth-cli-kit` library (a PyPI package with no linked repository; read in its 0.1.6 wheel, sha256
+`d4a73beae7333ae642a9e5766ab0a04de53279667fefdf064c23db77a3494e7f`), whose `FileTokenStorage`
+writes `<user_data_dir(app_name)>/auth/<token_filename>` unless `OAUTH_CLI_KIT_TOKEN_PATH` names
+another file (`oauth_cli_kit/storage.py:29-38`, default `app_name` `oauth-cli-kit` at `:111`).
+`user_data_dir` is the platformdirs data directory, `~/.local/share/<app>` (or `$XDG_DATA_HOME`)
+on Linux, `~/Library/Application Support/<app>` on macOS and `AppData/Local/<app>` on Windows
+([`unix.py:37-45`](https://github.com/tox-dev/platformdirs/blob/bc0405cb9c9439e6923b2dc090f91ad5daaf7dec/src/platformdirs/unix.py#L37-L45);
+[`macos.py:28-30`](https://github.com/tox-dev/platformdirs/blob/bc0405cb9c9439e6923b2dc090f91ad5daaf7dec/src/platformdirs/macos.py#L28-L30);
+[`windows.py:28-36`](https://github.com/tox-dev/platformdirs/blob/bc0405cb9c9439e6923b2dc090f91ad5daaf7dec/src/platformdirs/windows.py#L28-L36),
+platformdirs 4.3.6). The GitHub Copilot provider uses `app_name` `nanobot` and the file
+`github-copilot.json`, so `~/.local/share/nanobot/auth/github-copilot.json` on Linux
+([`providers/github_copilot_provider.py:38`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/github_copilot_provider.py#L38),[`53-58`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/github_copilot_provider.py#L53-L58));
+the OpenAI Codex provider keeps the default `app_name`, so its token is under
+`oauth-cli-kit/auth/`
+([`providers/openai_codex_provider.py:769`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/openai_codex_provider.py#L769)).
+The catalog has no line for either directory, so neither token is collected
+([Credentials](#credentials)).
+
 #### Scratch directories
 
 The default workspace (`~/.nanobot/workspace`, or `<home>/workspace` under `--home`,
@@ -176,6 +204,8 @@ so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
   ([`:340`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L340)),
   MCP server `env`
   ([`:370`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L370)),
+  among them the GitHub personal access token of the GitHub MCP preset
+  ([Source host rows](#source-host-rows)),
   and channel secrets such as Feishu `appSecret` and `verificationToken`
   ([`channels/feishu/config.py:18-20`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/feishu/config.py#L18-L20))
   or Linear `clientSecret`
@@ -200,6 +230,14 @@ so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
   Evidence in
   [Secrets](#secrets).
 - No keychain use found.
+- `github-copilot.json`, the GitHub OAuth token of the GitHub Copilot model provider (scope
+  `read:user`), written by `nanobot provider login github-copilot` as `{access, refresh, expires,
+  account_id}` with mode 0600, `account_id` being the GitHub `login` of the signed-in account
+  ([`providers/github_copilot_provider.py:37`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/github_copilot_provider.py#L37),[`193-204`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/github_copilot_provider.py#L193-L204);
+  `oauth_cli_kit/storage.py:56-70` in the wheel named in
+  [Per-user storage](#per-user-storage)), and the OpenAI Codex provider's token beside the
+  library's own data directory. Both live outside `.nanobot*`, where that section places them, and
+  are not collected.
 - `pairing.json`, the approved chat senders, is at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
   `{"approved": {<channel>: [<sender_id>...]}, "pending": {<code>: {channel, sender_id, created_at, expires_at, delivery_status}}}`,
   the code an `ABCD-EFGH` value that lives ten minutes and only lets an operator approve that sender
@@ -236,6 +274,8 @@ No per-project database.
   `.workspace`
   ([`security/workspace_access.py:80-84`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L80-L84);
   [`webui/inbound_commands.py:694`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/inbound_commands.py#L694)).
+  Each WebUI message copies its scope into the session metadata, so the key holds the last one
+  ([`security/workspace_access.py:145-154`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L145-L154)).
   Since [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) it sits in the `metadata` column of `sessions.sqlite3`, so
   `discover_projects` cannot read it; the analyzer can.
 
@@ -319,10 +359,11 @@ session key); and the run records of scheduled and triggered runs, `cron/runs/<r
 `triggers/runs/<delivery id>.json`, each with the prompt and the reply
 ([`triggers/local_store.py:45-50`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L45-L50)).
 No deletion marker is written. The analyzer reads the frozen and backup JSONL copies, the WebUI
-transcript and the CLI history as secondary sources and the memory journal as a primary source of
-summaries ([Past use and secondary sources](#past-use-rows-and-secondary-sources)), and does not
-read the sidebar cache, the run records or `llm_usage.sqlite3` (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+transcript, the CLI history, the sidebar cache and the cron and trigger run records as secondary
+sources and the memory journal as a primary source of summaries
+([Past use and secondary sources](#past-use-rows-and-secondary-sources)), and does not read
+`llm_usage.sqlite3` (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)). The
+run records of a workspace outside `.nanobot*` are collected through the project catalog.
 
 #### SQLite session store
 
@@ -393,7 +434,17 @@ loader treats any line without a known `_type` as a message,
   [`session/manager.py:219-238`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L219-L238));
   `_runtime_context` marks injected runtime context on a user message
   ([`runtime_context.py:14`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/runtime_context.py#L14);
-  [`loop.py:2428-2429`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/loop.py#L2428-L2429)).
+  [`loop.py:2428-2429`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/loop.py#L2428-L2429));
+  `_command: true` marks the user message and the assistant reply of a slash command such as
+  `/model`, which skip the model; the user message is the command as typed (`/model fast`) and the
+  reply is the command's output
+  ([`agent/loop.py:2143-2155`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/agent/loop.py#L2143-L2155),
+  at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)).
+  A switch's reply is ``Switched model preset to `<preset>`.`` followed by `- Scope: current
+  session`, ``- Model: `<model id>` ``, `- Context window: <n>` and `- Max output tokens: <n>`
+  lines; a failed switch replies `Could not switch model preset: <reason>`, and `/model` alone
+  replies `## Model` with ``- Current model: `<id>` `` and ``- Current preset: `<preset>` ``
+  ([`command/builtin.py:384-448`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/command/builtin.py#L384-L448)).
 
 No model is recorded per message. The session's model preset is `metadata._nanobot_model_preset`
 ([`session/model_selection.py:9`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/model_selection.py#L9));
@@ -537,14 +588,25 @@ stamped to the minute
   ([`cli/agent.py:146`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/agent.py#L146)),
   and the file records neither. The entry is written when the prompt is submitted and the session
   user message at the start of the turn, both in local time.
+- Run records to session: `session_key` = the session's key. The session does not store the
+  record's prompt but the text `Scheduled cron job triggered: <job name>`, a blank line and the
+  job's message for a cron run
+  ([`cron/bound_runner.py:81-95`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/bound_runner.py#L81-L95);
+  [`cron/session_turns.py:18-24`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/session_turns.py#L18-L24)),
+  and `Local trigger received: <trigger name, else id>`, a blank line and the delivery's content
+  for a trigger run
+  ([`triggers/local_runner.py:212-214`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_runner.py#L212-L214)),
+  both rebuildable from the record's fields. The record's times are true UTC epoch milliseconds,
+  the session's local time, so they differ by the host's UTC offset plus the turn's length.
 - Time basis: message and metadata times are naive host local time
   ([Record schema](#record-schema)), the WebUI's `created_at_ms` true UTC; the parser's
   convention is under [Parser plan](#parser-plan).
 
 ### Other stores
 
-None of these stores is read by the parser. The WebUI sidebar cache and the cron and trigger
-run records are cited at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9).
+The parser reads the WebUI sidebar cache and the cron and trigger run records, not the usage
+database ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)). The sidebar
+cache and the run records are cited at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9).
 
 #### Usage database
 
@@ -563,7 +625,17 @@ sidebar, `{"version": 8, "sessions": [...]}` with one row per WebUI transcript (
 model preset, workspace scope)
 ([`webui/session_list_index.py:1-6`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L1-L6),[`39-40`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L39-L40),[`172-204`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L172-L204)).
 Secondary; it holds a preview, not turns, and a row can outlive the transcript until the cache is
-rebuilt.
+rebuilt. Only the rows of WebUI transcripts that have no row in `sessions.sqlite3` are written to
+the file
+([`:79`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L79),[`198-205`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L198-L205)),
+each `{key, created_at, updated_at, title, preview, model_preset, recovery_state,
+_workspace_scope_present, _workspace_scope_value, _source: "webui_transcript", file, mtime_ns, size,
+webui_activity_mtime_ns, webui_activity_size, webui_activity_files}`, `title` empty, `preview` the
+first user text of the transcript, `created_at` the first record's `created_at_ms` and `updated_at`
+the newest transcript file's modification time, both as naive local `isoformat()`
+([`:402-413`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L402-L413),[`352-356`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L352-L356),[`416-497`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L416-L497)).
+The WebUI directory is shared by the instance's workspaces, so a cached row names a chat, not the
+workspace of the namespace directory it sits in.
 
 #### Cron run records
 
@@ -579,7 +651,13 @@ beside `cron/jobs.json`, whose `state.runHistory[]` keeps `runAtMs`, `status`, `
 and `cron/action.jsonl`, a queue of `{action, params}` lines
 ([`:673-674`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/service.py#L673-L674)).
 Secondary: the prompt and the reply are also turns of the bound session, and the run record survives
-the session's deletion.
+the session's deletion. The record is rewritten at each status, `queued` before the turn and `ok`
+(with `response`) or `error` (with `error`) after it, each write setting `updated_at_ms` to the
+time of that write; `prompt_vars` is `{message}`, the job's message; `run_id` is `<job id>:<epoch
+milliseconds at the run's start>:<8 hex>`, and the file name is the run id with every character
+other than letters, digits, `.`, `_` and `-` replaced by `_`
+([`cron/bound_runner.py:81`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/bound_runner.py#L81),[`98-146`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/bound_runner.py#L98-L146);
+[`utils/run_records.py:14-29`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/utils/run_records.py#L14-L29)).
 
 #### Trigger run records
 
@@ -590,6 +668,15 @@ records with the content and the `response`
 ([`triggers/local_store.py:45-50`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L45-L50),[`53-90`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L53-L90),[`292-310`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L292-L310);
 [`triggers/local_types.py:121-158`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_types.py#L121-L158)).
 Secondary, as for the cron runs; the directory exists at [`acdae3d`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f) as well.
+A run record is `{kind: "local_trigger", trigger_id, delivery_id, content, created_at_ms,
+attempts, last_error?, trigger_name, session_key, channel, chat_id, sender_id, origin_metadata,
+status, error?, response?, run_id, updated_at_ms}`, the trigger's fields present only while the
+trigger exists, `created_at_ms` the time the delivery was queued, and `content`, `error`,
+`last_error` and `response` cut to 4,000 characters
+([`triggers/local_store.py:24`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L24),[`439-468`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L439-L468)).
+Its `status` is `processing` when the delivery reaches the agent, then `ok` with the `response`,
+or `interrupted`, `retrying` or `error` with the `error`
+([`triggers/local_runner.py:55-111`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_runner.py#L55-L111),[`145-166`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_runner.py#L145-L166)).
 
 ### Format versions
 
@@ -631,8 +718,10 @@ secret globs named in [Credentials](#credentials).
 Globs (home-relative): `.nanobot*/sessions/*/sessions.sqlite3`,
 `.nanobot*/sessions/*/*.jsonl`, `.nanobot*/sessions/*.jsonl`,
 `.nanobot*/sessions/*/.migration-conflicts/*.jsonl`,
-`.nanobot*/sessions/*/jsonl-backup/*.jsonl`. Skip `*.checkpoint.json`.
-Read `.workspace` from the namespace directory.
+`.nanobot*/sessions/*/jsonl-backup/*.jsonl`, `.nanobot*/sessions/*/.webui_session_index.json`,
+`.nanobot*/config.json`, `.nanobot*/pairing.json`, `.nanobot*/**/cron/runs/*.json` and
+`.nanobot*/**/triggers/runs/*.json`, and in a project base `cron/runs/*.json` and
+`triggers/runs/*.json`. Skip `*.checkpoint.json`. Read `.workspace` from the namespace directory.
 
 | Column | Source |
 | --- | --- |
@@ -641,7 +730,7 @@ Read `.workspace` from the namespace directory.
 | project_path | `.workspace` file content |
 | git_branch | empty |
 | turn_type | `user` → user (`_hidden_history` → system); `assistant` → assistant, plus tool_use per `tool_calls[]`, thinking from `reasoning_content`; `tool` → tool_result |
-| model | empty, or `metadata._nanobot_model_preset` |
+| model | empty, or `metadata._nanobot_model_preset`; in a session with a `/model` switch, empty before the first switch and the switched preset after each |
 | tool_name | `tool_calls[].function.name` / tool `name` |
 | tool_use_id | `tool_calls[].id` / `tool_call_id` |
 | text | `content` text; for tool_use the `command`/`path`/`url` key of the parsed `arguments`, else the arguments string |
@@ -655,33 +744,41 @@ offset.
 
 The primary store and the CLI history location are in the parser
 ([issue 178](https://github.com/seanthegeek/doubleagent/issues/178) and
-[issue 179](https://github.com/seanthegeek/doubleagent/issues/179)); each subsection below says what
-else is.
+[issue 179](https://github.com/seanthegeek/doubleagent/issues/179)), and so are the relay,
+permission, model switch, run record and sidebar cache rows of the subsections below
+([issue 207](https://github.com/seanthegeek/doubleagent/issues/207)).
 
 #### Permission rows
 
-No permission state is read by the parser
-([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
-[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), `pairing.json` (the chat senders
-the operator approved, shape in [Credentials](#credentials)) included.
-
-Plan, at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) (not yet in the parser): one `system` row per standing setting at the
-file's modification time, `permission setting: <key>=<value> (from config.json, file mtime)`, for
-`tools.restrictToWorkspace`, `tools.exec.enable`, `tools.exec.sandbox`, each
+Source-derived; not observed on any real install. From
+[`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
+([issue 207](https://github.com/seanthegeek/doubleagent/issues/207)), the parser yields one `system`
+row per standing setting of `config.json` at the file's modification time, `permission setting:
+<key>=<value> (from <path>, file mtime)`, `<path>` relative to the home (`.nanobot/config.json`),
+for `tools.restrictToWorkspace`, `tools.exec.enable`, `tools.exec.sandbox`, each
 `tools.exec.allowPatterns`, `denyPatterns`, `sandboxRoBinds`, `sandboxRwBinds` and `allowedEnvKeys`
-entry, `tools.ssrfWhitelist`, `tools.webuiAllowLocalServiceAccess`,
-`tools.webuiAllowRemotePackageInstall` and each `channels.<name>.allowFrom` entry
+entry, each `tools.ssrfWhitelist` entry, `tools.webuiAllowLocalServiceAccess` (or its legacy
+`allowLocalPreviewAccess`), `tools.webuiAllowRemotePackageInstall` and each
+`channels.<name>.allowFrom` entry, a key the file lacks giving no row. nanobot saves the file in
+camelCase and accepts snake_case as well
+([`config/loader.py:149`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/loader.py#L149);
+[`config_base.py:12-15`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config_base.py#L12-L15);
+[`config/schema.py:440-449`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/schema.py#L440-L449)),
+so the row names the key as the file spells it; no other key of the file, which holds API keys
+([Credentials](#credentials)), is read
 ([`config/schema.py:428-458`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/schema.py#L428-L458);
 [`agent/tools/shell_config.py:11-28`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/agent/tools/shell_config.py#L11-L28);
 [`channels/base.py:244-257`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/channels/base.py#L244-L257));
-one per `pairing.json` `approved.<channel>[]` sender,
-`permission setting: pairing.approved.<channel>=<sender_id> (from pairing.json, file mtime)`, and
-per `pending.<code>` entry at its `created_at` (epoch seconds), with `channel`, `sender_id`,
-`expires_at` and `delivery_status`
+one per `pairing.json` `approved.<channel>[]` sender at the file's modification time,
+`permission setting: pairing.approved.<channel>=<sender_id> (from <path>, file mtime)`, and one per
+`pending.<code>` entry at its `created_at` (epoch seconds, true UTC), `permission setting:
+pairing.pending.<channel>=<sender_id> expires_at=<time> delivery_status=<status> (from <path>,
+created_at)`, the delivery status left out when absent and the code itself never shown
 ([`pairing/store.py:1-5`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L1-L5),[`32-33`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L32-L33),[`73-85`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L73-L85),[`133-138`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L133-L138));
-and after the session start row,
-`permission mode: access_mode=<restricted|full> project=<project_path>` from
-`metadata.workspace_scope`, which the WebUI writes on every message it accepts
+and after the session start row, at its time,
+`permission mode: access_mode=<restricted|full> project=<project_path> (from session metadata
+workspace_scope)` from `metadata.workspace_scope`, which holds the scope of the last message the
+WebUI accepted
 ([`security/workspace_access.py:11-12`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L11-L12),[`80-84`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L80-L84),[`212-213`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L212-L213);
 [`webui/inbound_commands.py:694`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/inbound_commands.py#L694)).
 The key was already written at the [Source and evidence](#source-and-evidence) commit. Per-call
@@ -698,20 +795,23 @@ When the metadata line has ([issue 96](https://github.com/seanthegeek/doubleagen
 [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)) `metadata._nanobot_model_preset`,
 a `system` row `model: <preset> (preset)` follows the session start row at its time; the value
 names a model preset of nanobot's configuration, not a model id, and the row says
-so. A session file has one metadata line, so it names one preset and no
-`model: <old> -> <new>` row is written; per-call models are in
-`llm_usage.sqlite3` `llm_calls`, which the parser does not read.
+so. A session has one metadata line, so it names one preset; changes come only from the switch
+rows below. Per-call models are in `llm_usage.sqlite3` `llm_calls`, which the parser does not
+read.
 
 A `/model <preset>` switch is kept in the transcript as a user and assistant message pair
-flagged `_command`, whose reply names the resolved model; the parser shows it as two plain rows.
-Plan, at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) (not yet in the parser): keep `model: <preset> (preset)`, and add
-`model: <old> -> <new> (preset)` when a `_command` user message reads `/model <name>` and its
-`_command` assistant reply starts `Switched model preset to`, with ` requested=<name>` and the
-resolved id from the reply's `- Model:` line
-([`command/builtin.py:405-448`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/command/builtin.py#L405-L448);
-[`agent/loop.py:2143-2155`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/agent/loop.py#L2143-L2155)).
+flagged `_command` (shapes in [Record schema](#record-schema)); the parser keeps both as plain rows
+and, source-derived and not observed on any real install
+([issue 207](https://github.com/seanthegeek/doubleagent/issues/207)), writes after each reply that
+starts ``Switched model preset to `<preset>` `` a `system` row
+`model: <old> -> <new> (preset) requested=<name> resolved=<model id>`, `<name>` from the preceding
+`_command` user message `/model <name>` and `<model id>` from the reply's ``- Model: `<id>` ``
+line ([`command/builtin.py:405-448`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/command/builtin.py#L405-L448)).
 The metadata keeps only the last preset, so the first preset of a switched session is not recorded
-anywhere.
+anywhere: in a session with a switch the parser writes no `model: <preset> (preset)` row at the
+start, the first switch reads `model: <new> (preset) requested=<name> resolved=<model id>`, and
+the `model` column is empty until it. A failed switch (`Could not switch model preset:`) and the
+`/model` status reply give no row.
 
 #### Past-use rows and secondary sources
 
@@ -726,6 +826,9 @@ every one read on every run):
 | `<workspace>/memory/history.jsonl` | primary: summaries, not copies of events | one `system` row per entry, `memory history #<cursor>: <content>` |
 | `webui/<safe key>.jsonl`, `webui/<safe key>.segments/NNNNNN.jsonl` | secondary, tolerance 15 hours | `user`; `assistant` (`message` with no `kind`, `stream_end` without `merge_next`); `tool_use` and `tool_result` per tool event; `thinking` (opt-in); `system` for breadcrumbs without tool events, finished file edits, `fork_marker`, `context_compaction` and unknown events; nothing for `delta`, `reasoning_delta`, `turn_end` |
 | `.nanobot*/history/cli_history` | secondary, tolerance 2 seconds | one `user` row per entry at its own time, no session or project |
+| `<workspace>/cron/runs/<run id>.json` | secondary, tolerance 15 hours (true UTC) | `user` of the text the session stores for the run (`Scheduled cron job triggered: <job_name>`, a blank line, `prompt_vars.message`; else `rendered_prompt`) at the start time inside `run_id`; `assistant` of `response` and `system` `cron run: job <job_name> (<job_id>) run <run_id> status=<status>`, with ` error=<error>`, at `updated_at_ms`; `session_id` `session_key`, `project_path` the workspace |
+| `<workspace>/triggers/runs/<delivery id>.json` | secondary, tolerance 15 hours (true UTC) | `user` `Local trigger received: <trigger_name or trigger_id>`, a blank line, `content`, at `created_at_ms`; `assistant` of `response` and `system` `trigger run: trigger <trigger_name> (<trigger_id>) delivery <delivery_id> status=<status> attempts=<n>`, with ` error=<error>`, at `updated_at_ms` |
+| `sessions/<workspace-id>/.webui_session_index.json` | secondary; `system` rows, which never pair | one `system` row per entry, `webui sidebar entry: key=<key> title=<title> preview=<preview> model_preset=<preset> updated_at=<updated_at> (from .webui_session_index.json version <n>)`, absent fields left out, at `created_at`, `session_id` the key, no project |
 
 A frozen JSONL keeps the session start row of the import day, whose
 `updated_at` differs from the database's, so both start rows are shown;
@@ -759,13 +862,16 @@ follow-up prompts) are not read.
 
 CLI history (done): select `.nanobot*/history/cli_history`, since `--home` moves it.
 
-Plan, at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) (not yet in the parser): add the cron and trigger run records as
-secondary sources
-(`user` from `rendered_prompt` or `content`, `assistant` from
-`response`, at `updated_at_ms`, `session_id` from `session_key` or the
-trigger's), and the WebUI sidebar cache as a secondary source of one
-`system` row per entry naming the title and preview; see
-[Other stores](#other-stores).
+Run records and sidebar cache (done, source-derived; not observed on any real install;
+[issue 207](https://github.com/seanthegeek/doubleagent/issues/207)): the rows in the table above,
+from the shapes in [Other stores](#other-stores). The run records are selected under any
+`.nanobot*` directory (the default workspace, and the state directory for the legacy cron
+location) and, in a project base the project catalog collected, at its root. The prompt row
+carries the text the session stores for the turn, rebuilt from the record
+([Joins and timestamps](#joins-and-timestamps)), so it pairs with the session's copy; a
+trigger's content or reply longer than the record's 4,000-character limit is cut there, pairs
+with nothing and is shown twice. The sidebar cache's rows name chats whose session row is gone
+or never existed, so they always stay.
 
 #### Sync, relay and origin rows
 
@@ -817,12 +923,13 @@ libraries (none). The paths found and read, none of which carries session conten
   [`session/manager.py:1634-1642`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1634-L1642)),
   so such a chat leaves no transcript on disk at all.
 
-Relay: the parser puts the session key and `metadata.last_channel` in its session start row and
-writes no `session relayed:` row. Planned (not yet in the parser): after the session start row, for
-a key whose channel is a messaging platform,
-`session relayed: <channel> chat <chat_id> (from session key)`, and
-`... last route <channel>:<chat_id> (from metadata.last_channel)` when the last route differs, as
-the `agent-zero` and `goose` parsers do; set `records_relay`. The channel prefixes at `909b277` are
+Relay: source-derived; not observed on any real install
+([issue 207](https://github.com/seanthegeek/doubleagent/issues/207)). The parser puts the session
+key and `metadata.last_channel` in its session start row and, after it at its time, writes
+`session relayed: <channel> chat <chat_id> (from session key)` for a key whose channel is a
+messaging platform, and `session relayed: <channel> chat <chat_id> (from metadata.last_channel)`
+when the last route is a messaging platform and differs from the key, as the `agent-zero` and
+`goose` parsers do; `records_relay` is set. The channel prefixes at `909b277` are
 `dingtalk`, `discord`, `email`, `feishu`, `linear`, `matrix`, `mattermost`, `mochat`, `msteams`,
 `napcat`, `qq`, `signal`, `slack`, `telegram`, `wecom`, `weixin`, `whatsapp` and `whatsapp_agent`
 (each channel's `name`, for example
@@ -869,6 +976,59 @@ with `.workspace` containing `/home/alice/.nanobot/workspace`:
 {"role":"assistant","content":"python3 (pid 4242) is listening on 8080.","timestamp":"2026-10-01T10:15:09.400000"}
 ```
 
+A `/model` switch in a session, from
+[`command/builtin.py:435-448`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/command/builtin.py#L435-L448)
+and
+[`agent/loop.py:2143-2155`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/agent/loop.py#L2143-L2155):
+
+```json
+{"role":"user","content":"/model fast","_command":true,"timestamp":"2026-10-04T08:01:00"}
+{"role":"assistant","content":"Switched model preset to `fast`.\n- Scope: current session\n- Model: `gpt-5.4-mini`\n- Context window: 128000\n- Max output tokens: 8192","_command":true,"timestamp":"2026-10-04T08:01:00"}
+```
+
+`pairing.json`, from
+[`pairing/store.py:73-85`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L73-L85)
+and [`130-160`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L130-L160):
+
+```json
+{"approved": {"telegram": ["123456789"]}, "pending": {"ABCD-EFGH": {"channel": "discord", "sender_id": "999", "created_at": 1791187200.5, "expires_at": 1791187800.5, "delivery_status": "sent"}}}
+```
+
+A cron run record `cron/runs/job1_1791187200000_ab12cd34.json`, from
+[`cron/bound_runner.py:98-146`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/bound_runner.py#L98-L146)
+and [`utils/run_records.py:19-29`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/utils/run_records.py#L19-L29):
+
+```json
+{"job_id": "job1", "job_name": "morning digest", "session_key": "slack:C42", "prompt_ref": "x", "prompt_vars": {"message": "summarise the inbox"}, "rendered_prompt": "Reminder: summarise the inbox", "status": "ok", "response": "Three new mails.", "run_id": "job1:1791187200000:ab12cd34", "updated_at_ms": 1791187205000}
+```
+
+#### Source host rows
+
+The agent records a source-host token but no connected account, so the parser yields no
+`source host:` row. Two GitHub credentials exist, neither naming the account in a collected file:
+
+- The GitHub MCP preset of the WebUI runs `ghcr.io/github/github-mcp-server` in Docker with a
+  personal access token the user pastes, stored in `config.json` as
+  `tools.mcpServers.github.env.GITHUB_PERSONAL_ACCESS_TOKEN`
+  ([`webui/mcp_presets.json:331-367`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/mcp_presets.json#L331-L367);
+  [`webui/mcp_presets_api.py:1086-1088`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/mcp_presets_api.py#L1086-L1088));
+  the collector flags the whole file ([Credentials](#credentials)), and the parser reads no key
+  of `tools.mcpServers`. The token's account and the repositories it reaches are server-side
+  only.
+- The GitHub Copilot model provider's sign-in (`nanobot provider login github-copilot`, a
+  device-code OAuth flow with scope `read:user`) serves model calls, not repository access; its
+  token and the account's login are in `github-copilot.json` outside `.nanobot*`, which the
+  catalog does not collect ([Credentials](#credentials), [Per-user storage](#per-user-storage)).
+
+The bundled `github` skill drives the user's own `gh` CLI and its login
+([`skills/github/SKILL.md:1-10`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/skills/github/SKILL.md#L1-L10)),
+which is the GitHub CLI's state, not nanobot's. No repository list is cached and no
+repository-bound remote conversation exists: grepped `nanobot/` at
+[`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) for
+`github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and `clone`;
+GitLab and Bitbucket appear nowhere, and `installation` and `oauth` also find the Linear channel's
+OAuth app, an issue tracker, and the MCP and xAI OAuth stores of [Credentials](#credentials).
+
 ## Confidence
 
 - High (source): every path in [Per-user storage](#per-user-storage) to
@@ -887,3 +1047,5 @@ with `.workspace` containing `/home/alice/.nanobot/workspace`:
   `/root/.nanobot`.
 - Not determined: whether subagent runs are persisted anywhere.
 - Not determined: the legacy WebUI `<safe key>.json` snapshot shape.
+- Medium: the OAuth token paths outside `.nanobot*`, read in the `oauth-cli-kit` 0.1.6 wheel and
+  platformdirs 4.3.6; an install resolves whatever versions satisfy `oauth-cli-kit>=0.1.6,<1.0.0`.

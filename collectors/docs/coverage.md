@@ -21,7 +21,21 @@ inside them goes to the extension's agent.
 - **Cline, Roo Code, Kilo Code, Continue, Sourcegraph Cody and Twinny:**
   their globalStorage is claimed by nested catalog entries, so those files
   are attributed to the extension's agent rather than to the editor,
-  whichever editor they sit in.
+  whichever editor they sit in. Twinny's per-workspace extension storage,
+  `workspaceStorage/<id>/rjmacarthy.twinny` (the `agent-changes/` record of
+  each agent-mode reply that changed files), is claimed the same way; the
+  `workspace.json` and `state.vscdb` beside it stay the editor's.
+- **Sourcegraph Cody's JetBrains plugin** keeps its application settings
+  in each JetBrains IDE's `options/` directory: `cody.xml`,
+  `cody_application_settings.xml`, `cody_accounts_settings.xml` and
+  `cody_accounts.xml` are collected as `cody`; `cody_accounts.xml` is
+  flagged secret because a server entry's `customRequestHeaders` can
+  carry proxy credentials, and `cody.xml` because its `cody.mcpServers`
+  entries carry MCP server `headers` and `env`. Its `cody_settings.json`
+  under `~/.sourcegraph` and under a discovered project's
+  `.idea/.sourcegraph`, flagged secret for the same reason, and the
+  plugin's pre-agent chat history in the project's
+  `.idea/cody_history.xml`, are collected as `cody` too.
 - **GitHub Copilot Desktop** shares `~/.copilot` with Copilot CLI: its
   sessions, written there by a bundled Copilot CLI, are collected as
   `copilot-cli`, and nested catalog entries attribute the app's own store,
@@ -482,11 +496,12 @@ agent state that can be read with grep, and from every `-p` directory.
 
 | Agent | Where the project path is read from |
 | --- | --- |
+| Agent Zero | Editor (ACP) chats: `acp_cwd` and `acp_additional_directories` in `usr/chats/<chat id>/chat.json` under `agent-zero`, `agent-zero/<instance>` or `Desktop/agent-zero`; not read in a Docker volume. The path names a directory on the host that ran the editor. |
 | Amp | History. |
 | Antigravity | History, trusted workspaces, project cache, and the project files the CLI and the desktop app write in `~/.gemini/config/projects/` (their `file://` folder URLs; the sh collector reads them from 1.12.0). |
 | Claude Code | History and project list, in `~/.claude` and `~/.claude-<name>` config homes. |
 | Cline | Sessions and task history. |
-| Codex | Session rollouts. |
+| Codex | Session rollouts in `~/.codex/sessions` and, from collector 1.18.0, `~/.codex/archived_sessions`; a `cwd` under the home's `Documents/Codex` (projectless output directories) or, from 1.18.0, `.codex/worktrees` (the agent's own git worktrees, excluded) is skipped. |
 | Continue | Sessions. |
 | Copilot CLI | Session workspaces (`workspace.yaml` `cwd`) of sessions that have an `events.jsonl`. |
 | Copilot Desktop | None of its own: its sessions are Copilot CLI session workspaces, and a `cwd` under the home's `.copilot/` (the app's chat directories and worktrees) is skipped there, as is the `cwd` of a session directory with no `events.jsonl` (a pool or probe session the app pre-created and never prompted, whose `cwd` on Windows is the app's install directory; from collector 1.13.0); the repositories it manages are in `data.db`, left to the analyzer. |
@@ -501,7 +516,7 @@ agent state that can be read with grep, and from every `-p` directory.
 | Letta | Session index and local-backend transcripts. |
 | Muse Code | Trusted projects (`.config/muse/trust.json`) and session logs (`workspace_root`). |
 | nanobot | Workspace markers and config. |
-| Open Interpreter | Rollouts. |
+| Open Interpreter | Rollouts in `sessions` and `archived_sessions`; a `cwd` under the home's `.openinterpreter/worktrees` is skipped from collector 1.18.0. |
 | OpenClaw | Workspace and agent directories from its JSON5 config. |
 | OpenCode | Legacy project store. |
 | OpenHands | Workspaces and conversation metadata. |
@@ -543,6 +558,15 @@ and the user whose state referenced it (the first one, when several did). `-p`
 directories join the same list. Each gets as its user the owner of the home
 it sits under, or none.
 
+A nanobot workspace outside `.nanobot*` keeps its scheduled jobs
+(`cron/jobs.json`) and local triggers (`triggers/triggers.json`) beside
+one run record per scheduled or triggered run (`cron/runs/`,
+`triggers/runs/`), each with the session key, the prompt and the reply,
+which outlives the session it ran in; those four entries are collected from
+the workspace, and the trigger delivery queue (`triggers/inbox/`,
+`processing/`, `failed/`) is not. The default workspace under `.nanobot/` is
+collected whole by the home catalog.
+
 Aider's transcript (`.aider.chat.history.md`, with its input and LLM
 histories beside it) and Crush's session database (`.crush/crush.db`) live
 only inside the project, so a project deleted before collection leaves
@@ -581,7 +605,22 @@ their state must be copied by hand.
 
 - **Agent Zero** lives in its install directory (`~/agent-zero`,
   `~/Desktop/agent-zero`). It is also commonly deployed in containers; see
-  [docker.md](docker.md).
+  [docker.md](docker.md). The A0 CLI connector, a host-side client of
+  Agent Zero, writes each computer-use screen capture to
+  `_a0_connector/computer_use/<chat id>/` in the system temp directory and
+  deletes older captures as new ones arrive. On Windows that is
+  `AppData/Local/Temp/_a0_connector`, which the catalog collects; on Linux
+  and macOS it is under `/tmp` or `$TMPDIR`, outside any home, so copy
+  `_a0_connector` from there by hand (the connector's
+  `A0_COMPUTER_USE_HOST_ARTIFACT_ROOT` environment variable moves it). On a
+  Windows host without Docker Desktop, the A0 Launcher, Agent Zero's
+  instance manager, can import its own WSL distribution under
+  `AppData/Local/agent-zero/wsl/Ubuntu`, whose virtual disk holds the
+  Docker engine and the instances' named volumes and stays after the
+  launcher is uninstalled. Neither collector opens that disk or lists its
+  volumes, so collect them from inside the distribution as for
+  [Docker Desktop](docker.md#docker-desktop)
+  ([Host-side companions in `research/agent-zero.md`](../../research/agent-zero.md#host-side-companions)).
 - **Local Deep Research** writes reports under
   `~/Documents/LocalDeepResearch`. It is also commonly deployed in
   containers; see [docker.md](docker.md).
@@ -594,10 +633,43 @@ their state must be copied by hand.
   because the name is too common in a temp directory, so read `CACHE_PATH`
   from `.sgptrc` and copy that directory by hand
   ([Chat history and response cache in `research/shellgpt.md`](../../research/shellgpt.md#chat-history-and-response-cache)).
+- **OpenCode** 2.0 creates a temp root, `opencode` in the system temp
+  directory (`/tmp/opencode` on Linux, under `/var/folders` on macOS), and
+  tells the model to write its temporary files there. On Linux and macOS
+  it is outside every home and must be copied by hand; on Windows the
+  catalog collects `AppData/Local/Temp/opencode`
+  ([Scratch directories in `research/opencode.md`](../../research/opencode.md#scratch-directories)).
+  The OpenCode desktop app keeps its data in `ai.opencode.desktop` (or
+  `.beta`, `.dev`) under `Library/Application Support`, `AppData/Roaming`
+  or `.config`; it is collected, and its V8 `compile-cache` is excluded
+  ([OpenCode desktop app in `research/opencode.md`](../../research/opencode.md#opencode-desktop-app)).
+- **Kilo Code** writes files that Kilo Cloud sends over remote control to
+  `kilo/remote-attachments/<session>/` in the system temp directory and
+  removes them when the session's remote handling ends; no catalog line
+  reaches it on any platform, so copy it by hand while a remote session is
+  live
+  ([Scratch directories in `research/kilo-code.md`](../../research/kilo-code.md#scratch-directories)).
 - **Muse Code** keeps its launcher state beside the launcher; see below.
 - **Cursor** writes its agent worker's logs and copies of the user's zsh
   startup files to the temp directory; see
   [Cursor data directories](#cursor-data-directories).
+- **Roo Code's CLI** run as `roo --ephemeral` keeps its whole storage,
+  tasks included, in `roo-cli-<epoch ms>-<random>` under the system temp
+  directory (`$TMPDIR` or `/tmp`, `%TEMP%` on Windows) and removes it when
+  the CLI exits, so it survives only a CLI killed before its cleanup ran.
+  No catalog entry reaches it; when a `roo --ephemeral` process was
+  killed, copy any `roo-cli-*` directory in the temp directory by hand
+  ([CLI ephemeral storage in `research/roo-code.md`](../../research/roo-code.md#cli-ephemeral-storage)).
+- **Zed** on macOS gives an agent thread whose terminal runs in the OS
+  sandbox its own temp directory, `$TMPDIR/zed-agent-terminal-<random>`
+  (under `/private/var/folders/.../T/`), kept until the thread is deleted.
+  It is outside every home and is not collected; copy it by hand when it
+  exists. The thread's record in `threads.db`, which is collected, names
+  it ([Scratch directories in `research/zed.md`](../../research/zed.md#scratch-directories)).
+  The linked git worktrees Zed creates for a thread sit beside the
+  project (`<project parent>/worktrees/<name>/<project>`) and are recorded
+  only in SQLite, so their project files are collected only when another
+  source or `-p` names them.
 - **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
   exports or a log to a directory the user chooses or works in; see
   [Files written where the user chooses](#files-written-where-the-user-chooses).
@@ -659,6 +731,7 @@ Copy it by hand when the framework was in use:
 | Dify | The PostgreSQL database with conversations, messages and agent tool calls, uploaded files, tenant RSA keys and `docker/.env` (`SECRET_KEY`). | The bind mounts under `docker/volumes/` beside Dify's compose file, in wherever Dify was cloned. Only its two agent sandbox named volumes and the `difyctl` config are collected. |
 | Langflow (pip or uv install) | `langflow.db` (`langflow-pre.db` for a pre-release), with messages, run history and encrypted credentials. | The installed package directory, `site-packages/langflow/`, inside the virtual environment Langflow runs from, unless the `database_url` or `save_db_in_config_dir` setting moved it (the second puts it in the collected config directory). Langflow Desktop's database is under `.langflow/data` or `AppData/Roaming/com.LangflowDesktop` and is collected. |
 | CrewAI (Linux and macOS) | Opt-in agent memory (`memory/`) and knowledge stores (Chroma, `qdrant/`). | The directory that holds a collected `latest_kickoff_task_outputs.db`, which is named after the project folder (`~/.local/share/<project>`, `~/Library/Application Support/<project>`). Only CrewAI's own files in it are collected, because the directory name is not fixed. On Windows the whole `AppData/Local/CrewAI` directory is collected. |
+| CrewAI (project files) | A project's `.crewai/` (`last_run.json`, the mark that a run's trace reached AMP, CrewAI's hosted service; `last_eval.json`; `eval_project_state.json`) when no other source names the project, and its opt-in `.checkpoints/` always. | The directory a crew was run from. CrewAI records no project path, so `.crewai/` is collected only from a project that another agent's state or `-p` names; `.checkpoints/` is too generic a name for the project catalog. |
 | IntentKit | Agent state in PostgreSQL, Redis and RustFS. It is not in the catalog, because it runs no tools on the host. | Its Compose named volumes, such as `intentkit_postgres_data`, recorded as `skipped_unmatched_volume`, and `.env` in its checkout. |
 
 ## Remote development servers
@@ -689,7 +762,10 @@ by default:
 - extension and daemon binaries
 - embedding indexes
 - shadow git checkpoints
-- agent worktrees
+- agent worktrees, in a home and inside a project: `.claude/worktrees`,
+  `.codex/worktrees`, `.gemini/worktrees` (Gemini CLI's `--worktree`),
+  `.qwen/worktrees` (Qwen Code's `enter_worktree`), `.kilo/worktrees` and
+  the others `--list` prints
 - git clones of plugin marketplaces
 - Claude Desktop's Cowork VM disk bundle (see [Cowork VM disks](#cowork-vm-disks))
 
@@ -704,6 +780,33 @@ whole, so a Docker Ollama volume's `models/manifests` is not collected;
 when the pulled models matter, copy `models/manifests` from the volume's
 `_data` by hand, or pass `--full` (`-Full`), which also takes the weights.
 
+Hermes' quick snapshots under `state-snapshots/<id>/` are collected:
+each holds an older complete copy of `state.db`, which may be the only
+record of a session Hermes later pruned or deleted, and Hermes keeps at
+most 20 of them (one after a `hermes update`), so their size is bounded by
+the database's; a copy larger than `--max-file-size` gets a
+`skipped_size` row as any file does. The `.env`, `auth.json` and pairing
+files inside a snapshot are flagged as secrets, as their originals are,
+also in a Hermes Docker or Podman volume. Hermes' zip backups under
+`backups/` stay excluded. Before collector 1.18.0 the snapshots were
+excluded too and needed `--full`. The facts are in
+[Transcript stores in `research/hermes.md`](../../research/hermes.md#transcript-stores).
+
+OpenClaw's exclusions under its state directory, `.openclaw*/dev`, `git`,
+`npm`, `tmp` and `tools` (managed checkouts, packages, temporary files and
+downloaded runtimes, the directories `openclaw backup` also skips), match a
+directory of that name at any depth below `~/.openclaw` or a profile's
+`~/.openclaw-<profile>`, since `*` crosses `/`. Besides the top-level
+directories and each agent's `agents/<id>/agent/tmp`, they prune a `tmp`,
+`tools`, `git`, `dev` or `npm` directory inside an agent workspace
+(`workspace/`, `workspace-<agentId>/`) or a skill, which then has only the
+directory's `skipped_excluded` row; pass `--full` (`-Full`) to collect it.
+The Gateway's clones of repositories added from a remote URL,
+`projects/<16 hex>/<name>`, are excluded by the clone directory's name
+alone, so anything else under `projects/` is collected; which repository
+each clone is stays in the `projects` table of the collected
+`state/openclaw.sqlite`.
+
 ## Credentials
 
 Credential files are collected by default and flagged `secret: true`, since
@@ -715,7 +818,9 @@ the full pattern list.
   `~/.codex/auth.json`, `~/.gemini/gemini-credentials.json`,
   `~/.cursor/auth.json`, `~/.copilot/config.json`,
   `~/.cline/data/settings/providers.json`,
-  `~/.local/share/opencode/auth.json`, `~/.config/goose/secrets.yaml`,
+  `~/.local/share/opencode/auth.json`, OpenCode's `service.json` (the
+  background server's password) in `~/.config/opencode` and
+  `~/.local/state/opencode`, `~/.config/goose/secrets.yaml`,
   `~/.factory/auth.v2.*`, ...
 - **Config files that commonly embed API keys or MCP server environments:**
   Continue's `config.yaml`, Zed's `settings.json`, Crush's `crush.json`,
@@ -723,6 +828,15 @@ the full pattern list.
   `claude_desktop_config.json`, Kiro powers' `mcp.json`.
 - **Electron `Local State` files** that hold the key for encrypted token
   caches.
+- **Desktop connection files:** the Hermes desktop app's `connection.json`
+  and `connections.json`, which hold a remote gateway's token, encrypted
+  with the operating system's key store or in plain text when that
+  encryption is turned off.
+- **Running-session registries:** Qwen Code's `~/.qwen/sessions/<pid>.json`
+  (or `<pid>-<8 hex>.json`), one per running session, whose `ipcToken`
+  admits a connection to that session's socket; the file is deleted when
+  the session exits, so only a collection taken while one runs, or after a
+  crash, holds it.
 - **Databases flagged whole:** Kilo Code's `kilo.db` and OpenCode's
   `opencode.db`, which embed tokens in their `account` and `credential`
   tables.
@@ -735,9 +849,28 @@ which holds the agent worker's API key, and the `mcpOAuth.secret.*`
 entries, which hold an MCP server's OAuth tokens, PKCE code verifier
 (the one-time proof of a sign-in in progress) and client secret,
 encrypted with the operating system's key store.
+`ollama launch chatgpt` copies `~/.codex/auth.json`, the Codex
+sign-in, into a scratch directory `ollama-codex-models-*` in the system
+temp directory while it lists Codex's models, and removes it when the
+command finishes. A crash or a kill leaves that copy outside every home,
+where no catalog line reaches it; on a host where Ollama launched the
+ChatGPT app, look for the directory in the temp directory and copy it by
+hand (see [Credentials in
+`research/codex-cli.md`](../../research/codex-cli.md#credentials)).
 Agent Zero copies a Telegram bot's configuration into each Telegram
 chat's `chat.json`, which is collected unflagged; the keys to redact are
-`data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.
+`data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`,
+and `api_key` inside `data.chat_model_override`, which a model chosen for
+one chat from the A0 CLI connector can carry. Its WhatsApp bridge's login
+state, `tmp/whatsapp/session/` of the install directory, is flagged
+`secret: true`: whoever holds it can act as the account's linked device.
+Roo Code releases up to 3.53.0 kept a retry queue of failed Roo Code Cloud
+uploads in the extension's workspace state, the `RooVeterinaryInc.roo-cline`
+row of an editor's `User/workspaceStorage/<hash>/state.vscdb` and the CLI's
+`.vscode-mock/workspace-storage/<hash>/workspace-state.json`, both collected
+unflagged; the key to redact is `roo.retryQueue[].options.headers.Authorization`,
+a bearer token. The same releases' CLI saved its cloud token in
+`~/.roo/cli-credentials.json`, which is flagged.
 
 ## Pattern matching
 

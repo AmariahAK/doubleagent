@@ -1,4 +1,4 @@
-"""Ollama desktop chats and REPL prompt history.
+"""Ollama desktop chats, REPL prompt history and launcher auto-mode settings.
 
 ollama/ollama at v0.35.1 (b0c1ca4), read from source with a synthetic
 fixture; the desktop app does not exist on Linux, so no real `db.sqlite`
@@ -48,8 +48,9 @@ before the rows of a chat's first assistant message that names a model,
 and `model: <old> -> <new>` before the rows of each later assistant
 message whose `model_name` differs (the model is chosen per message in the
 app), with that message's time and `source_line`; an assistant placeholder
-that yields no rows yields no model row either. The research records no
-permission state for the app, so there are no permission rows. The `users`
+that yields no rows yields no model row either. The app asks before no
+tool call, so there are no per-call permission rows; the standing settings
+are below. The `users`
 table (account name and email), `settings` and the
 attachment bytes are never read.
 
@@ -64,6 +65,32 @@ it becomes its own `system` row
 `parser: unparseable line (<decode error>): <line>`, the line as read
 less its terminator (`error_rows`, issue 136), after the file's other
 rows, which are still yielded (issue 174).
+
+Standing permission rows (issue 188), source-derived from ollama/ollama at
+678722224b (`cmd/config/config.go`, `cmd/launch/claude_desktop.go`) and not
+observed on any real install, each a `system` row at the file's
+modification time (`file_mtime`) with empty `session_id`:
+
+* `.ollama/config.json`, the `ollama launch` configuration: for each
+  `integrations.<name>` object holding an `automode` key,
+  `permission setting: integrations.<name>.automode=<value> (from
+  .ollama/config.json, file mtime)`. The launcher reads only the
+  `claude-desktop` integration's key, as Claude Desktop's auto mode, and
+  treats an absent key as true; an absent key gives no row.
+* Claude Desktop's third-party profile that Ollama's launcher writes
+  (`ollama launch claude-desktop`, or the macOS app's Claude Desktop
+  settings, which also save the `automode` key above),
+  `configLibrary/00000000-0000-4000-8000-000000000114.json` under
+  `Library/Application Support/Claude-3p` (macOS; the launcher writes on
+  macOS only at that commit) or `AppData/Local/Claude-3p` (the Windows
+  base the launcher's restore edits). The catalog attributes it to
+  `claude-desktop`, so that agent is in `reads_agents`. Its
+  `autoModeEnabled` key gives `permission setting: autoModeEnabled=<value>
+  (set by Ollama's Claude Desktop launcher, from <path relative to the
+  home>, file mtime)`. `--restore` deletes the key, so a restored profile
+  gives no row.
+
+A config or profile that is not a JSON object is one `parser:` row.
 """
 
 from __future__ import annotations
@@ -77,10 +104,25 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, error_rows, line_text, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    line_text,
+    setting_value,
+    track_change,
+)
 
 DB_RX = re.compile(r"^(?:Library/Application Support/Ollama|AppData/Local/Ollama)/db\.sqlite$")
 HISTORY_RX = re.compile(r"^\.ollama/history$")
+CONFIG_RX = re.compile(r"^\.ollama/config\.json$")
+# The profile id is Ollama's own (claudeDesktopProfileID).
+PROFILE_RX = re.compile(
+    r"^(?:Library/Application Support|AppData/Local)/Claude-3p/configLibrary/"
+    r"00000000-0000-4000-8000-000000000114\.json$"
+)
 
 
 def call_text(arguments) -> str:
@@ -111,13 +153,20 @@ def _result_fallback(value) -> str:
 class OllamaParser(Parser):
     agent = "ollama"
     name = "ollama"
+    # The Claude Desktop profile Ollama writes is under a claude-desktop base.
+    reads_agents = ("claude-desktop",)
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(DB_RX.match(artifact.rel) or HISTORY_RX.match(artifact.rel))
+        rel = artifact.rel
+        return any(rx.match(rel) for rx in (DB_RX, HISTORY_RX, CONFIG_RX, PROFILE_RX))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if DB_RX.match(artifact.rel):
             yield from self._parse_db(artifact, opts)
+        elif CONFIG_RX.match(artifact.rel):
+            yield from self._parse_config(artifact)
+        elif PROFILE_RX.match(artifact.rel):
+            yield from self._parse_profile(artifact)
         else:
             yield from self._parse_history(artifact)
 
@@ -263,3 +312,51 @@ class OllamaParser(Parser):
                     row.text = line
                 yield row
         yield from error_rows(self, artifact, errors)
+
+    # -- standing permissions -------------------------------------------------------------
+    def _read_object(self, artifact: Artifact) -> tuple[dict | None, str]:
+        try:
+            doc = json.loads(artifact.disk_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            return None, "parser: %s is not readable JSON (%s)" % (artifact.rel, e)
+        if not isinstance(doc, dict):
+            return None, "parser: %s is not a JSON object" % artifact.rel
+        return doc, ""
+
+    def _setting(self, artifact: Artifact, ts: str, text: str) -> Row:
+        row = self._row(artifact, 0, "", ts)
+        row.turn_type = "system"
+        row.text = text
+        return row
+
+    def _parse_config(self, artifact: Artifact) -> Iterator[Row]:
+        doc, problem = self._read_object(artifact)
+        if doc is None:
+            yield self._system(artifact, problem)
+            return
+        ts = file_mtime(artifact)
+        integrations = doc.get("integrations")
+        if not isinstance(integrations, dict):
+            return
+        for name, entry in integrations.items():
+            if isinstance(entry, dict) and "automode" in entry:
+                yield self._setting(
+                    artifact,
+                    ts,
+                    "permission setting: integrations.%s.automode=%s (from %s, file mtime)"
+                    % (name, setting_value(entry["automode"]), artifact.rel),
+                )
+
+    def _parse_profile(self, artifact: Artifact) -> Iterator[Row]:
+        doc, problem = self._read_object(artifact)
+        if doc is None:
+            yield self._system(artifact, problem)
+            return
+        if "autoModeEnabled" in doc:
+            yield self._setting(
+                artifact,
+                file_mtime(artifact),
+                "permission setting: autoModeEnabled=%s (set by Ollama's Claude Desktop"
+                " launcher, from %s, file mtime)"
+                % (setting_value(doc["autoModeEnabled"]), artifact.rel),
+            )

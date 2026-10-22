@@ -54,12 +54,55 @@ agentic call is not counted twice. `source_line` is 1 for the JetBrains
 file (one JSON value) and 0 for the SQLite row. A history that does not
 parse is walked chat by chat, and every interaction decoded before the
 damage is still yielded, followed by one `system` row. No git branch.
+
+Settings, model preferences and the legacy JetBrains history were added
+from the same commit in the 2026-10-21 source review; every row below is
+source-derived and not observed on any real install:
+
+* The editor's `User/settings.json` (JSONC, read with `parse_jsonc` from
+  the Gemini CLI parser; the catalog attributes it to the editor, which
+  `reads_agents` covers): one `permission setting: <key>=<value> (from
+  <file>, file mtime)` row per leaf of the flat keys
+  `cody.agentic.context.experimentalOptions` (`shell.allow`,
+  `shell.block`), `cody.agentic.context.experimentalShell` and
+  `cody.chat.agenticContext`, and per `disabled` and `disabledTools` of
+  each `cody.mcpServers.<server>`; an MCP server's `headers`, `env`,
+  `url`, `command` and `args` are never read. A settings file that does
+  not decode is reported only when its text names a `cody.` key, since
+  the file belongs to the editor.
+* `cody-model-preferences`, the global-state key in the
+  `sourcegraph.cody-ai` row and the file of that name under
+  `JetBrains-globalState/`: `{<endpoint>: {defaults: {<usage>: <id>},
+  selected: {<usage>: <id>}}}`, one `model setting:
+  <selected|defaults>.<usage>=<id> endpoint=<endpoint> (from <file>,
+  file mtime)` row per entry (`<file>` followed by ` cody-model-preferences`
+  for the database row), the `model` column the id. It records the
+  current choice, not when it was made.
+* `<project>/.idea/cody_history.xml`, the pre-agent plugin's
+  `HistoryService` component, a secondary source (`secondary()`): the
+  IntelliJ serialisation of `HistoryState`, `accountData/list/AccountData`
+  with `accountId@value` and `chats/list/chat`, or the deprecated top-level
+  `chats/list/chat`; each `chat` has `internalId@value`, `updatedAt@value`,
+  `accountId@value` (deprecated), `model@value` (deprecated), an `llm`
+  element whose `model@value` is the chat's model, and
+  `messages/list/message` with `speaker@value` (`HUMAN`, `ASSISTANT`) and
+  `text@value`. The migration into the agent store used `updatedAt` as the
+  chat id and `llm.model` as every message's model, so the rows take
+  `updatedAt` as `session_id` (else `internalId`) and as the time, read as
+  UTC like the same string in the agent store: a chat row `chat:
+  <internalId> | account=<accountId> | messages=<n> (legacy JetBrains
+  history)`, then `model: <id>` before the first assistant message, and
+  the user and assistant rows, with `project_path` the project the file
+  sits in. The file is read with `xml.etree.ElementTree.iterparse`, so the
+  chats before a cut or damaged part are still yielded, followed by one
+  `parser:` row; expat resolves no external entity.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from email.utils import parsedate_to_datetime
 
@@ -67,14 +110,37 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from ..vscode_state import EDITOR_AGENTS, STATE_DB_RX, read_item
-from .base import Options, Parser, compact_json, setting_value, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    file_mtime,
+    setting_value,
+    text_of,
+    track_change,
+)
 from .cline_legacy import iter_array_at, read_text
+from .gemini_cli import parse_jsonc
 
 JETBRAINS_RX = re.compile(
     r"(?:^|/)Cody-nodejs/(?:[^/]+/)?JetBrains-globalState/cody-local-chatHistory-v2$"
 )
+JETBRAINS_PREFS_RX = re.compile(
+    r"(?:^|/)Cody-nodejs/(?:[^/]+/)?JetBrains-globalState/cody-model-preferences$"
+)
+SETTINGS_RX = re.compile(r"(?:^|/)User/settings\.json$")
+LEGACY_RX = re.compile(r"(?:^|/)\.idea/cody_history\.xml$")
 ITEM_KEY = "sourcegraph.cody-ai"
 HISTORY_KEY = "cody-local-chatHistory-v2"
+PREFS_KEY = "cody-model-preferences"
+# Flat `settings.json` keys whose leaves are permission settings.
+PERMISSION_KEYS = (
+    "cody.agentic.context.experimentalOptions",
+    "cody.agentic.context.experimentalShell",
+    "cody.chat.agenticContext",
+)
+MCP_KEY = "cody.mcpServers"
+MCP_FIELDS = ("disabled", "disabledTools")
 REJECTED = "Command rejected"
 
 _DATE_KEY = (
@@ -167,16 +233,84 @@ def _confirmation_head(proc: dict) -> str:
     return head
 
 
+def _leaves(prefix: str, value) -> list[tuple[str, object]]:
+    """(dotted key, value) for each leaf of a settings value; an empty
+    object is a leaf of its own."""
+    if isinstance(value, dict) and value:
+        out: list[tuple[str, object]] = []
+        for k, v in value.items():
+            out.extend(_leaves("%s.%s" % (prefix, k), v))
+        return out
+    return [(prefix, value)]
+
+
+def settings_entries(doc: dict) -> list[tuple[str, object]]:
+    """The permission entries of an editor `settings.json`: every leaf of
+    `PERMISSION_KEYS`, and `disabled` and `disabledTools` of each MCP server
+    (never its headers, env, url or command)."""
+    out: list[tuple[str, object]] = []
+    for key in PERMISSION_KEYS:
+        if key in doc:
+            out.extend(_leaves(key, doc[key]))
+    servers = doc.get(MCP_KEY)
+    for name, conf in servers.items() if isinstance(servers, dict) else ():
+        if isinstance(conf, dict):
+            for field in MCP_FIELDS:
+                if field in conf:
+                    out.append(("%s.%s.%s" % (MCP_KEY, name, field), conf[field]))
+    return out
+
+
+def pref_entries(prefs) -> list[tuple[str, str, str, str]]:
+    """(kind, usage, model id, endpoint) for each entry of a
+    `cody-model-preferences` value, the user's `selected` before the
+    server's `defaults`."""
+    out: list[tuple[str, str, str, str]] = []
+    for endpoint, entry in prefs.items() if isinstance(prefs, dict) else ():
+        if not isinstance(entry, dict):
+            continue
+        for kind in ("selected", "defaults"):
+            usages = entry.get(kind)
+            for usage, model in usages.items() if isinstance(usages, dict) else ():
+                if isinstance(model, str) and model:
+                    out.append((kind, str(usage), model, str(endpoint)))
+    return out
+
+
+def _value(elem, tag: str) -> str:
+    """The `value` attribute of `elem`'s direct child `tag`, or ""."""
+    child = elem.find(tag)
+    return (child.get("value") or "") if child is not None else ""
+
+
 class CodyParser(Parser):
     agent = "cody"
     name = "cody"
     reads_agents = EDITOR_AGENTS
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(STATE_DB_RX.search(artifact.rel) or JETBRAINS_RX.search(artifact.rel))
+        rel = artifact.rel
+        return any(
+            rx.search(rel)
+            for rx in (STATE_DB_RX, JETBRAINS_RX, JETBRAINS_PREFS_RX, SETTINGS_RX, LEGACY_RX)
+        )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(LEGACY_RX.search(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if SETTINGS_RX.search(artifact.rel):
+            yield from self._settings_rows(artifact)
+            return
+        if JETBRAINS_PREFS_RX.search(artifact.rel):
+            yield from self._prefs_file_rows(artifact)
+            return
+        if LEGACY_RX.search(artifact.rel):
+            yield from self._legacy_rows(artifact)
+            return
         problems: list[str] = []
+        state = None
         if JETBRAINS_RX.search(artifact.rel):
             line = 1
             text = read_text(artifact.disk_path)
@@ -199,8 +333,143 @@ class CodyParser(Parser):
                     history = self._decode(history, problems)
         if isinstance(history, dict):
             yield from self._history_rows(artifact, history, line, opts)
+        if isinstance(state, dict):
+            source = "%s %s" % (artifact.rel, PREFS_KEY)
+            yield from self._prefs_rows(artifact, state.get(PREFS_KEY), source, line)
         for p in problems:
             yield self._system(artifact, "parser: " + p, line)
+
+    def _settings_rows(self, artifact: Artifact) -> Iterator[Row]:
+        """`permission setting:` rows from an editor's `User/settings.json`."""
+        try:
+            raw = artifact.disk_path.read_bytes()
+        except OSError:
+            return
+        try:
+            doc = parse_jsonc(raw)
+        except ValueError:
+            doc = None
+        if not isinstance(doc, dict):
+            # The file is the editor's; it concerns Cody only if it names Cody.
+            if b'"cody.' in raw:
+                yield self._system(artifact, "parser: settings.json is not a JSON object", 1)
+            return
+        ts = file_mtime(artifact)
+        for key, value in settings_entries(doc):
+            row = self._system(
+                artifact,
+                compact(
+                    "permission setting: %s=%s (from %s, file mtime)"
+                    % (key, setting_value(value), artifact.rel)
+                ),
+                1,
+            )
+            row.timestamp_utc = ts
+            yield row
+
+    def _prefs_file_rows(self, artifact: Artifact) -> Iterator[Row]:
+        """`model setting:` rows from `JetBrains-globalState/cody-model-preferences`."""
+        text = read_text(artifact.disk_path)
+        try:
+            prefs = json.loads(text) if text is not None else None
+        except ValueError:
+            prefs = None
+        if not isinstance(prefs, dict):
+            yield self._system(artifact, "parser: %s is not a JSON object" % PREFS_KEY, 1)
+            return
+        yield from self._prefs_rows(artifact, prefs, artifact.rel, 1)
+
+    def _prefs_rows(self, artifact: Artifact, prefs, source: str, line: int) -> Iterator[Row]:
+        ts = file_mtime(artifact)
+        for kind, usage, model, endpoint in pref_entries(prefs):
+            row = self._system(
+                artifact,
+                "model setting: %s.%s=%s endpoint=%s (from %s, file mtime)"
+                % (kind, usage, model, endpoint, source),
+                line,
+            )
+            row.timestamp_utc = ts
+            row.model = model
+            yield row
+
+    def _legacy_rows(self, artifact: Artifact) -> Iterator[Row]:
+        """Rows from a JetBrains project's `.idea/cody_history.xml`, read
+        incrementally so the chats before a damaged part survive it."""
+        project = artifact.home.original if artifact.home.project else ""
+        stack: list[str] = []
+        account = ""
+        chats = 0
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                for event, elem in ET.iterparse(fh, events=("start", "end")):
+                    if event == "start":
+                        stack.append(elem.tag)
+                        if elem.tag == "AccountData":
+                            account = ""
+                        continue
+                    stack.pop()
+                    if elem.tag == "accountId" and stack and stack[-1] == "AccountData":
+                        account = elem.get("value") or ""
+                    elif elem.tag == "AccountData":
+                        account = ""
+                    elif elem.tag == "chat":
+                        chats += 1
+                        yield from self._legacy_chat(artifact, elem, account, project)
+                        elem.clear()
+        except (OSError, ET.ParseError) as e:
+            row = self._system(
+                artifact,
+                "parser: cody_history.xml did not parse; read %d chat(s) (%s)" % (chats, e),
+                0,
+            )
+            row.project_path = project
+            yield row
+
+    def _legacy_chat(self, artifact: Artifact, chat, account: str, project: str) -> Iterator[Row]:
+        internal = _value(chat, "internalId")
+        updated = _value(chat, "updatedAt")
+        account = account or _value(chat, "accountId")
+        model = ""
+        llm = chat.find("llm")
+        for m in llm.iter("model") if llm is not None else ():
+            if m.get("value"):
+                model = m.get("value") or ""
+                break
+        model = model or _value(chat, "model")
+        holder = chat.find("messages")
+        messages = list(holder.iter("message")) if holder is not None else []
+        ts = chat_time(updated, None)
+
+        def row(turn: str, text: str, model_id: str = "") -> Row:
+            r = self.base_row(artifact)
+            r.timestamp_utc = ts
+            r.session_id = updated or internal
+            r.project_path = project
+            r.source_line = 0
+            r.turn_type = turn
+            r.model = model_id
+            r.text = compact(text)
+            return r
+
+        yield row(
+            "system",
+            "chat: %s | account=%s | messages=%d (legacy JetBrains history)"
+            % (internal, account or "-", len(messages)),
+        )
+        model_shown = False
+        for m in messages:
+            speaker, text = _value(m, "speaker"), _value(m, "text")
+            if speaker == "ASSISTANT":
+                if model and not model_shown:
+                    model_shown = True
+                    yield row("system", "model: " + model, model)
+                if text:
+                    yield row("assistant", text, model)
+            elif speaker == "HUMAN":
+                if text:
+                    yield row("user", text)
+            elif text:
+                yield row("system", "message speaker=%s: %s" % (speaker or "-", text))
 
     @staticmethod
     def _decode(text: str, problems: list[str]):

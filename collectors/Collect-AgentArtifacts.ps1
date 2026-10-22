@@ -343,7 +343,8 @@ vscode|.positron-server/data/User
 # VS Code family extension state. Each editor User directory is collected
 # above; these nested entries claim the agent extension globalStorage from
 # that walk so Cline, Roo, Kilo, Continue, Cody and Twinny files are
-# attributed to them.
+# attributed to them. Twinny also keeps per-workspace extension storage
+# (agent-changes/) under workspaceStorage/<id>/rjmacarthy.twinny.
 cline|.config/*/User/globalStorage/saoudrizwan.claude-dev
 cline|Library/Application Support/*/User/globalStorage/saoudrizwan.claude-dev
 cline|AppData/Roaming/*/User/globalStorage/saoudrizwan.claude-dev
@@ -362,12 +363,16 @@ cody|AppData/Roaming/*/User/globalStorage/sourcegraph.cody-ai
 twinny|.config/*/User/globalStorage/rjmacarthy.twinny
 twinny|Library/Application Support/*/User/globalStorage/rjmacarthy.twinny
 twinny|AppData/Roaming/*/User/globalStorage/rjmacarthy.twinny
+twinny|.config/*/User/workspaceStorage/*/rjmacarthy.twinny
+twinny|Library/Application Support/*/User/workspaceStorage/*/rjmacarthy.twinny
+twinny|AppData/Roaming/*/User/workspaceStorage/*/rjmacarthy.twinny
 cline|.*-server*/data/User/globalStorage/saoudrizwan.claude-dev
 roo-code|.*-server*/data/User/globalStorage/rooveterinaryinc.roo-cline
 kilo-code|.*-server*/data/User/globalStorage/kilocode.kilo-code
 continue|.*-server*/data/User/globalStorage/continue.continue
 cody|.*-server*/data/User/globalStorage/sourcegraph.cody-ai
 twinny|.*-server*/data/User/globalStorage/rjmacarthy.twinny
+twinny|.*-server*/data/User/workspaceStorage/*/rjmacarthy.twinny
 # Windsurf (rebranding to Devin)
 windsurf|.codeium
 windsurf|.windsurf
@@ -404,6 +409,8 @@ kilo-code|.kilocodemodes
 kilo-code|.config/kilo
 kilo-code|.local/share/kilo
 kilo-code|.local/state/kilo
+kilo-code|.local/state/kilo-sandbox-policy
+kilo-code|.local/state/kilo-sandbox-preference
 # Continue
 continue|.continue
 # Aider (history files live in the repo; these are the home-level ones)
@@ -419,6 +426,10 @@ opencode|.config/opencode
 opencode|.opencode
 opencode|.local/share/opencode
 opencode|.local/state/opencode
+opencode|Library/Application Support/ai.opencode.desktop*
+opencode|AppData/Roaming/ai.opencode.desktop*
+opencode|.config/ai.opencode.desktop*
+opencode|AppData/Local/Temp/opencode
 # Crush (~/.config on every OS; sessions live in each project .crush/crush.db)
 crush|.config/crush
 crush|.local/share/crush
@@ -506,6 +517,10 @@ cody|Library/Preferences/Cody-nodejs
 cody|Library/Logs/Cody-nodejs
 cody|AppData/Local/Cody-nodejs
 cody|AppData/Roaming/Cody-nodejs
+cody|.sourcegraph
+cody|.config/JetBrains/*/options/cody*.xml
+cody|Library/Application Support/JetBrains/*/options/cody*.xml
+cody|AppData/Roaming/JetBrains/*/options/cody*.xml
 # Twinny (chats are rows in state.vscdb; embeddings, node and server state under ~/.twinny)
 twinny|.twinny
 # Tabby (self-hosted server state, editor agent config, JetBrains plugin settings)
@@ -572,6 +587,9 @@ agent-zero|AppData/Local/A0
 agent-zero|.config/Agent Zero Launcher
 agent-zero|Library/Application Support/Agent Zero Launcher
 agent-zero|AppData/Roaming/Agent Zero Launcher
+# computer-use screen captures of the A0 CLI connector in the system temp
+# directory, inside the home only on Windows
+agent-zero|AppData/Local/Temp/_a0_connector
 # ShellGPT (~/.config on every OS; chats default to the temp dir, under the home only on Windows)
 shellgpt|.config/shell_gpt
 shellgpt|AppData/Local/Temp/chat_cache
@@ -620,9 +638,10 @@ metagpt|.metagpt
 n8n|.n8n
 n8n|.n8n-local-gateway
 n8n|.n8n-gateway
-# Pydantic AI CLIs: clai prompt history and the CLAI 2.0 coding agent (~/.config on every OS)
+# Pydantic AI CLIs: clai prompt history and the CLAI 2.0 coding agent (~/.config and ~/.local/state on every OS)
 pydantic-clai|.pydantic-ai
 pydantic-clai|.config/pydantic-clai2
+pydantic-clai|.local/state/pydantic-clai2
 # Shared cross-agent directories (skills and instructions read by several agents)
 shared|.agents
 shared|.config/AGENTS.md
@@ -733,6 +752,8 @@ pearai|.pearai-agent-modes
 cody|.cody
 cody|.vscode/cody.json
 cody|.sourcegraph
+cody|.idea/cody_history.xml
+cody|.idea/.sourcegraph
 open-interpreter|.openinterpreter
 open-interpreter|.codewhale
 openhands|.openhands
@@ -742,6 +763,7 @@ pi|pi-session-*.html
 letta|.letta
 pydantic-clai|.clai
 letta|.skills
+crewai|.crewai
 hermes|.hermes.md
 hermes|HERMES.md
 hermes|.hermes
@@ -759,6 +781,10 @@ nanobot|HEARTBEAT.md
 nanobot|memory/MEMORY.md
 nanobot|memory/history.jsonl
 nanobot|memory/HISTORY.md
+nanobot|cron/jobs.json
+nanobot|cron/runs
+nanobot|triggers/triggers.json
+nanobot|triggers/runs
 '@
 
 $EXCLUDES = @'
@@ -788,6 +814,7 @@ $EXCLUDES = @'
 .gemini/extensions/*/node_modules
 .gemini/extensions/*/.git
 .gemini/cli-browser-profile
+.gemini/worktrees
 .gemini/antigravity/bin
 .gemini/antigravity-cli/bin
 .gemini/antigravity-ide/bin
@@ -978,6 +1005,9 @@ AppData/Roaming/Roo-Code/MCP
 .config/opencode/node_modules
 .opencode/bin
 .opencode/node_modules
+Library/Application Support/ai.opencode.desktop*/compile-cache
+AppData/Roaming/ai.opencode.desktop*/compile-cache
+.config/ai.opencode.desktop*/compile-cache
 .local/share/goose/models
 .local/share/goose/model_catalog
 .local/state/goose/codex
@@ -1016,6 +1046,7 @@ AppData/Roaming/Block/goose/data/codex
 .qwen/artifacts
 .qwen/resources
 .qwen/startup-perf
+.qwen/worktrees
 .cache/amp/runner-desktop
 .cache/amp/desktop
 .cache/amp/bin
@@ -1092,6 +1123,7 @@ AppData/Local/open-interpreter/open-interpreter/models
 .openhands/cache
 .openhands/agent-canvas/workspaces
 .openhands/agent-canvas/tmux
+.openhands/workspaces
 .pi/agent/bin
 .pi/agent/tools/fd*
 .pi/agent/tools/rg*
@@ -1121,7 +1153,6 @@ AppData/Local/hermes/hermes-agent/.[!e]*
 .hermes*/checkpoints/store/objects
 .hermes*/checkpoints/store/indexes
 .hermes*/checkpoints/legacy-*
-.hermes*/state-snapshots
 .hermes*/backups
 .hermes*/browser-profile
 .hermes*/browser-profiles
@@ -1139,7 +1170,6 @@ AppData/Local/hermes*/sandboxes
 AppData/Local/hermes*/checkpoints/store/objects
 AppData/Local/hermes*/checkpoints/store/indexes
 AppData/Local/hermes*/checkpoints/legacy-*
-AppData/Local/hermes*/state-snapshots
 AppData/Local/hermes*/backups
 AppData/Local/hermes*/browser-profile
 AppData/Local/hermes*/browser-profiles
@@ -1164,6 +1194,7 @@ AppData/Roaming/Hermes/GPUCache
 .openclaw*/tmp
 .openclaw*/tools
 .openclaw*/worktrees
+.openclaw*/projects/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
 .openclaw*/plugin-skills
 .openclaw*/extensions/*/node_modules
 .openclaw*/sandbox/skills-workspaces
@@ -1229,6 +1260,7 @@ AppData/Local/langflow/langflow/Cache/profile_pictures
 .n8n/custom/node_modules
 .n8n/node-definitions
 .n8n/n8n-sdk-templates
+.local/state/pydantic-clai2/workspaces/clones
 .ollama/models/blobs
 AppData/Local/Ollama/updates
 Library/Caches/ollama
@@ -1258,7 +1290,6 @@ sandboxes
 checkpoints/store/objects
 checkpoints/store/indexes
 checkpoints/legacy-*
-state-snapshots
 backups
 browser-profile
 browser-profiles
@@ -1270,6 +1301,10 @@ plugins/*/.venv
 npm
 npm-runtime
 worktrees
+projects/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
+plugin-skills
+agents/*/agent/tmp
+agents/*/agent/.tmp
 extensions/*/node_modules
 sandbox/skills-workspaces
 browser/*/user-data/*/Cache
@@ -1350,6 +1385,7 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .qwen/extensions/*/.qwen-extension-git-credentials.json
 .qwen/channels/*-credentials.json
 .qwen/channels/weixin/account.json
+.qwen/sessions/*.json
 .codex/auth.json
 .codex/.credentials.json
 .codex/secrets/*
@@ -1404,6 +1440,7 @@ AppData/Roaming/devin/credentials.toml
 */User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json
 Documents/Cline/webhook_config.json
 .vscode-mock/global-storage/secrets.json
+.roo/cli-credentials.json
 .local/share/kilo/auth.json
 .local/share/kilo/mcp-auth.json
 .local/share/kilo/kilo*.db*
@@ -1430,11 +1467,12 @@ Documents/Cline/webhook_config.json
 .config/opencode/opencode.json*
 .config/opencode/config.json
 .opencode/opencode.json*
+.config/opencode/service*.json
+.local/state/opencode/service*.json
 .local/share/crush/crush.json
 AppData/Local/crush/crush.json
 .config/crush/crush.json
 .config/crush/crushrc
-.config/crush/.crushrc
 .crush/crush.json
 .config/goose/secrets.yaml
 .config/goose/config.yaml
@@ -1505,10 +1543,19 @@ AppData/Roaming/Zed/global_settings.json
 .pearai-agent/mcp.json
 */Cody-nodejs/user-settings.json
 */Cody-nodejs/Config/user-settings.json
+.config/JetBrains/*/options/cody_accounts.xml
+Library/Application Support/JetBrains/*/options/cody_accounts.xml
+AppData/Roaming/JetBrains/*/options/cody_accounts.xml
+.config/JetBrains/*/options/cody.xml
+Library/Application Support/JetBrains/*/options/cody.xml
+AppData/Roaming/JetBrains/*/options/cody.xml
+.sourcegraph/cody_settings.json
+.idea/.sourcegraph/cody_settings.json
 */User/globalStorage/rjmacarthy.twinny/twinny-providers.json
 .twinny/node/identity.json
 .twinny/server/license
 .twinny/server/plugins/*/settings.json
+.twinny/server/plugins/*/repos.json
 .tabby/config.toml
 .tabby-client/agent/config.toml
 .openinterpreter/auth.json
@@ -1538,6 +1585,9 @@ AppData/Local/Open Interpreter*/Open Interpreter*/config.yaml
 .openhands/mcp.json
 .openhands/.jwt_secret
 .openhands/.keys
+Library/Application Support/OpenHands Agent Canvas/mars-credentials.json
+.config/OpenHands Agent Canvas/mars-credentials.json
+AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json
 .pi/agent/auth.json
 .pi/agent/auth.json.*
 .pi/agent/mcp-auth.json
@@ -1617,6 +1667,9 @@ AppData/Local/hermes*/weixin/accounts/*
 AppData/Local/hermes*/runtime/photon-sidecar.json
 AppData/Local/hermes*/proxy/*
 AppData/Local/hermes*/home/*
+.config/Hermes/connection*.json*
+Library/Application Support/Hermes/connection*.json*
+AppData/Roaming/Hermes/connection*.json*
 .openclaw*/openclaw.json*
 .openclaw*/clawdbot.json*
 .openclaw*/.env
@@ -1625,6 +1678,8 @@ AppData/Local/hermes*/home/*
 .openclaw*/agents/*/agent/auth-profiles.json*
 .openclaw*/agents/*/agent/models.json
 .openclaw*/browser/*/user-data/*/Cookies*
+.openclaw*/exec-approvals.json
+.openclaw-auth-profile-secrets/*
 .clawdbot/clawdbot.json*
 .clawdbot/.env
 .clawdbot/credentials/*
@@ -1658,6 +1713,8 @@ agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 Desktop/agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 agent-zero*/usr/plugins/*/config.json
 Desktop/agent-zero*/usr/plugins/*/config.json
+agent-zero*/tmp/whatsapp/session/*
+Desktop/agent-zero*/tmp/whatsapp/session/*
 .agent-zero/.env
 .agent-zero/session_cookies.json
 */Agent Zero Launcher/docker_manager/state.json
@@ -1676,6 +1733,9 @@ AppData/Local/[Cc]rew[Aa][Ii]/credentials/*
 .config/difyctl/tokens.yml
 AppData/Roaming/difyctl/tokens.yml
 AppData/Local/difyctl/tokens.yml
+.config/difyctl/login-pending.yml
+AppData/Roaming/difyctl/login-pending.yml
+AppData/Local/difyctl/login-pending.yml
 .flowise/encryption.key
 .flowise/*_secret.key
 .cache/langflow/*secret_key
@@ -1689,6 +1749,7 @@ AppData/Roaming/com.LangflowDesktop/data/.env
 .n8n/ssh/*
 .config/pydantic-clai2/credentials-*
 .config/pydantic-clai2/logfire/logfire_credentials.json
+.local/state/pydantic-clai2/workspaces/registry/*/token
 .ollama/id_ed25519
 .env
 secrets.env
@@ -1706,6 +1767,7 @@ usr/plugins/_desktop/profiles/*/.gnupg/*
 usr/plugins/*/config.json
 tmp/secrets.env
 tmp/settings.json
+tmp/whatsapp/session/*
 config.toml
 id_ed25519
 .secret_key
@@ -1756,6 +1818,10 @@ weixin/accounts/*
 runtime/photon-sidecar.json
 proxy/*
 home/*
+state-snapshots/*/.env
+state-snapshots/*/auth.json
+state-snapshots/*/pairing/*
+state-snapshots/*/platforms/pairing/*
 openclaw.json*
 clawdbot.json*
 moltbot.json*
@@ -1764,6 +1830,7 @@ service-env/*
 agents/*/agent/auth-profiles.json*
 agents/*/agent/models.json
 browser/*/user-data/*/Cookies*
+exec-approvals.json
 config.json
 whatsapp-auth/*
 matrix-store/*
@@ -3290,17 +3357,26 @@ function Find-ClaudeCodeProjects([string]$homeDir) {
 }
 
 # Codex, Qwen Code, Cline CLI, Cursor CLI chats, Continue, Goose sessions,
-# OpenCode and Crush.
+# OpenCode, Crush, and Agent Zero editor (ACP) sessions, whose workspace and
+# extra folders are a string and a JSON array in chat.json.
 function Find-CliSessionProjects([string]$homeDir) {
   # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
-  # directories, which the catalog collects whole) is not a project.
+  # directories, which the catalog collects whole) or .codex/worktrees (thread worktrees,
+  # excluded) is not a project. An archived thread's rollout is in archived_sessions.
   $codexOutputDir = Join-PathSafe $homeDir 'Documents/Codex'
+  $codexWorktrees = (Join-PathSafe $homeDir '.codex/worktrees') + $script:Sep
   $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
-  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl') |
+  $codexRollouts = @(
+    Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl'
+    Expand-Glob $homeDir '.codex/archived_sessions/*.jsonl'
+    Expand-Glob $homeDir '.codex/archived_sessions/*/*/*/*.jsonl'
+  )
+  Get-JsonValues 'cwd' $codexRollouts |
     Where-Object {
       $cwdPath = [string](ConvertTo-LocalPath $_)
       -not ($cwdPath.Equals($codexOutputDir, $ignoreCase) -or
-        $cwdPath.StartsWith($codexOutputDir + $script:Sep, $ignoreCase))
+        $cwdPath.StartsWith($codexOutputDir + $script:Sep, $ignoreCase) -or
+        $cwdPath.StartsWith($codexWorktrees, $ignoreCase))
     }
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.qwen/projects/*/chats/*.jsonl')
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')
@@ -3310,6 +3386,13 @@ function Find-CliSessionProjects([string]$homeDir) {
   Get-JsonValues 'working_dir' @(Expand-Glob $homeDir '.local/share/goose/sessions/*.jsonl')
   Get-JsonValues 'worktree' @(Expand-Glob $homeDir '.local/share/opencode/storage/project/*.json')
   Get-JsonValues 'path' @((Join-PathSafe $homeDir '.local/share/crush/projects.json'))
+  $a0Chats = @(@('agent-zero/usr', 'agent-zero/*/usr', 'Desktop/agent-zero/usr') |
+    ForEach-Object { Expand-Glob $homeDir "$_/chats/*/chat.json" })
+  Get-JsonValues 'acp_cwd' $a0Chats
+  $a0Lists = Get-RegexCaptures '"acp_additional_directories"\s*:\s*\[([^\]]*)\]' $a0Chats
+  foreach ($list in $a0Lists) {
+    foreach ($match in [regex]::Matches($list, '"((?:[^"\\]|\\.)*)"')) { $match.Groups[1].Value }
+  }
 }
 
 # Gemini CLI (projects, trusted folders, per-project .project_root files)
@@ -3374,11 +3457,16 @@ function Find-AgentSessionProjects([string]$homeDir) {
   Get-JsonKeys '\{' @((Join-PathSafe $homeDir '.config/muse/trust.json'))
   $museSessions = '.local/share/muse/sessions/*/*/*/*/session.jsonl'
   Get-JsonValues 'workspace_root' @(Expand-Glob $homeDir $museSessions)
+  # A cwd under this home's .openinterpreter/worktrees (thread worktrees, excluded) is not a
+  # project.
+  $oiWorktrees = (Join-PathSafe $homeDir '.openinterpreter/worktrees') + $script:Sep
   Get-JsonValues 'cwd' @(
     Expand-Glob $homeDir '.openinterpreter/sessions/*/*/*/rollout-*.jsonl'
     Expand-Glob $homeDir '.openinterpreter/archived_sessions/rollout-*.jsonl'
     Expand-Glob $homeDir '.openinterpreter/archived_sessions/*/*/*/rollout-*.jsonl'
-  )
+  ) | Where-Object {
+    -not ([string](ConvertTo-LocalPath $_)).StartsWith($oiWorktrees, $ignoreCase)
+  }
   Get-JsonValues 'path' @((Join-PathSafe $homeDir '.openhands/workspaces.json'))
   Get-JsonValues 'working_dir' @(
     Expand-Glob $homeDir '.openhands/agent-canvas/dev_conversations/*/meta.json'

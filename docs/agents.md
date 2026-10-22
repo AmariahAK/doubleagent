@@ -53,9 +53,9 @@ agent name in each row links to its subsection.
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
 | [`gemini-cli`](#gemini-cli) | parsed | source; fixture only | [research](../research/gemini-cli.md) |
 | [`goose`](#goose) | parsed | source; fixture only | [research](../research/goose.md) |
-| [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md) |
-| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md) |
-| [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md) |
+| [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md); [issue 208](https://github.com/seanthegeek/doubleagent/issues/208); the nested `config.yaml` `approvals` settings are not parsed |
+| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md); [issue 192](https://github.com/seanthegeek/doubleagent/issues/192); [issue 221](https://github.com/seanthegeek/doubleagent/issues/221); the session pull request links are not parsed yet |
+| [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md); [issue 212](https://github.com/seanthegeek/doubleagent/issues/212); Kiro CLI's own sessions and permission files wait for a real install |
 | [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [research](../research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
 | [`letta`](#letta) | parsed | source; fixture only | [research](../research/letta.md) |
 | [`little-coder`](#little-coder) | parsed | source; fixture only | [research](../research/little-coder.md) |
@@ -67,8 +67,8 @@ agent name in each row links to its subsection.
 | [`ollama`](#ollama) | parsed | source; fixture only | [research](../research/ollama.md) |
 | [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [research](../research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
 | [`openclaw`](#openclaw) | parsed | source; fixture only | [research](../research/openclaw.md) |
-| [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139) |
-| [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md) |
+| [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139); [issue 194](https://github.com/seanthegeek/doubleagent/issues/194); [issue 213](https://github.com/seanthegeek/doubleagent/issues/213); the desktop app's `drafts.sqlite` is not parsed yet |
+| [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md); [issue 205](https://github.com/seanthegeek/doubleagent/issues/205); Agent Canvas browser storage (cloud origin, archive) needs a LevelDB reader |
 | [`pearai`](#pearai) | parsed | source; fixture only | [research](../research/pearai.md) |
 | [`pi`](#pi) | parsed | source; fixture only | [research](../research/pi.md) |
 | [`pydantic-clai`](#pydantic-clai) | backlog | Source, PyPI wheel | [research](../research/pydantic-clai.md); [issue 66](https://github.com/seanthegeek/doubleagent/issues/66); CLAI 2.0 `sessions.db` conversations and the prompt histories |
@@ -119,18 +119,35 @@ on a provider-stored response marks the chat synced) and the chat's
 Telegram, WhatsApp and email `data` keys (a relayed chat, so the parser
 records relay state and `sessions.jsonl` `relayed` reads `yes` or `no`);
 the bot configuration in `data.telegram_bot_cfg`, which holds its token,
-is never read into a row.
+is never read into a row. Also from the same file: permission decisions
+from `warning` log items (a tool blocked by a policy, a provider MCP
+approval denied automatically, an Infection Check verdict), an editor
+(ACP) session's mode, model and container working directory, with its
+workspace `data.acp_cwd` as the project path, and the per-chat model
+override, printed without its API key. Beside the chats, in the same
+install or volume: `usr/scheduler/tasks.json` (a secondary source: each
+task's prompt and last result), the Telegram plugin's `state.json` (a
+secondary source: a mapped chat that is gone gives a `session deleted:`
+row), the `_tool_access` and `_orchestrator` `config.json` files and the
+`.toggle-0` and `.toggle-1` switches of `_infection_check` and
+`_orchestrator` at every plugin scope (standing permission settings);
+and, in the home, the A0 CLI connector's `.agent-zero/.env`, of which only
+the last chat's host and id are read (a chat on a remote instance, so the
+parser records origin and `sessions.jsonl` `origin` reads `remote` or
+`local`).
 
-Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture.
+Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture; the permission, model, editor-session, scheduler, Telegram map and plugin files from source at [ff2a5b9](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a) and the connector's `.env` from agent0ai/a0-connector at [3741c88](https://github.com/agent0ai/a0-connector/commit/3741c8809f1f99b4efee2ed1a24234a98bf896d4), synthetic fixture.
 
 ### `aider`
 
 Files read: `.aider.chat.history.md`, `.aider.input.history`,
 `.aider.llm.history`, in a home or a repository (a project directory the
 collector gathered); the input and LLM histories are secondary sources of
-the chat history; times are host local time, emitted as if UTC.
+the chat history; times are host local time, emitted as if UTC. The
+chat history's announcement and confirmation lines also give the `model:`
+and `permission decision:` rows.
 
-Validated against: Source at [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), synthetic fixture.
+Validated against: Source at [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), synthetic fixture; the `model:` and `permission decision:` rows from source at the same commit (reviewed 2026-10-21), synthetic fixture.
 
 ### `antigravity`
 
@@ -331,8 +348,23 @@ organisation's bucket and object (fixture only), and each item of the
 VS Code extension's upload queue
 `<editor>/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json`
 one with its status, task file and retries (fixture only).
+The SDK's hook audit log `.cline/data/logs/hooks.jsonl` (a secondary
+source: the prompts, tool calls, results and final replies it repeats,
+paired with the transcript on the call id, and a `hook audit:` row for
+each run start, abort, error and stale-session shutdown); the standing
+permission settings in `.cline/data/globalState.json`
+(`autoApprovalSettings`, `mode`), `.cline/data/settings/global-settings.json`
+and each server's `autoApprove` and `disabled` in
+`settings/cline_mcp_settings.json`, one `permission setting:` row each;
+a `permission decision:` row beside each SDK tool result the user
+rejected or the policy blocked; the Cline Cloud sessions in
+`globalState.json` `cloudSessionStatuses` and
+`.cline/data/cloud-pending-starts/*.json` (`session origin: remote` and
+`session synced:` rows) and the `cloudTaskTarget`; and an imported
+session's source agent, session and path on its start row (all fixture
+only).
 
-Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture.
+Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture; the hook audit log, the permission rows, the Cline Cloud rows and the import marker from source at [41e75efc](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33), synthetic fixture.
 
 ### `codex-cli`
 
@@ -349,6 +381,12 @@ approval rows give the ChatGPT desktop app's `permission decision:` rows;
 and the desktop app's `.codex/.codex-global-state.json`, a secondary
 source whose prompt history, deleted-thread markers, thread descriptions,
 standing permissions and remote control flags outlive a deleted thread.
+From source (fixture only): `.codex/config.toml` and `.codex/rules/*.rules`
+(the standing grants, one `permission setting:` row each), the
+`guardian_review_feedback` records of `state_5.sqlite` and the
+`PatchApproval` rows of `logs_<N>.sqlite` (`permission decision:` rows),
+`.codex/memories/rollout_summaries/*.md` (one `memory summary:` row per
+thread) and `.codex/db-backups/*/state_5.sqlite` (a secondary source).
 
 Validated against: Real install, Codex CLI, October 2026; Codex Desktop
 0.162.0-alpha.17.2 inside the ChatGPT desktop app, Windows 11, October
@@ -361,7 +399,9 @@ Codex CLI 0.162.1 on macOS 26.6.2, October 2026; Codex CLI 0.162.1
 guardian review thread, remote control from iPhone and Android, a
 scheduled task and a deleted thread); archived and
 `.zst` rollouts, subagent and fork records from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
-synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
+synthetic fixture; the standing grants, failed guardian reviews, patch
+approvals, thread goals, memory summaries and database backups from source
+at [4e7b9e2](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857), synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
 table and column names seen on the Windows 11 install, their row shapes
 from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524), synthetic fixture. User-role context (environment,
 AGENTS.md, skills) is `system` by its content kind; a subagent row links
@@ -377,21 +417,29 @@ Files read: The `sourcegraph.cody-ai` row of a VS Code or fork
 and the JetBrains file
 `Cody-nodejs/[Data/]JetBrains-globalState/cody-local-chatHistory-v2`.
 Every row of a chat carries the chat's creation time (its id); no project
-path is recorded.
+path is recorded. The standing permission settings (`cody.*` keys of the
+editor's `User/settings.json`), the model preferences
+(`cody-model-preferences` in the same database row and
+`Cody-nodejs/[Data/]JetBrains-globalState/cody-model-preferences`), and
+the JetBrains plugin's pre-agent history `<project>/.idea/cody_history.xml`
+as a secondary source.
 
-Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda), synthetic fixture.
+Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda), synthetic fixture; the settings, model preferences and legacy JetBrains history from source at the same commit (2026-10-21 review), synthetic fixture.
 
 ### `continue`
 
 Files read: `.continue/sessions/<sessionId>.json` (timestamped from
 `sessions/sessions.json` `dateCreated`; messages have no time of their
-own), `.continue/dev_data/<schema>/chatInteraction.jsonl` and
-`toolUsage.jsonl`; `.continue/logs/cn.log` and its rotated `cn<N>.log`
-files, whose `cn serve` metadata posts and skipped storage uploads are
-`agent metadata posted:` and `storage upload requested, skipped` rows,
-timestamped in host-local time (fixture only).
+own), `.continue/dev_data/<schema>/chatInteraction.jsonl`,
+`toolUsage.jsonl`, `editInteraction.jsonl`, `editOutcome.jsonl` and
+`chatFeedback.jsonl` (secondary); `.continue/logs/cn.log` and its rotated `cn<N>.log`
+files, whose `cn serve` metadata posts, skipped storage uploads and added
+permission rules are `agent metadata posted:`, `storage upload requested,
+skipped` and `permission decision: allow always` rows, timestamped in
+host-local time (fixture only); the CLI's `.continue/permissions.yaml` and
+`.continue/input_history.json` (secondary).
 
-Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture.
+Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture; the standing grants, denial reasons, session mode, prompt history, edit and feedback events and `cn review` scratch directories from the same commit (2.0.0, reviewed 2026-10-21), synthetic fixture.
 
 ### `copilot-cli`
 
@@ -482,9 +530,15 @@ survived, and quitting the app checkpointed the WAL into `data.db`.
 
 Files read: `<project>/.crush/crush.db` (SQLite with WAL sidecars; reached
 as a project artifact, or under a home when Crush ran in `~`),
-`.local/share/crush/projects.json`, `AppData/Local/crush/projects.json`.
+`.local/share/crush/projects.json`, `AppData/Local/crush/projects.json`;
+every `crush.json` scope (`.config/crush/crush.json`,
+`.local/share/crush/crush.json`, `AppData/Local/crush/crush.json`,
+`.crush/crush.json`, a project's `crush.json` and `.crush.json`) for its
+standing permission entries only, so provider keys are never emitted; and
+the `permissions` lines of `.config/crush/crushrc` and a project's
+`crushrc` and `.crushrc`.
 
-Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture.
+Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture; the permission, relay, deletion and file rows and the standing settings from source at [7f799fb](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da), with fantasy v0.45.1 at [ec25857](https://github.com/charmbracelet/fantasy/commit/ec258577c7d825ec38cfdf8cbeaaa2f7e197aacd) for the stored hook metadata, synthetic fixture.
 
 ### `cursor`
 
@@ -592,39 +646,58 @@ mtime)` row per folder at the file's modification time with `project_path`
 the folder; a gemini message's `model` as `model: <id>` at a session's
 first and `model: <old> -> <new>` on each change; a tool call with status
 `cancelled` or `awaiting_approval` is followed by `permission decision:
-<status>`.
+<status>`; `tmp/<slug>/shell_history` (the shell-mode commands),
+`tmp/<slug>/checkpoint-<tag>.json` (`/chat save`) and
+`tmp/<slug>/bug-report-history-<ms>.json` (`/bug`) as secondary sources
+with no timestamp; `.gemini/settings.json` (permission, sandbox and
+retention keys) and `.gemini/policies/*.toml` (saved and written policy
+rules) in the home and in a project, `.gemini/trusted_hooks.json` and
+`.gemini/acknowledgments/agents.json`, one `permission setting:` or
+`session retention:` row per entry at the file's modification time.
 
-Validated against: Source at [fb972b2](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c), synthetic fixture.
+Validated against: Source at [fb972b2](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c), synthetic fixture; the standing permission files, `shell_history`, the `/chat save` checkpoints and the `/bug` exports from source at [3be3d44](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d) (0.66.0-nightly), synthetic fixture.
 
 ### `goose`
 
 Files read: `.local/share/goose/sessions/sessions.db` (SQLite with WAL
 sidecars), legacy `sessions/*.jsonl`,
-`.local/state/goose/logs/llm_request.*.jsonl`, `history.txt` (a secondary
-source, no timestamp: matches on text alone), and the
-`AppData/Roaming/Block/goose/data` equivalents. A `sessions.db` session
+`.local/state/goose/logs/llm_request.*.jsonl` (a secondary source: the
+last 10 provider calls, matched within 600 seconds), `history.txt` (a
+secondary source, no timestamp: matches on text alone),
+`.config/goose/permission.yaml` and `.config/goose/roaming_trust.json`
+(standing permission rows), `.local/share/goose/schedule.json` (one
+`scheduled task:` row per job), and the `AppData/Roaming/Block/goose/data`
+and `AppData/Roaming/Block/goose/config` equivalents. A `sessions.db` session
 whose `session_type` is `gateway` was relayed through the gateway's
 Telegram bot, so the parser records relay state and `sessions.jsonl`
 `relayed` reads `yes` or `no`; `config.yaml` `gateway_pairings` is not
 read.
 
-Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture.
+Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture; the tool confirmation and `goose.executable` rows, `permission.yaml`, `roaming_trust.json`, `schedule.json` and the request logs as a secondary source from source at [fb9e3c8](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c), synthetic fixture.
 
 ### `hermes`
 
 Files read: `state.db` (SQLite with WAL sidecars; `sessions`, `messages`
 and `session_model_usage`, rewound or compacted `active = 0` rows kept
-with a `[rewound]` prefix) and two secondary sources, the quick snapshots
-`state-snapshots/<id>/state.db` (read like `state.db` after a `state
-snapshot <id>` row; collected only with `--full`) and the
-`sessions/<id>.jsonl` diverts written when `state.db` was replaced under a
-running process, under `.hermes`, `.hermes_<suffix>`,
-`AppData/Local/hermes` and their `profiles/<name>/` homes, or at the
-root of a `*hermes*` Docker or Podman volume. Also
-`pastes/pending.json`, the paste.rs links of recent `hermes debug share`
-uploads.
+with a `[rewound]` prefix; also the `state_meta` deletion fences,
+`conversation_generations` and the Bot Mode room log) and these secondary
+sources: the quick snapshots `state-snapshots/<id>/state.db` (read like
+`state.db` after a `state snapshot <id>` row; collected only with
+`--full` before collector 1.18.0), the `sessions/<id>.jsonl` diverts
+written when `state.db` was replaced under a running process, the prompt
+history `.hermes_history`, the cron run files `cron/output/<job>/<time>.md`,
+the API server's `response_store.db`, and the `trajectory_samples.jsonl`
+and `failed_trajectories.jsonl` files a run leaves in its project; all
+under `.hermes`, `.hermes_<suffix>`, `AppData/Local/hermes` and their
+`profiles/<name>/` homes, or at the root of a `*hermes*` Docker or Podman
+volume, the trajectory files excepted. Also `pastes/pending.json`, the
+paste.rs links of recent `hermes debug share` uploads; the standing
+approvals in `config.yaml` (`command_allowlist`) and in the pairing
+stores `pairing/<platform>-approved.json` and
+`platforms/pairing/<platform>-approved.json`; and the desktop app's
+`connections.json` in its `Hermes` userData directory.
 
-Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture.
+Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture; the relay, permission, deletion, past-use, origin and worktree rows from source at [86fa9e6](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872), synthetic fixture.
 
 ### `kilo-code`
 
@@ -634,19 +707,31 @@ including the `session_share` table and `session.updated.1` events),
 the cloud session markers
 `.local/share/kilo/storage/session_share/<sessionID>.json` (one
 `session synced:` row each), and pre-migration VS Code tasks
-`<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`.
+`<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`;
+the terminal UI's `.local/state/kilo/prompt-history.jsonl` (secondary) and
+`prompt-stash.jsonl`; the `permission` key of the global config files in
+`.config/kilo`; the sandbox files under `.local/state/kilo-sandbox-policy`
+and `.local/state/kilo-sandbox-preference`; `.local/share/kilo/retention/state.json`;
+and the remote control lines of `.local/share/kilo/log/*.log`.
 
-Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture.
+Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture; the permission, past-use, remote control, scratch directory and retention rows from source at [87cc35c](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), synthetic fixture; no real install.
 
 ### `kiro`
 
 Files read: Amazon Q CLI `data.sqlite3` (`conversations` and legacy
 `history` tables) under `amazon-q/` or `kiro-cli/` in `.local/share`,
 `Library/Application Support` or `AppData/Local`; `/save` exports (`.json`
-with `conversation_id` and `history`). Kiro CLI `.kiro/sessions/` files
-are not parsed until their format is confirmed.
+with `conversation_id` and `history`), including each conversation's
+checkpoint snapshots and tangent-mode main history for the turns the
+conversation no longer holds; the chat prompt history
+`.aws/amazonq/.cli_bash_history` (a secondary source with no time,
+session or project); the agent configurations
+`.aws/amazonq/cli-agents/*.json` and a project's
+`.amazonq/cli-agents/*.json` (standing tool grants); a project's
+`.amazonq/.subagents/*.json` (delegated background tasks). Kiro CLI
+`.kiro/sessions/` files are not parsed until their format is confirmed.
 
-Validated against: Source at [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a), synthetic fixture.
+Validated against: Source at [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a), synthetic fixture; the denial rows, standing grants, prompt history, history copies and delegate records from source at the same commit and [kkawakam/rustyline at bc06b3e](https://github.com/kkawakam/rustyline/commit/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c) (v15.0.0, the prompt history format), synthetic fixture.
 
 ### `letta`
 
@@ -657,25 +742,42 @@ format), `.letta/transcripts/<agent>/<conversation>/transcript.jsonl`
 source, read beside the conversation's `messages.jsonl` with a one-hour
 window because each line is stamped at the end of its turn; a
 server-side agent's transcript also gives a `session synced:` row),
-`.letta/sessions.jsonl`, and the `sessionsByServer` entries of
-`.letta/settings.json` and a project's `.letta/settings.local.json`
-(one `session synced:` row per server; `agents[]` `baseUrl` names a
-transcript's server; no other key is read). On the server backend the
+`.letta/sessions.jsonl` (one line per session ended with `/exit` or
+`/logout`), and the `sessionsByServer` entries of `.letta/settings.json`
+and a project's `.letta/settings.local.json` (one `session synced:` row
+per server; `agents[]` `baseUrl` names a transcript's server). Since the
+2026-10-21 review, source-derived: the `permissions` object of
+`.letta/settings.json`, `.config/letta/settings.json` and a project's
+`.letta/settings.json` and `.letta/settings.local.json` (one
+`permission setting:` row per entry),
+`.letta/channels/<channel>/routing.json` (one `session relayed:` row per
+route), `.letta/crons.json` and `.letta/runs/<task id>.jsonl` (scheduled
+tasks and their runs), and `.letta/listener-state/<hash>/<agent>_<conversation>.json`
+(an interrupted listener turn with its approval decisions and tool
+results). No other settings key is read. On the server backend the
 store of record is on the server and the local transcript is its
 mirror, so such a session reads `sessions.jsonl` `recovered` `yes` or
 `partial` by design, beside its `session synced: server conversation`
 row.
 
-Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture.
+Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture; the permission settings, channel routing, scheduled tasks and interrupted turns from source at [2a46615](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436) (version 0.34.17), synthetic fixture.
 
 ### `little-coder`
 
 Files read: `.pi/agent/little-coder-prompt-history.json` (prompts without
 timestamps or sessions) and `.little-coder/checkpoints/<session file>/`
 (one `system` row per session's pre-edit copies); its transcripts are pi
-sessions, parsed as `pi`.
+sessions, parsed as `pi`. From the retired v0.0.x Python releases:
+`.little-coder/sessions/daily/<date>/session_*.json` and the `/save`
+files under `.little-coder/sessions/` (saved sessions, timed by their
+save time in host local time), `sessions/history.json` and
+`sessions/mr_sessions/session_latest.json` (secondary copies of them),
+`.little-coder/input_history.txt` (secondary, prompts without
+timestamps), `.little-coder/checkpoints/<id>/snapshots.json` (one
+`system` row per snapshot) and three keys of `.little-coder/config.json`
+(the gist sync, the Telegram relay and the permission mode).
 
-Validated against: Source at [89d4fa0](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df), synthetic fixture.
+Validated against: Source at [89d4fa0](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df), synthetic fixture; the v0.0.x layout from source at [424f7a4](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03) (tag `v0.0.5`), synthetic fixture.
 
 ### `muse-code`
 
@@ -704,13 +806,23 @@ local time, emitted as if UTC. Secondary sources: the session JSONL files
 and `jsonl-backup/*.jsonl` copies beside a `sessions.sqlite3`, which the
 database imported and which are never written again; the WebUI transcript
 `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (true UTC
-`created_at_ms`, 15-hour window); and `.nanobot*/history/cli_history`
-(local time, prompts only).
+`created_at_ms`, 15-hour window); `.nanobot*/history/cli_history`
+(local time, prompts only); the cron and trigger run records
+`cron/runs/*.json` and `triggers/runs/*.json` of a workspace (true UTC,
+15-hour window); and the WebUI sidebar cache
+`.nanobot*/sessions/<workspace-id>/.webui_session_index.json`. Settings:
+`.nanobot*/config.json` (the workspace restriction, the exec sandbox and
+its allow and deny lists, the channel `allowFrom` lists; no other key) and
+`.nanobot*/pairing.json` (approved and pending chat senders), one
+`permission setting:` row per entry.
 
 Validated against: Source at [acdae3d](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f), synthetic fixture. The session database and the `--home` history
 location are fixture only, from source at
 [909b277](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
-which may not be released yet.
+which may not be released yet; the relay, model switch, permission, run
+record and sidebar cache rows from source at
+[909b277](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
+synthetic fixture.
 
 ### `ollama`
 
@@ -724,11 +836,17 @@ the `users` and `settings` tables are not read. `.ollama/history` (the
 `ollama run` prompt history: no timestamp or session, so its rows sort
 last and drop out of `--since`/`--until`; the last 100 entries only; a
 pasted multi-line prompt becomes several rows; slash commands are `system`
-rows). No project path is recorded. Model manifests, `config.json`,
+rows). `.ollama/config.json`, for the `automode` key of each `ollama
+launch` integration, and the Claude Desktop profile the launcher writes,
+`configLibrary/00000000-0000-4000-8000-000000000114.json` under
+`Library/Application Support/Claude-3p` or `AppData/Local/Claude-3p`, for
+its `autoModeEnabled` key: each a `permission setting:` row at the file's
+modification time. No project path is recorded. Model manifests,
 `backup/`, `launch/` and `logs/` are not read.
 
 Validated against: Source at v0.35.1 ([b0c1ca4](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)), synthetic fixture; no real
-`db.sqlite`, since the desktop app does not exist on Linux.
+`db.sqlite`, since the desktop app does not exist on Linux; the auto-mode
+settings from source at [6787222](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120) (after v0.40.6), synthetic fixture.
 
 ### `open-interpreter`
 
@@ -740,9 +858,12 @@ also as `.jsonl.zst`, `.openinterpreter/history.jsonl`,
 Codex), and `external_agent_session_imports.json` (one `system` row per
 `/import`ed thread, naming the Claude Code or Cursor source file; that
 thread's record times are import time), and `.openinterpreter/logs_2.sqlite`
-(`/feedback` reports, as for Codex; fixture only).
+(`/feedback` reports, as for Codex; fixture only). As for Codex, from
+source: `.openinterpreter/config.toml` and `.openinterpreter/rules/*.rules`
+(standing grants), `.openinterpreter/memories/rollout_summaries/*.md` and
+`.openinterpreter/db-backups/*/state_5.sqlite`.
 
-Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture.
+Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture; the standing grants, memory summaries and database backups from source at [ac1fcc8](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87), synthetic fixture.
 
 ### `openclaw`
 
@@ -760,10 +881,23 @@ and sender) is in each session's start row; `auth_profile_store` is never
 read; `*.trajectory.jsonl` and `*.migrated*` are not read. The agent
 database's `session_nodes.entry_json` gives each published session's
 `publicShare` grant, and `state/openclaw.sqlite` table `backup_runs` the
-`openclaw backup` uploads.
+`openclaw backup` uploads. The same `entry_json` gives the session's
+delivery route, model override, permission settings and archive marker;
+the agent database's `session_conversations`, `conversations` and
+`session_windows` give the relay rows, `session_pending_inputs` the
+prompts that never reached the transcript, the full-text index content
+table `session_transcript_fts_content` the entries the transcript lost,
+`conversation_deliveries` the channel sends and replies,
+`session_transcript_archives` the deletions and
+`memory_session_tombstones` the sessions forgotten from memory.
+`state/openclaw.sqlite` also gives `operator_approvals`,
+`exec_approvals_config` (never its socket token),
+`operator_approval_standing_grants`, `channel_pairing_allow_entries`,
+`channel_ingress_events` and the three GitHub publication request tables.
+A PostgreSQL engine anchor in place of either database is one row.
 
 Validated against: Source at [3b16db7](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) (the checkpoint and backup writers,
-since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture.
+since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture; the relay, permission, model-override, past-use, deletion, PostgreSQL-anchor and GitHub publication rows from source at [146284a](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b) (version 2026.10.5), synthetic fixture.
 
 ### `opencode`
 
@@ -776,9 +910,13 @@ columns, WAL sidecars; in a 1.x database V1 `message`/`part`, V2
 the share `secret`), with `opencode-next.db`, the pre-release 2.0
 database, read as a secondary source; legacy JSON
 `storage/session/*/*.json` and `storage/message/*/*.json` with their
-`part/` files, and the older `project/<slug>/storage/session/` tree.
+`part/` files, and the older `project/<slug>/storage/session/` tree. In
+each database also the `permission`, `worktree` and `project_directory`
+tables and the session's `permission` and `time_archived` columns; and the
+terminal UI's `.local/state/opencode/prompt-history.jsonl` and
+`session.json` (both secondary) and `prompt-stash.jsonl`.
 
-Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) for 1.x and at [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e) (CLI 2.0.32) for 2.0, synthetic fixture; no real install of either.
+Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) for 1.x and at [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e) (CLI 2.0.32) for 2.0, synthetic fixture; the permission, past-use, scratch directory and archive rows from source at the same two commits (source review of 2026-10-21), synthetic fixture; no real install of either.
 
 ### `openhands`
 
@@ -786,12 +924,15 @@ Files read: `.openhands/agent-canvas/dev_conversations/<hex>/`,
 `.openhands/agent-canvas/conversations/<hex>/` and
 `.openhands/conversations/<hex>/`: one `events/event-<idx>-<id>.json` per
 event, with the sibling `meta.json` (title, `created_at`, working dir) and
-`base_state.json` (model). Event times are naive local time, corrected by
-the offset `meta.json` `created_at` implies, else emitted as if UTC.
-Legacy 0.x `sessions/<sid>/events/<n>.json` is reported as one `system`
-row per session, not parsed.
+`base_state.json` (model, per-response token usage). Event times are naive
+local time, corrected by the offset `meta.json` `created_at` implies, else
+emitted as if UTC. Each `base_state.json` also gives the confirmation
+policy, security analyzer and hook-blocked actions as standing permission
+rows. The CLI's `.openhands/projects/<sha256 of cwd>/prompt_history.json`
+is a secondary source. Legacy 0.x `sessions/<sid>/events/<n>.json` is
+reported as one `system` row per session, not parsed.
 
-Validated against: Source at [b347047](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41) (SDK), synthetic fixture.
+Validated against: Source at [b347047](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41) (SDK), synthetic fixture; the security-analyzer verdicts, model switches, standing permission rows and worktree scratch directories from source at [33d8aa2](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360) (SDK) and the prompt history at [0403f1a](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2) (CLI), synthetic fixture.
 
 ### `pearai`
 
@@ -799,10 +940,17 @@ Files read: `.pearai/sessions/<sessionId>.json` (Continue fork, `history`
 and `perplexityHistory`, timestamped from `sessions.json` `dateCreated`)
 and `<editor>/User/globalStorage/pearai.pearai-roo-cline/tasks/<id>/` (Roo
 Code 3.15 fork through the Cline task mapping; XML tool calls in
-`api_conversation_history.json`; project from `taskHistory` in the sibling
-`state.vscdb`).
+`api_conversation_history.json`, also read beside `ui_messages.json` for
+the permission decisions; project from `taskHistory` in the sibling
+`state.vscdb`), the `pearai.pearai-roo-cline` row of the editor's
+`User/globalStorage/state.vscdb` (one row per `taskHistory` entry and per
+standing auto-approval setting), the `PearAI` output channel log
+`<editor>/logs/<session>/window<N>/exthost/output_logging_<time>/<n>-PearAI.log`
+and `.pearai/dev_data/chat.jsonl` (secondary: every chat request's prompt
+and reply, and the rated ones with their session), and
+`.pearai/dev_data/tokens_generated.jsonl` (the model of each request).
 
-Validated against: Source at [51eceef6](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9) and [0b6df736](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda), synthetic fixture.
+Validated against: Source at [51eceef6](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9) and [0b6df736](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda), synthetic fixture; the permission texts, the task list, the standing settings and the chat use logs from source at the same commits and [d930f023](https://github.com/trypear/pearai-app/commit/d930f0233c14668df9f85c6a78a81828f4251194) (the editor), synthetic fixture.
 
 ### `pi`
 
@@ -812,11 +960,16 @@ parent file are dropped; a session that looks driven by little-coder gets
 a `system` row saying so),
 `.pi/agent/experimental/sessions/<id>/meta.json` (the durable
 `session.sqlite` beside it is not parsed), `.pi/agent/trust.json` (project
-trust decisions, one `permission setting:` row per project). A session's
+trust decisions, one `permission setting:` row per project),
+`.pi/agent/settings.json` (only `defaultProjectTrust`, one `permission
+setting:` row), `.pi/agent/pi-debug.log` (secondary, the last `/debug`
+snapshot of a session's messages) and `.pi/agent/crashes.json` (one
+`crash:` row per recent crash). A session's
 `pi.bug-report` entry gives a `session synced:` row for a `/bug` upload
-or a `bug report exported:` row for a zip.
+or a `bug report exported:` row for a zip, and a call little-coder's
+permission gate refused a `permission decision: denied` row.
 
-Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture.
+Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture; `defaultProjectTrust`, the debug and crash logs and the permission-gate rows from source at [5c1736f](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) (coding-agent 1.3.0), synthetic fixture.
 
 ### `qwen-code`
 
@@ -833,18 +986,38 @@ the file's modification time with `project_path` the folder;
 `.qwen/channels/sessions.json` and `.qwen/channels/daemon/<hash>/routes.json`,
 one `session relayed:` row per session driven from a messaging platform
 (fixture only), so the parser records relay state and `sessions.jsonl`
-`relayed` reads `yes` or `no`.
+`relayed` reads `yes` or `no`. A record's `executionContext` as `model:`
+and `permission mode:` rows on change, a `session_approval_mode` record
+as `permission mode:`, and a `ui_telemetry` tool call the user answered
+as `permission decision: <decision> (tool_call ui_telemetry)`;
+`.qwen/settings.json` in the home or a project, one `permission setting:`
+row per `permissions.allow`, `ask` and `deny` rule and one for
+`tools.approvalMode`; `.qwen/usage_record.jsonl`, one `session usage:`
+row per session summary, a secondary source that outlives a deleted
+transcript.
 
-Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture.
+Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture; the `executionContext`, `session_approval_mode` and `ui_telemetry` decision rows, `settings.json` and `usage_record.jsonl` from source at [5dcf7c7](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1) (version 0.25.3), synthetic fixture.
 
 ### `roo-code`
 
 Files read: `<editor>/User/globalStorage/rooveterinaryinc.roo-cline/` and
 `.vscode-mock/global-storage/`: the Cline task files plus
 `tasks/<id>/history_item.json` and `tasks/_index.json`; the CLI's input
-history `.roo/cli-history.json` (a secondary source, text only).
+history `.roo/cli-history.json` (a secondary source, text only). For
+permission state: the `isAnswered` mark in `ui_messages.json`, the denial
+and approval JSON in the API history (read for decision rows even beside
+`ui_messages.json`), the extension's global state (the
+`RooVeterinaryInc.roo-cline` row of a VS Code or fork
+`User/globalStorage/state.vscdb`) and the CLI's
+`.vscode-mock/global-storage/global-state.json`, `.roo/cli-settings.json`,
+and the MCP `alwaysAllow` lists of `settings/mcp_settings.json` and a
+project's `.roo/mcp.json`. For Roo Code Cloud (releases up to 3.53.0): the
+settings cache in the same global state and the retry queue in the
+workspace state (the extension's row of `User/workspaceStorage/<hash>/state.vscdb`
+and the CLI's `.vscode-mock/workspace-storage/<hash>/workspace-state.json`);
+the queue's bearer token and message bodies are never emitted.
 
-Validated against: Source at [b867ec91](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), synthetic fixture.
+Validated against: Source at [b867ec91](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), synthetic fixture; the Roo Code Cloud settings cache and retry queue from source at [44f6bba2](https://github.com/RooCodeInc/Roo-Code/commit/44f6bba250235a98a21403df8b2ff64dfb5421c0) (version 3.53.0, the last release with the cloud client), synthetic fixture.
 
 ### `shellgpt`
 
@@ -854,29 +1027,55 @@ Files read: Files directly under a `chat_cache/` directory:
 temp directory given as loose input. One JSON array of OpenAI messages per
 chat, `tool_calls` and the pre-1.5.0 `function_call` shape; no timestamp,
 model or working directory is recorded, so those columns stay empty.
+`.config/shell_gpt/.sgptrc` (four keys only: `DEFAULT_MODEL`,
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD`, `SHELL_INTERACTION`;
+the API key is never read into a row), the function store
+`.config/shell_gpt/functions/*.py` (file names only) and the response
+cache `AppData/Local/Temp/shell_gpt/cache/<md5>` (secondary).
 
-Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6), synthetic fixture.
+Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6), synthetic fixture; the settings, function store and response cache rows from the same source, synthetic fixture.
 
 ### `tabby`
 
 Files read: Server-side: `.tabby/ee/db.sqlite` or `dev-db.sqlite` (SQLite
-with WAL sidecars; `threads`, `thread_messages`, `user_events`, thread
-owner from `users.email`; secret columns never read), the pre-migration
-backups `ee/db.backup-YYYYMMDD.sqlite` (may hold threads since deleted;
-secondary), and the completion event log `.tabby/events/YYYY-MM-DD.json`
-(full prompt and generated text; secondary, pairs with `user_events`).
+with WAL sidecars; `threads`, `thread_messages`, `user_events`, the
+AI-written `pages` and `page_sections`, the source-host `integrations` and
+their cached `provided_repositories`, thread owner from `users.email`;
+secret columns never read), the pre-migration backups
+`ee/db.backup-YYYYMMDD.sqlite` (may hold threads since deleted;
+secondary), the completion event log `.tabby/events/YYYY-MM-DD.json`
+(full prompt and generated text; secondary, pairs with `user_events`) and
+the configured models in `.tabby/config.toml` (`[model.*]`, with Python
+3.11 or later). The same files at the root of a Docker or Podman volume
+matching `*tabby*`, without the leading `.tabby/`. Client-side, the
+inline-edit command histories: the IntelliJ plugin's
+`JetBrains/<product>/options/intellij-tabby-command-history.xml` and the
+`edit.recentlyCommand` key of the `TabbyML.vscode-tabby` row of a VS Code
+or fork `User/globalStorage/state.vscdb` (both secondary, no times).
 Project is the attached repository URL; no local path is recorded.
 
-Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f), synthetic fixture.
+Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f), synthetic fixture; the
+pages, source-host, model, command-history and volume rows were added from
+the same commit on 2026-10-21, source-derived and not observed on any real
+install.
 
 ### `twinny`
 
 Files read: The `rjmacarthy.twinny` row of a VS Code or fork
-`User/globalStorage/state.vscdb` (`twinny.conversations`). Messages have
-no time of their own: every row carries the conversation's `updatedAt`.
-Provider `apiKey`s in the same value are never emitted.
+`User/globalStorage/state.vscdb` (`twinny.conversations`, the standing
+Always run grants, the agent-mode and auto-run switches and
+`twinny.teamPolicy`). Messages have no time of their own: every row
+carries the conversation's `updatedAt`. Provider `apiKey`s and the ChatGPT
+plan profile in the same value are never emitted. As secondary sources,
+the `agent-changes/<id>.json` records under
+`User/workspaceStorage/<id>/rjmacarthy.twinny/` (or
+`User/globalStorage/rjmacarthy.twinny/`), which carry the project root,
+and the extension's log channel, `logs/.../rjmacarthy.twinny/Twinny.log`
+and its rotated `Twinny.log_<n>` copies. The `rjmacarthy.twinny` row of
+`User/workspaceStorage/<id>/state.vscdb` for the pull request review
+tab's GitHub repository.
 
-Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture; the `said` tool step of Twinny 4.3.5 and later from source at [0337b265](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a) (version 4.3.15), synthetic fixture.
+Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture; the `said` tool step of Twinny 4.3.5 and later from source at [0337b265](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a) (version 4.3.15), synthetic fixture; the standing grants, team policy, file changes, `agent-changes/` records, log channel and review repository from source at the same commit, synthetic fixture.
 
 ### `vscode`
 
@@ -893,19 +1092,34 @@ strings. Copilot Chat's session sync record
 row in `User/globalStorage/state.vscdb` (one `session synced:` row and
 one `session origin: remote GitHub cloud agent` row per cloud agent
 task, which began on GitHub's servers, so the parser records origin and
-`sessions.jsonl` `origin` reads `remote` or `local`).
+`sessions.jsonl` `origin` reads `remote` or `local`). The standing tool
+approvals in each `state.vscdb` (`User/globalStorage/`,
+`User/profiles/<id>/globalStorage/` and
+`User/workspaceStorage/<hash>/`), the auto-approve, default permission
+and default model settings of `User/settings.json` and
+`User/profiles/<id>/settings.json`, the GitHub account's usage records
+and the repositories picked for cloud agent tasks in
+`User/globalStorage/state.vscdb`, and the accept or reject state of each
+file a chat edited in
+`User/workspaceStorage/<hash>/chatEditingSessions/<id>/state.json`, a
+secondary source that survives the chat's deletion.
 
-Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture.
+Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture; the permission level, model options, standing grants, settings, GitHub account records and chat editing state from source at [4d22f4f](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706), synthetic fixture.
 
 ### `zed`
 
 Files read: `threads/threads.db` (zstd-compressed JSON threads; needs
-`zstandard`) and `db/0-<channel>/db.sqlite` `sidebar_threads`
-(external-agent threads as `system` rows) under `.local/share/zed`,
+`zstandard`) and `db/0-<channel>/db.sqlite` (`sidebar_threads`, external-agent
+threads and native thread state; `trusted_worktrees`; the `scoped_kv_store`
+namespaces `agent_draft_prompts` and `created_git_worktrees`;
+`archived_git_worktrees` with `thread_archived_worktrees`;
+`sidebar_terminal_threads`) under `.local/share/zed`,
 `Library/Application Support/Zed`, `AppData/Local/Zed` or the Flatpak data
-dir. No per-message timestamps: messages carry the thread's `updated_at`.
+dir, and `settings.json` and `global_settings.json` under `.config/zed`,
+`AppData/Roaming/Zed` or the Flatpak config dir. No per-message timestamps:
+messages carry the thread's `updated_at`.
 
-Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture.
+Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture; the settings files, the other `db.sqlite` stores, denied calls, scratch directories and draft prompts from source at [9cd14da](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6), synthetic fixture.
 
 ## Collected agents
 
@@ -973,14 +1187,17 @@ Files collected: The run data directory, named after the project folder
 `AppData/Local/CrewAI/<project>`): `latest_kickoff_task_outputs.db` (every
 task's output with its messages), `flow_states.db` and
 `.crewai_user.json`; `.config/crewai/settings.json`, the
-`crewai/credentials/` key and encrypted token, and `.crewai` skills.
+`crewai/credentials/` key and encrypted token, and `.crewai` skills; in a
+project that another agent's state or `-p` names, its `.crewai` directory
+(`last_run.json`, the record that a run's trace reached AMP, CrewAI's hosted
+service, and the `crewai eval` state).
 
 Validated against: Source, appdirs source.
 
 ### `dify`
 
-Files collected: The `difyctl` CLI client's `config.yml`, `login.yml` and
-`tokens.yml` (`.config/difyctl`, `AppData/Roaming/difyctl`,
+Files collected: The `difyctl` CLI client's `config.yml`, `login.yml`,
+`tokens.yml` and `login-pending.yml` (`.config/difyctl`, `AppData/Roaming/difyctl`,
 `AppData/Local/difyctl`), and the Docker volumes
 `*dify_agent_local_sandbox_home` (the sandbox runtime shellctl's
 `shellctl.db` and job output logs) and
@@ -1069,7 +1286,10 @@ Files collected: `.pydantic-ai/prompt-history.txt` (`clai` v1) and
 `.config/pydantic-clai2/` (CLAI 2.0): `sessions.db` (`conversations` with
 the messages, `workspace` and `model`), `input-history`, `config.db`,
 `credentials-*` and `mcp.json`; `sessions.db` can also hold Claude Code
-and Codex sessions imported by `/resume`.
+and Codex sessions imported by `/resume`. The CLAI 2.0 state directory
+`.local/state/pydantic-clai2/`: the web orchestrator's `orchestrator.json`
+and each workspace's `workspace.json`, `token` and `session.log`, with the
+workspaces' clones of remote repositories excluded.
 
 Validated against: Source, PyPI wheel.
 

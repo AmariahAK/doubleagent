@@ -883,7 +883,15 @@ class ClaudeCode296Tests(ParserBase):
             self.assertFalse(ClaudeCodeParser().wants(art), rel)
 
 
-from fixtures import CODEX_FEEDBACK_TS, codex_log_rows, write_codex_logs
+from fixtures import (
+    CODEX_BACKUP_STATE_REL,
+    CODEX_FEEDBACK_TS,
+    CODEX_GOAL_EVENT,
+    CODEX_MEMORY_SUMMARY_REL,
+    build_codex_standing,
+    codex_log_rows,
+    write_codex_logs,
+)
 
 
 class CodexTests(ParserBase):
@@ -1117,9 +1125,171 @@ class CodexTests(ParserBase):
         self.assertEqual(rows[0].timestamp_utc, "2026-10-02T09:00:02.000Z")
         self.assertEqual(rows[0].session_id, CODEX_SESSION)
 
-    def test_config_not_wanted(self):
-        art = next(a for a in self.col.artifacts if a.rel == ".codex/config.toml")
-        self.assertFalse(CodexParser().wants(art))
+    # The standing grants, memories and backups (#200), source-derived.
+    STANDING = "(from %s, file mtime)"
+    MTIME = "2026-10-19T08:53:20.000Z"
+
+    def _standing(self):
+        build_codex_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_config_without_permission_keys_gives_no_rows(self):
+        # build_home's config.toml names only a model.
+        self.assertTrue(CodexParser().wants(self.artifact(".codex/config.toml")))
+        self.assertEqual(self.rows_for(CodexParser(), ".codex/config.toml"), [])
+
+    def test_config_permission_settings(self):
+        self._standing()
+        rel = ".codex/config.toml"
+        rows = self.rows_for(CodexParser(), rel)
+        tail = " " + self.STANDING % rel
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                ("system", self.MTIME, "", project, "permission setting: " + text + tail)
+                for project, text in (
+                    ("", "approval_policy=on-request"),
+                    ("", "approvals_reviewer=auto_review"),
+                    ("", "sandbox_mode=workspace-write"),
+                    ("", "default_permissions=:workspace"),
+                    ("/srv/proj", "projects./srv/proj.trust_level=trusted"),
+                    ("/srv/other", "projects./srv/other.trust_level=untrusted"),
+                    ("", "mcp_servers.github.tools.create_issue.approval_mode=approve"),
+                    (
+                        "",
+                        "plugins.figma@openai.mcp_servers.figma.tools.get_file.approval_mode"
+                        "=approve",
+                    ),
+                    ("", "apps.connector_gdrive.tools.search.approval_mode=approve"),
+                )
+            ],
+        )
+        # The MCP server's environment, which can hold a token, is never shown.
+        self.assertNotIn("ghp_", "\n".join(r.text for r in rows))
+
+    def test_config_scan_matches_tomllib(self):
+        # Python 3.10 reads config.toml with scan_toml; the settings agree.
+        from doubleagent.parsers.codex import config_settings, scan_toml
+        from fixtures import CODEX_CONFIG_TOML
+
+        got = config_settings(scan_toml(CODEX_CONFIG_TOML))
+        self.assertEqual(len(got), 9)
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            self.assertEqual(got, config_settings(tomllib.loads(CODEX_CONFIG_TOML)))
+
+    def test_rules_permission_settings(self):
+        self._standing()
+        rel = ".codex/rules/default.rules"
+        rows = self.rows_for(CodexParser(), rel)
+        tail = " " + self.STANDING % rel
+        self.assertEqual(
+            [(r.timestamp_utc, r.source_line, r.session_id, r.text) for r in rows],
+            [
+                (
+                    self.MTIME,
+                    2,
+                    "",
+                    'permission setting: prefix_rule(pattern=["git", "status"], decision="allow")'
+                    + tail,
+                ),
+                (
+                    self.MTIME,
+                    3,
+                    "",
+                    'permission setting: network_rule(host="example.com", protocol="https",'
+                    ' decision="deny", justification="no #tracking")' + tail,
+                ),
+                (
+                    self.MTIME,
+                    4,
+                    "",
+                    'permission setting: prefix_rule( pattern=["npm", "test"], decision="allow", )'
+                    + tail,
+                ),
+            ],
+        )
+
+    def test_rules_unterminated_statement(self):
+        self._standing()
+        rel = ".codex/rules/default.rules"
+        clean = self.rows_for(CodexParser(), rel)
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write('prefix_rule(pattern=["curl"')
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual([r.text for r in rows[:-1]], [r.text for r in clean])
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 8, 'parser: unterminated rule: prefix_rule(pattern=["curl"'),
+        )
+
+    def test_memory_summary(self):
+        self._standing()
+        rows = self.rows_for(CodexParser(), CODEX_MEMORY_SUMMARY_REL)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(
+            (row.turn_type, row.timestamp_utc, row.session_id, row.project_path, row.git_branch),
+            ("system", "2026-10-02T09:00:10.000Z", CODEX_SESSION, "/srv/proj", "feature/x"),
+        )
+        self.assertEqual(
+            row.text,
+            "memory summary: thread %s rollout=/home/alice/.codex/sessions/2026/10/02/"
+            "rollout-x.jsonl (from %s, updated_at): The user asked for a listing of the home"
+            " directory.\n- `ls -la ~` failed with exit 2."
+            % (CODEX_SESSION, CODEX_MEMORY_SUMMARY_REL),
+        )
+
+    def test_memory_summary_without_header(self):
+        self._standing()
+        (self.home / CODEX_MEMORY_SUMMARY_REL).write_text("just text\n", encoding="utf-8")
+        rows = self.rows_for(CodexParser(), CODEX_MEMORY_SUMMARY_REL)
+        self.assertEqual([r.text for r in rows], ["parser: memory summary has no thread_id header"])
+
+    def test_database_backup_is_a_secondary_state_copy(self):
+        self._standing()
+        p = CodexParser()
+        backup = self.artifact(CODEX_BACKUP_STATE_REL)
+        self.assertTrue(p.wants(backup))
+        self.assertTrue(p.secondary(backup))
+        main = [(r.turn_type, r.timestamp_utc, r.text) for r in self.rows_for(p, self.STATE_REL)]
+        copy = [(r.turn_type, r.timestamp_utc, r.text) for r in p.parse(backup, Options())]
+        self.assertEqual(copy, main)
+
+    def test_standing_files_wanted_and_not(self):
+        self._standing()
+        p = CodexParser()
+        for rel in (".codex/config.toml", ".codex/rules/default.rules", CODEX_MEMORY_SUMMARY_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+        for rel in (
+            ".codex/rules/README.md",
+            ".codex/memories/raw_memories.md",
+            ".codex/memories/MEMORY.md",
+            ".codex/db-backups/sqlite-1792400000-0/logs_2.sqlite",
+        ):
+            self.assertFalse(p.wants(self.artifact(rel)), rel)
+
+    def test_thread_goal_row(self):
+        recs = codex_rollout_records()
+        recs.insert(2, CODEX_GOAL_EVENT)
+        rel = self._write("rollout-2026-10-02T09-50-00-%s.jsonl" % CODEX_SESSION, recs)
+        rows = self.rows_for(CodexParser(), rel)
+        goal = [r for r in rows if r.text.startswith("thread goal:")]
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line, r.text) for r in goal],
+            [
+                (
+                    "system",
+                    "2026-10-02T09:00:01.500Z",
+                    CODEX_SESSION,
+                    3,
+                    "thread goal: status=active turn=t1 objective: keep the home directory"
+                    " listing tidy",
+                )
+            ],
+        )
 
     @staticmethod
     def check_bad_line(case: ParserBase, parser_cls, rel: str, after: int):
@@ -1614,10 +1784,13 @@ from fixtures import (
     CODEX_GLOBAL_STATE_MTIME,
     CODEX_GLOBAL_STATE_REL,
     CODEX_GUARDIAN,
+    CODEX_PATCH_ITEM,
+    CODEX_PATCH_LOG_ROW,
     CODEX_REVIEWED_ITEM,
     build_codex_desktop,
     codex_guardian_records,
     write_codex_enrollment,
+    write_codex_guardian_feedback,
 )
 
 
@@ -1843,6 +2016,60 @@ class CodexDesktopTests(ParserBase):
                 "parser: unreadable approval log row (codex_core::session::handlers): " + cut,
             ),
         )
+
+    def test_patch_approval_decision(self):
+        con = sqlite3.connect(str(self.home / self.LOGS_REL))
+        con.execute(
+            "insert into logs (ts, ts_nanos, level, target, feedback_log_body, thread_id)"
+            " values (?,?,?,?,?,?)",
+            CODEX_PATCH_LOG_ROW,
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        patch = [r for r in rows if " patch " in r.text]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.tool_use_id, r.source_line, r.text) for r in patch],
+            [
+                (
+                    "2026-10-18T21:31:40.000Z",
+                    CODEX_DESKTOP,
+                    CODEX_PATCH_ITEM,
+                    9,
+                    "permission decision: approved_for_session patch %s (from logs_2.sqlite"
+                    " logs, ts)" % CODEX_PATCH_ITEM,
+                )
+            ],
+        )
+        # The exec decisions are unchanged.
+        self.assertEqual(len([r for r in rows if " exec " in r.text]), 1)
+
+    def test_guardian_review_feedback(self):
+        write_codex_guardian_feedback(self.home / self.STATE_REL)
+        rows = self.rows_for(CodexParser(), self.STATE_REL)
+        got = [r for r in rows if r.text.startswith(("permission decision:", "parser:"))]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.tool_use_id, r.source_line) for r in got],
+            [
+                ("2026-10-18T21:27:27.000Z", CODEX_DESKTOP, CODEX_REVIEWED_ITEM, 1),
+                ("2026-10-18T21:28:20.000Z", CODEX_DESKTOP, "", 2),
+                ("", "", "", 3),
+            ],
+        )
+        # A denied verdict reads as the rollout reader's row for it, so the two pair.
+        self.assertEqual(
+            got[0].text,
+            "permission decision: deny (auto_review risk_level=high user_authorization=low) exec"
+            " %s reviewer %s: The command uploads the home directory."
+            % (CODEX_REVIEWED_ITEM, CODEX_GUARDIAN),
+        )
+        self.assertEqual(
+            got[1].text,
+            "permission decision: timed_out (auto_review feedback model=codex-auto-review) exec -"
+            " turn=t3 reviewer %s: - action: rm -rf build" % CODEX_GUARDIAN,
+        )
+        self.assertTrue(got[2].text.startswith("parser: unparseable record 3 ("), got[2].text)
+        self.assertTrue(got[2].text.endswith(': {"reviewed_thread_id": "0d0d'), got[2].text)
 
     def test_remote_control_enrollment(self):
         write_codex_enrollment(self.home / self.STATE_REL, enabled=0)
@@ -3349,6 +3576,7 @@ class QwenCodeTests(ParserBase):
                 self.LOGS,
                 ".qwen/projects/-srv-proj/chats/archive/%s.jsonl" % QWEN_ARCHIVED,
                 ".qwen/trustedFolders.json",
+                ".qwen/settings.json",
                 self.CHANNELS,
                 self.ROUTES,
             },
@@ -3419,6 +3647,175 @@ class QwenCodeTests(ParserBase):
         self.assertEqual(args_summary({"command": "ls"}), "ls")
         self.assertEqual(args_summary({"other": 1}), '{"other":1}')
         self.assertEqual(args_summary(None), "")
+
+    def permission_rows(self, rel):
+        """Rows of `rel` after building the permission, approval-mode and
+        usage fixture (#187) and reopening the collection."""
+        from fixtures import build_qwen_permissions
+
+        build_qwen_permissions(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(QwenCodeParser(), rel)
+
+    def test_execution_context_and_decision_rows(self):
+        # executionContext model and approval mode on change, the daemon's
+        # session_approval_mode record, and the ui_telemetry decision (#187).
+        from fixtures import QWEN_PERM_REL, QWEN_PERM_SESSION
+
+        rows = self.permission_rows(QWEN_PERM_REL)
+        others = [r for r in rows if r.turn_type != "tool_use"]
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in others],
+            [
+                (1, "system", "model: qwen3-coder-plus auth=qwen-oauth", "qwen3-coder-plus"),
+                (1, "system", "permission mode: default", ""),
+                (1, "user", "clean the build", ""),
+                (3, "system", others[3].text, ""),
+                (3, "system", "permission decision: auto_accept (tool_call ui_telemetry)", ""),
+                (4, "system", "permission mode: default -> plan prePlanMode=default", ""),
+                (
+                    5,
+                    "system",
+                    "model: qwen3-coder-plus -> qwen3-max auth=qwen-oauth",
+                    "qwen3-max",
+                ),
+                (5, "system", "permission mode: plan -> yolo", ""),
+                (5, "user", "now ship it", ""),
+            ],
+        )
+        self.assertTrue(others[3].text.startswith("ui_telemetry: "), others[3].text)
+        use = next(r for r in rows if r.turn_type == "tool_use")
+        decision = others[4]
+        self.assertEqual(
+            (decision.tool_name, decision.tool_use_id, decision.timestamp_utc),
+            ("run_shell_command", use.tool_use_id, "2026-10-03T09:00:09.000Z"),
+        )
+        self.assertEqual(use.tool_use_id, "call_p1")
+        self.assertEqual({r.session_id for r in rows}, {QWEN_PERM_SESSION})
+
+    def test_decision_row_bare_event_name(self):
+        # The ToolCallEvent class's bare default name `tool_call` is matched
+        # as well as `qwen-code.tool_call` (#187).
+        from fixtures import QWEN_BARE_REL, QWEN_BARE_SESSION
+
+        rows = self.permission_rows(QWEN_BARE_REL)
+        decisions = [r for r in rows if r.text.startswith("permission decision:")]
+        self.assertEqual(
+            [(r.text, r.tool_name, r.tool_use_id, r.timestamp_utc) for r in decisions],
+            [
+                (
+                    "permission decision: reject (tool_call ui_telemetry)",
+                    "write_file",
+                    "call_b1",
+                    "2026-10-03T10:00:05.000Z",
+                )
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {QWEN_BARE_SESSION})
+
+    def test_settings_permission_rows(self):
+        # Standing rules and the approval mode of settings.json, read as
+        # JSONC; nothing else in the file is read (#187).
+        from fixtures import QWEN_SETTINGS_MTIME
+
+        rel = ".qwen/settings.json"
+        rows = self.permission_rows(rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: permissions.%s (from .qwen/settings.json, file mtime)"
+                    % entry,
+                    "",
+                    1,
+                )
+                for entry in (
+                    "allow=Bash(git *)",
+                    "allow=ReadFileTool",
+                    "deny=Bash(rm *)",
+                )
+            ]
+            + [
+                (
+                    "system",
+                    "permission setting: tools.approvalMode=auto-edit"
+                    " (from .qwen/settings.json, file mtime)",
+                    "",
+                    1,
+                )
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(QWEN_SETTINGS_MTIME)})
+        self.assertFalse([r for r in rows if "secret" in r.text])
+        self.assertFalse(QwenCodeParser().secondary(self.artifact(rel)))
+        (self.home / rel).write_text("[1]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(QwenCodeParser(), rel)],
+            ["parser: .qwen/settings.json is not a JSON object"],
+        )
+        # The fixture home's empty settings file yields nothing.
+        (self.home / rel).write_text("{}", encoding="utf-8")
+        self.assertEqual(self.rows_for(QwenCodeParser(), rel), [])
+
+    def test_usage_record(self):
+        # usage_record.jsonl is a secondary source that keeps a deleted
+        # session's summary (#187).
+        from fixtures import QWEN_DELETED_SESSION, QWEN_USAGE_REL
+
+        rows = self.permission_rows(QWEN_USAGE_REL)
+        self.assertTrue(QwenCodeParser().secondary(self.artifact(QWEN_USAGE_REL)))
+        self.assertEqual(
+            [
+                (r.source_line, r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    1,
+                    "system",
+                    "2026-10-02T09:00:00.000Z",
+                    QWEN_DELETED_SESSION,
+                    "/srv/proj",
+                    "session usage: project /srv/proj duration 3600000ms models"
+                    " qwen3-coder-plus tools run_shell_command=2,read_file=1"
+                    " (from usage_record.jsonl, startTime)",
+                )
+            ],
+        )
+
+    def test_usage_record_truncated_line(self):
+        # Issue 136: the cut line is its own row; the lines before and after
+        # it are still read.
+        from fixtures import QWEN_USAGE_REL, qwen_usage_records
+
+        self.permission_rows(QWEN_USAGE_REL)
+        path = self.home / QWEN_USAGE_REL
+        write_bad_line(path)
+        after = dict(qwen_usage_records()[0], sessionId="after-cut", models={}, tools={})
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = self.rows_for(QwenCodeParser(), QWEN_USAGE_REL)
+        self.assertEqual(
+            [(r.source_line, r.session_id) for r in rows],
+            [(1, rows[0].session_id), (3, "after-cut"), (2, "")],
+        )
+        self.assertTrue(
+            rows[1].text.endswith("models - tools - (from usage_record.jsonl, startTime)")
+        )
+        self.assertEqual(rows[2].text, bad_line_text())
+
+    def test_usage_and_settings_wanted_registry_not(self):
+        p = QwenCodeParser()
+        self.permission_rows(".qwen/settings.json")
+        reg = self.home / ".qwen/sessions/4242.json"
+        reg.parent.mkdir(parents=True, exist_ok=True)
+        reg.write_text('{"sessionId": "x", "ipcToken": "x"}', encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        self.assertTrue(p.wants(self.artifact(".qwen/usage_record.jsonl")))
+        self.assertTrue(p.wants(self.artifact(".qwen/settings.json")))
+        self.assertFalse(p.wants(self.artifact(".qwen/sessions/4242.json")))
+        self.assertFalse(p.wants(self.artifact(".qwen/oauth_creds.json")))
 
     CHANNELS = ".qwen/channels/sessions.json"
     ROUTES = ".qwen/channels/daemon/%s/routes.json" % QWEN_DAEMON_HASH
@@ -3621,7 +4018,14 @@ class QwenCodeTests(ParserBase):
 
 
 from doubleagent.parsers.kiro import KiroParser, salvage
-from fixtures import KIRO_EXPORT_SESSION, KIRO_SESSION, KIRO_SHELL_SESSION
+from doubleagent.parsers.kiro import unescape_history as kiro_unescape
+from fixtures import (
+    KIRO_DENIAL_SESSION,
+    KIRO_EXPORT_SESSION,
+    KIRO_SESSION,
+    KIRO_SHELL_SESSION,
+    kiro_delegate_records,
+)
 
 
 class KiroTests(ParserBase):
@@ -3730,7 +4134,7 @@ class KiroTests(ParserBase):
         # an entry without model_id falls back to the conversation's model and says so
         rows = self.rows_for(KiroParser(), self.EXPORT)
         self.assertEqual(
-            [r.text for r in rows if model_or_permission_row(r)],
+            [r.text for r in rows if r.text.startswith("model: ")],
             [
                 "model: claude-3.7-sonnet source=model",
                 "model: claude-3.7-sonnet -> claude-sonnet-4",
@@ -3783,8 +4187,244 @@ class KiroTests(ParserBase):
         self.assertTrue(err)
         self.assertEqual(salvage("garbage")[0], None)
 
+    # -- 2026-10-21, issue 212: source-derived rows ----------------------------
+    DENIALS = ".aws/amazonq/exports/denials.json"
+    HISTORY = ".aws/amazonq/.cli_bash_history"
+    AGENT = ".aws/amazonq/cli-agents/dev.json"
 
-from fixtures import GEMINI_TRUST_MTIME, TRUST_JSONC
+    def test_permission_decisions(self):
+        rows = self.rows_for(KiroParser(), self.DENIALS)
+        main = [r for r in rows if r.recovered != "yes" and r.text.startswith("permission ")]
+        self.assertEqual(
+            [(r.text, r.tool_use_id, r.tool_name, r.timestamp_utc) for r in main],
+            [
+                (
+                    "permission decision: denied by=n",
+                    "tooluse_d1",
+                    "execute_bash",
+                    "2026-04-25T16:00:05.000Z",
+                ),
+                (
+                    "permission decision: denied by=deny-rule tool=execute_bash",
+                    "tooluse_d2",
+                    "execute_bash",
+                    "2026-04-25T16:00:10.000Z",
+                ),
+                (
+                    "permission decision: cancelled by=interrupt",
+                    "tooluse_d3",
+                    "execute_bash",
+                    "2026-04-25T16:00:15.000Z",
+                ),
+                # the deny-rule text as a plain prompt names the tool, not a call
+                (
+                    "permission decision: denied by=deny-rule tool=execute_bash",
+                    "",
+                    "execute_bash",
+                    "2026-04-25T16:00:20.000Z",
+                ),
+            ],
+        )
+        for r in main:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path),
+                ("system", KIRO_DENIAL_SESSION, "/srv/proj"),
+            )
+        # each decision follows the cancelled result it governs
+        for i, r in enumerate(rows):
+            if r.tool_use_id and r.text.startswith("permission decision:"):
+                self.assertEqual(
+                    (rows[i - 1].turn_type, rows[i - 1].tool_use_id), ("tool_result", r.tool_use_id)
+                )
+        # the user's own words at the approval prompt
+        rows = self.rows_for(KiroParser(), self.EXPORT)
+        self.assertEqual(
+            [(r.text, r.tool_use_id) for r in rows if r.text.startswith("permission ")],
+            [("permission decision: denied by=user-text", "tooluse_bash2")],
+        )
+
+    def test_history_copies_recovered(self):
+        rows = self.rows_for(KiroParser(), self.DENIALS)
+        markers = [r for r in rows if r.text.startswith(("checkpoint snapshot:", "tangent mode:"))]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in markers],
+            [
+                (
+                    "checkpoint snapshot: tag=1 recovered=1 entries: the turn a restore discarded",
+                    "2026-04-25T15:59:30.000Z",
+                ),
+                # inherits the previous row's time: tangent_start_time is not read
+                (
+                    "tangent mode: main conversation held aside, recovered=1 entries",
+                    "2026-04-25T15:59:00.500Z",
+                ),
+            ],
+        )
+        recovered = [r for r in rows if r.recovered == "yes"]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in recovered],
+            [
+                ("user", "the turn a restore discarded"),
+                ("assistant", "Discarded reply."),
+                ("user", "the main conversation"),
+                ("assistant", "Main reply."),
+            ],
+        )
+        self.assertTrue(all(r.session_id == KIRO_DENIAL_SESSION for r in recovered))
+        # the snapshot entry the history still holds is not repeated
+        self.assertEqual(len([r for r in rows if r.text == "clean the build"]), 1)
+        # recovered entries keep their own model sequence; system rows are not marked
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("model: ")],
+            ["model: claude-sonnet-4", "model: m-old", "model: m-old -> claude-sonnet-4"],
+        )
+        self.assertFalse([r for r in rows if r.turn_type == "system" and r.recovered])
+
+    def test_prompt_history(self):
+        p = KiroParser()
+        art = self.artifact(self.HISTORY)
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (2, "user", "list the files here"),
+                (3, "user", "/clear"),
+                (4, "user", "fix the\nbuild"),
+                (5, "user", "path C:\\tmp"),
+                (7, "user", "after the cut"),
+                # the line that is not UTF-8, in full, after the lines around it
+                (6, "system", "parser: unparseable line (not valid UTF-8): \ufffd\ufffd not utf-8"),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", ""))
+        # a history line the database also holds is dropped as its copy
+        primary = self.rows_for(KiroParser(), self.DB)
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in rows])
+        self.assertEqual(dropped["kiro"], 1)
+        self.assertEqual(
+            [r.text for r in kept if r.recovered == "yes"],
+            ["/clear", "fix the\nbuild", "path C:\\tmp", "after the cut"],
+        )
+
+    def test_unescape_history(self):
+        self.assertEqual(kiro_unescape("a\\nb\\\\c"), "a\nb\\c")
+        # an escape rustyline never writes keeps the line as written
+        self.assertEqual(kiro_unescape("C:\\tmp\\nx"), "C:\\tmp\\nx")
+        self.assertEqual(kiro_unescape("trailing\\"), "trailing\\")
+
+    def test_agent_config_settings(self):
+        p = KiroParser()
+        self.assertTrue(p.wants(self.artifact(self.AGENT)))
+        rows = self.rows_for(p, self.AGENT)
+        src = "(from .aws/amazonq/cli-agents/dev.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: allowedTools=fs_read " + src,
+                "permission setting: allowedTools=@git " + src,
+                'permission setting: toolsSettings.execute_bash.allowedCommands=["git status"] '
+                + src,
+                'permission setting: toolsSettings.execute_bash.deniedCommands=["rm -rf .*"] '
+                + src,
+                "permission setting: toolsSettings.execute_bash.autoAllowReadonly=true " + src,
+                'permission setting: toolsSettings.fs_write.deniedPaths=["/etc"] ' + src,
+            ],
+        )
+        mtime = to_utc((self.home / self.AGENT).stat().st_mtime)
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                ("system", mtime, "", ""),
+            )
+        bad = self.rows_for(p, ".aws/amazonq/cli-agents/broken.json")
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in bad],
+            [("system", "parser: agent configuration is not a JSON object")],
+        )
+
+    def _project_artifact(self, rel, record):
+        proj = self.tmp / "srv" / "proj"
+        path = proj / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record), encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        return Artifact(path, "/srv/proj/" + rel, rel, "kiro", home)
+
+    def test_project_agent_config(self):
+        rel = ".amazonq/cli-agents/proj.json"
+        art = self._project_artifact(rel, {"name": "proj", "allowedTools": ["execute_bash"]})
+        self.assertTrue(KiroParser().wants(art))
+        rows = list(KiroParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: allowedTools=execute_bash (from %s, file mtime)" % rel,
+                    "/srv/proj",
+                )
+            ],
+        )
+
+    def test_delegate_records(self):
+        records = kiro_delegate_records()
+        done = self._project_artifact(
+            ".amazonq/.subagents/q_cli_default.json", records["q_cli_default.json"]
+        )
+        running = self._project_artifact(
+            ".amazonq/.subagents/reviewer.json", records["reviewer.json"]
+        )
+        p = KiroParser()
+        self.assertTrue(p.wants(done) and p.wants(running))
+        self.assertFalse(p.secondary(done))
+        self.assertEqual(
+            [
+                (r.turn_type, r.timestamp_utc, r.project_path, r.text)
+                for r in p.parse(done, Options())
+            ],
+            [
+                (
+                    "system",
+                    "2026-04-25T16:01:40.000Z",
+                    "/srv/proj",
+                    "delegate task launched: agent=q_cli_default pid=4711 trust_all_tools=true: "
+                    "run the tests",
+                ),
+                (
+                    "system",
+                    "2026-04-25T16:02:40.000Z",
+                    "/srv/proj",
+                    "delegate task completed: agent=q_cli_default exit_code=0\n"
+                    "summary: All tests pass.\noutput: 12 passed",
+                ),
+            ],
+        )
+        # still running: the launch only; the `Unknown` cwd falls back to the project
+        self.assertEqual(
+            [(r.text, r.project_path) for r in p.parse(running, Options())],
+            [("delegate task launched: agent=reviewer pid=4712: review the diff", "/srv/proj")],
+        )
+
+    def test_new_files_not_wanted(self):
+        p = KiroParser()
+        for rel in (".aws/amazonq/cli-agents/sub/x.json", ".amazonq/.subagents/notes.txt"):
+            art = self._project_artifact(rel, {"name": "x"})
+            self.assertFalse(p.wants(art), rel)
+
+
+from fixtures import (
+    GEMINI_BUG_MS,
+    GEMINI_BUG_REL,
+    GEMINI_CHECKPOINT_REL,
+    GEMINI_SOURCES_MTIME,
+    GEMINI_TRUST_MTIME,
+    TRUST_JSONC,
+    build_gemini_cli_sources,
+)
 
 
 class GeminiCliTests(ParserBase):
@@ -4029,15 +4669,23 @@ class GeminiCliTests(ParserBase):
 
     def test_noise_not_wanted(self):
         p = GeminiCliParser()
+        self.sources()
         for rel in (
             ".gemini/oauth_creds.json",
-            ".gemini/settings.json",
             ".gemini/projects.json",
             ".gemini/tmp/proj/.project_root",
-            ".gemini/tmp/proj/shell_history",
             ".gemini/antigravity-cli/history.jsonl",
+            ".gemini/policy_integrity.json",
+            ".gemini/tmp/proj/checkpoints/2026-10-01T09_00_07_100Z-util.ts-write_file.json",
+            ".gemini/tmp/proj/bug-memory-1790856000000.heapsnapshot",
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
+            self.assertFalse(p.wants(art), rel)
+        # trusted_hooks.json and the acknowledged agents live in the home only.
+        proj = self.tmp / "srv" / "proj"
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        for rel in (".gemini/trusted_hooks.json", ".gemini/acknowledgments/agents.json"):
+            art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
             self.assertFalse(p.wants(art), rel)
 
     def test_truncated_last_line_is_reported_not_fatal(self):
@@ -4126,6 +4774,309 @@ class GeminiCliTests(ParserBase):
         self.assertEqual(
             [(r.turn_type, r.text, r.source_line) for r in self.rows_for(GeminiCliParser(), rel)],
             [("system", "parser: .gemini/trustedFolders.json is not a JSON object", 1)],
+        )
+
+    # -- standing permission files and past-use copies (#155, #186) --
+
+    def sources(self):
+        """Write the permission files and history copies and reopen the input."""
+        build_gemini_cli_sources(self.home / ".gemini")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_new_secondary_sources(self):
+        self.sources()
+        p = GeminiCliParser()
+        for rel in (".gemini/tmp/proj/shell_history", GEMINI_CHECKPOINT_REL, GEMINI_BUG_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        for rel in (
+            ".gemini/settings.json",
+            ".gemini/policies/auto-saved.toml",
+            ".gemini/trusted_hooks.json",
+            ".gemini/acknowledgments/agents.json",
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
+    def test_settings_rows(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), ".gemini/settings.json")
+        src = " (from .gemini/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tools.allowed=run_shell_command(git)" + src,
+                "permission setting: tools.allowed=run_shell_command(npm test)" + src,
+                "permission setting: tools.exclude=web_fetch" + src,
+                "permission setting: general.defaultApprovalMode=auto_edit" + src,
+                "permission setting: tools.sandbox=docker" + src,
+                "permission setting: security.disableYoloMode=true" + src,
+                "permission setting: security.folderTrust.enabled=true" + src,
+                "session retention: general.sessionRetention.enabled=true" + src,
+                "session retention: general.sessionRetention.maxAge=7d" + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line),
+                ("system", to_utc(GEMINI_SOURCES_MTIME), "", "", 1),
+            )
+        self.assertNotIn("secret", " ".join(r.text for r in rows))
+        # The empty settings file build_home writes yields nothing; a broken
+        # one is one row.
+        (self.home / ".gemini/settings.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(self.rows_for(GeminiCliParser(), ".gemini/settings.json"), [])
+        (self.home / ".gemini/settings.json").write_text('{"tools": ', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(GeminiCliParser(), ".gemini/settings.json")],
+            ["parser: .gemini/settings.json is not a JSON object"],
+        )
+
+    def test_policy_rows(self):
+        self.sources()
+        rel = ".gemini/policies/auto-saved.toml"
+        rows = self.rows_for(GeminiCliParser(), rel)
+        src = " (from .gemini/policies/auto-saved.toml, file mtime)"
+        if sys.version_info < (3, 11):
+            self.assertEqual(
+                [r.text for r in rows],
+                [
+                    "parser: .gemini/policies/auto-saved.toml not read: its [[rule]] tables "
+                    "need Python 3.11 or later (tomllib)"
+                ],
+            )
+            return
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: policy allow run_shell_command priority=2.95 "
+                'commandPrefix=["git","status"]' + src,
+                "permission setting: policy allow search priority=2.95 mcpName=docs "
+                'modes=["autoEdit"]' + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                ("system", to_utc(GEMINI_SOURCES_MTIME), "", ""),
+            )
+        # A corrupt file (the CLI then copies it to auto-saved.toml.bak) is one row.
+        (self.home / rel).write_text("[[rule]\n", encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith("parser: unreadable .gemini/policies/auto-saved.toml: "),
+            rows[0].text,
+        )
+
+    def test_project_settings_and_policy(self):
+        # A project's .gemini/settings.json and workspace policy file: the
+        # rows carry the project directory.
+        proj = self.tmp / "srv" / "proj"
+        (proj / ".gemini/policies").mkdir(parents=True)
+        (proj / ".gemini/settings.json").write_text(
+            json.dumps({"tools": {"confirmationRequired": ["write_file"]}}), encoding="utf-8"
+        )
+        (proj / ".gemini/policies/auto-saved.toml").write_text(
+            '[[rule]]\ndecision = "allow"\npriority = 2.95\ntoolName = "write_file"\n',
+            encoding="utf-8",
+        )
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        p = GeminiCliParser()
+        rel = ".gemini/settings.json"
+        art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
+        self.assertTrue(p.wants(art))
+        self.assertEqual(
+            [(r.text, r.project_path) for r in p.parse(art, Options())],
+            [
+                (
+                    "permission setting: tools.confirmationRequired=write_file "
+                    "(from .gemini/settings.json, file mtime)",
+                    "/srv/proj",
+                )
+            ],
+        )
+        if sys.version_info >= (3, 11):
+            rel = ".gemini/policies/auto-saved.toml"
+            art = Artifact(proj / rel, "/srv/proj/" + rel, rel, "gemini-cli", home)
+            self.assertEqual(
+                [(r.text, r.project_path) for r in p.parse(art, Options())],
+                [
+                    (
+                        "permission setting: policy allow write_file priority=2.95 "
+                        "(from .gemini/policies/auto-saved.toml, file mtime)",
+                        "/srv/proj",
+                    )
+                ],
+            )
+
+    def test_trusted_hooks_and_acknowledged_agents(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), ".gemini/trusted_hooks.json")
+        self.assertEqual(
+            [(r.text, r.project_path, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "permission setting: trustedHooks=lint:npm run lint "
+                    "(from .gemini/trusted_hooks.json, file mtime)",
+                    "/srv/proj",
+                    to_utc(GEMINI_SOURCES_MTIME),
+                )
+            ],
+        )
+        rows = self.rows_for(GeminiCliParser(), ".gemini/acknowledgments/agents.json")
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: acknowledgedAgents.reviewer=0123abcd "
+                    "(from .gemini/acknowledgments/agents.json, file mtime)",
+                    "/srv/proj",
+                )
+            ],
+        )
+        (self.home / ".gemini/trusted_hooks.json").write_text("[]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(GeminiCliParser(), ".gemini/trusted_hooks.json")],
+            ["parser: .gemini/trusted_hooks.json is not a JSON object"],
+        )
+
+    def test_shell_history(self):
+        self.sources()
+        rel = ".gemini/tmp/proj/shell_history"
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(1, "user", "ls -la"), (2, "user", "git status"), (3, "user", "make test")],
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", "/srv/proj"))
+
+    def test_shell_history_bad_line(self):
+        # A line that is not UTF-8 is its own row, in full; the commands
+        # before and after it are kept.
+        self.sources()
+        rel = ".gemini/tmp/proj/shell_history"
+        (self.home / rel).write_bytes(b"ls -la\nbad \xff line\ngit status")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "ls -la"),
+                (3, "user", "git status"),
+                (2, "system", "parser: unparseable line (not valid UTF-8): bad � line"),
+            ],
+        )
+        self.assertEqual((rows[-1].project_path, rows[-1].timestamp_utc), ("/srv/proj", ""))
+
+    CHECKPOINT_ROWS: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "user", "list files in src"),
+        (2, "assistant", "Listing now."),
+        (2, "tool_use", '{"path":"/srv/proj/src"}'),
+        (3, "tool_result", "main.ts\nutil.ts"),
+        (4, "user", "delete everything in /srv/proj"),
+        (5, "assistant", "No."),
+    ]
+
+    def test_chat_checkpoint(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        head, rest = rows[0], rows[1:]
+        self.assertEqual(
+            (head.turn_type, head.text, head.timestamp_utc, head.source_line, head.project_path),
+            (
+                "system",
+                "chat checkpoint: tag my tag authType=oauth-personal "
+                "(from .gemini/tmp/proj/checkpoint-my%20tag.json, file mtime)",
+                to_utc(GEMINI_SOURCES_MTIME),
+                0,
+                "/srv/proj",
+            ),
+        )
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rest], self.CHECKPOINT_ROWS)
+        for r in rest:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", "/srv/proj"))
+        call, result = rest[2], rest[3]
+        self.assertEqual(
+            (call.tool_name, call.tool_use_id, result.tool_name, result.tool_use_id),
+            ("list_directory", "list_directory-1759309207000") * 2,
+        )
+        thinking = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL, include_thinking=True)
+        self.assertEqual(
+            [(r.source_line, r.text) for r in thinking if r.turn_type == "thinking"],
+            [(5, "weighing it")],
+        )
+        # Deduplicated against the session file: the prompt, the reply and
+        # the tool call and result it also holds are dropped; the rewound
+        # prompt and the last reply, which only the checkpoint keeps, stay.
+        primary = self.rows_for(GeminiCliParser(), self.REL)
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in rest])
+        self.assertEqual(dropped["gemini-cli"], 4)
+        self.assertEqual(
+            [r.text for r in kept[len(primary) :]], ["delete everything in /srv/proj", "No."]
+        )
+
+    def test_chat_checkpoint_cut_and_legacy(self):
+        self.sources()
+        path = self.home / GEMINI_CHECKPOINT_REL
+        text = path.read_text(encoding="utf-8")
+        cut = text.index('"delete everything')
+        path.write_text(text[:cut], encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        # The three complete items before the cut survive; the cut item is
+        # one row carrying the text from its start to the end of the file.
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:-1]], self.CHECKPOINT_ROWS[:4]
+        )
+        self.assertEqual(rows[0].text.split(" authType=")[1].split(" ")[0], "-")
+        last = rows[-1]
+        self.assertEqual((last.source_line, last.turn_type), (4, "system"))
+        self.assertTrue(last.text.startswith("parser: unparseable record 4 ("), last.text)
+        self.assertTrue(last.text.endswith('"text": '), last.text)
+        # The legacy form, a bare array, with a record that is not an object.
+        path.write_text(json.dumps([{"role": "user", "parts": [{"text": "hi"}]}, 7]), "utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]],
+            [
+                (1, "user", "hi"),
+                (2, "system", "parser: unparseable record 2 (not a JSON object): 7"),
+            ],
+        )
+        path.write_text('"neither"', encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_CHECKPOINT_REL)
+        self.assertEqual(
+            [r.text for r in rows[1:]],
+            ["parser: not a chat history: neither a JSON array nor an object with history"],
+        )
+
+    def test_bug_report_history(self):
+        self.sources()
+        rows = self.rows_for(GeminiCliParser(), GEMINI_BUG_REL)
+        head = rows[0]
+        self.assertEqual(
+            (head.turn_type, head.text, head.timestamp_utc, head.source_line),
+            (
+                "system",
+                "bug report history: exported (from %s, time in the file name)" % GEMINI_BUG_REL,
+                to_utc(GEMINI_BUG_MS),
+                0,
+            ),
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]], self.CHECKPOINT_ROWS[:3]
+        )
+        # Cut between records: the items before the cut and one row.
+        path = self.home / GEMINI_BUG_REL
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text[: text.index("},\n") + 2], encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), GEMINI_BUG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:]],
+            [
+                (1, "user", "list files in src"),
+                (2, "system", "parser: array cut off after record 1"),
+            ],
         )
 
 
@@ -4226,11 +5177,16 @@ class CrushTests(ParserBase):
         self.assertEqual(project_of("C:\\Users\\a\\repo\\.crush\\crush.db"), "C:\\Users\\a\\repo")
         self.assertEqual(project_of(".crush/crush.db"), "")
 
-    def test_config_and_sidecars_not_wanted(self):
+    def test_sidecars_and_lock_not_wanted(self):
         p = CrushParser()
+        seen = 0
         for a in self.col.artifacts:
-            if a.agent == "crush" and a.rel.endswith(("crush.json", "-wal", "-shm")):
+            if a.agent == "crush" and a.rel.endswith(("-wal", "-shm", "crush.lock")):
                 self.assertFalse(p.wants(a), a.rel)
+                seen += 1
+        self.assertGreaterEqual(seen, 3)
+        for rel in (".crush/crush.json", ".config/crush/crush.json"):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
 
     def test_bad_parts_is_reported_not_fatal(self):
         import sqlite3
@@ -4334,6 +5290,233 @@ class CrushTests(ParserBase):
         first = next(r for r in rows if r.text == "first step")
         self.assertEqual(first.model, "hyper/claude-sonnet-4-5")
 
+    def _perm_rows(self):
+        from fixtures import crush_permission_records
+
+        self._insert(crush_permission_records())
+        return self.rows_for(CrushParser(), self.REL)
+
+    def test_permission_decisions(self):
+        # Issue 195: a user denial and hook decisions follow their result.
+        rows = self._perm_rows()
+        pairs = [
+            (rows[i - 1].text, r.text, r.tool_use_id, r.tool_name, r.timestamp_utc)
+            for i, r in enumerate(rows)
+            if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            pairs,
+            [
+                (
+                    "[error] User denied permission",
+                    "permission decision: denied by user",
+                    "call_d1",
+                    "bash",
+                    "2025-10-09T08:56:41.000Z",
+                ),
+                (
+                    "[error] Tool call blocked by hook. Reason: no rm",
+                    "permission decision: deny by hook guard reason=no rm",
+                    "call_d2",
+                    "bash",
+                    "2025-10-09T08:56:42.000Z",
+                ),
+                (
+                    "file contents",
+                    "permission decision: allow by hook trust-view",
+                    "call_d3",
+                    "view",
+                    "2025-10-09T08:56:43.000Z",
+                ),
+                (
+                    "[error] Turn halted by hook. Reason: stop",
+                    "permission decision: halt by hook",
+                    "call_d4",
+                    "bash",
+                    "2025-10-09T08:56:44.000Z",
+                ),
+            ],
+        )
+        for r in rows:
+            if r.text.startswith("permission decision:"):
+                self.assertEqual((r.turn_type, r.session_id), ("system", "6f1c0003"))
+
+    def test_relay_rows(self):
+        from fixtures import CRUSH_CHANNEL_SESSION
+
+        self.assertTrue(CrushParser.records_relay)
+        rows = [r for r in self._perm_rows() if r.session_id == CRUSH_CHANNEL_SESSION]
+        relays = [(r.text, r.timestamp_utc) for r in rows if r.text.startswith("session relayed:")]
+        # One row from sessions.channel, one for the first push only.
+        self.assertEqual(
+            relays,
+            [
+                (
+                    "session relayed: channel signal (from crush.db sessions.channel, "
+                    "as of updated_at)",
+                    "2025-10-09T08:58:30.000Z",
+                ),
+                (
+                    "session relayed: channel signal sender +15550100 group g-77 "
+                    "(from crush.db message c1)",
+                    "2025-10-09T08:58:21.000Z",
+                ),
+            ],
+        )
+        texts = [r.text for r in rows]
+        self.assertEqual(
+            texts.index(relays[1][0]) - 1,
+            texts.index(next(t for t in texts if t.startswith("<channel "))),
+        )
+
+    def test_deleted_parent_row(self):
+        rows = [r for r in self._perm_rows() if r.text.startswith("session deleted:")]
+        self.assertEqual(
+            [(r.session_id, r.text, r.timestamp_utc, r.project_path) for r in rows],
+            [
+                (
+                    "6f1c0099",
+                    "session deleted: 6f1c0099 (parent_session_id of sub-agent session "
+                    "m9$$call_t1 names no session in crush.db; time is the sub-agent's "
+                    "updated_at)",
+                    "2025-10-09T09:00:10.000Z",
+                    "/alice",
+                )
+            ],
+        )
+
+    def test_mcp_and_file_rows(self):
+        rows = self._perm_rows()
+        mcp = [r for r in rows if r.text.startswith("permission setting:")]
+        self.assertEqual(
+            [r.text for r in mcp],
+            [
+                "permission setting: mcp_enabled_servers=docs (from .crush/crush.db, file mtime)",
+                "permission setting: mcp_disabled_servers=github (from .crush/crush.db, file mtime)",
+            ],
+        )
+        self.assertEqual({(r.session_id, r.project_path) for r in mcp}, {("", "/alice")})
+        files = [
+            (r.session_id, r.text, r.timestamp_utc)
+            for r in rows
+            if r.text.startswith(("file version:", "file read:"))
+        ]
+        self.assertEqual(
+            files,
+            [
+                (
+                    "6f1c0003",
+                    "file version: /srv/proj/a.txt version=1 bytes=5 (from crush.db files)",
+                    "2025-10-09T08:56:45.000Z",
+                ),
+                (
+                    "6f1c0003",
+                    "file read: /srv/proj/b.txt (from crush.db read_files, read_at)",
+                    "2025-10-09T08:56:46.000Z",
+                ),
+            ],
+        )
+
+    def test_config_standing_rows(self):
+        from fixtures import CRUSH_CONFIG_JSON
+
+        rel = ".crush/crush.json"
+        (self.home / rel).write_text(json.dumps(CRUSH_CONFIG_JSON), encoding="utf-8")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: permissions.allowed_tools=view (from .crush/crush.json, file mtime)",
+                "permission setting: permissions.allowed_tools=bash:ls (from .crush/crush.json, file mtime)",
+                "permission setting: options.disabled_tools=sourcegraph (from .crush/crush.json, file mtime)",
+                "permission setting: mcp.docs.disabled_tools=delete (from .crush/crush.json, file mtime)",
+                "permission setting: mcp.docs.enabled_tools=search (from .crush/crush.json, file mtime)",
+                'permission setting: hooks.PreToolUse={"command":"./guard.sh","matcher":"bash",'
+                '"name":"guard"} (from .crush/crush.json, file mtime)',
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.session_id, r.project_path) for r in rows}, {("system", "", "/alice")}
+        )
+        self.assertTrue(all(r.timestamp_utc.endswith("Z") for r in rows))
+        self.assertFalse(any("sk-crush-secret" in r.text for r in rows))
+        # The global config holds no permission key: no rows.
+        self.assertEqual(self.rows_for(CrushParser(), ".config/crush/crush.json"), [])
+
+    def test_config_not_json_is_one_row(self):
+        rel = ".config/crush/crush.json"
+        (self.home / rel).write_text("{not json", encoding="utf-8")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [("system", "parser: .config/crush/crush.json is not a JSON object", "")],
+        )
+
+    def test_crushrc_standing_rows(self):
+        from fixtures import CRUSHRC
+
+        rel = ".config/crush/crushrc"
+        (self.home / rel).write_text(CRUSHRC, encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        self.assertTrue(CrushParser().wants(self.artifact(rel)))
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [(r.text, r.source_line) for r in rows],
+            [
+                (
+                    "permission setting: permissions.allowed_tools=view "
+                    "(from .config/crush/crushrc line 3, file mtime)",
+                    3,
+                ),
+                (
+                    "permission setting: permissions.allowed_tools=bash:ls "
+                    "(from .config/crush/crushrc line 3, file mtime)",
+                    3,
+                ),
+                (
+                    "permission setting: options.disabled_tools=sourcegraph "
+                    "(from .config/crush/crushrc line 4, file mtime)",
+                    4,
+                ),
+            ],
+        )
+        self.assertFalse(any("sk-rc-secret" in r.text for r in rows))
+
+    def test_crushrc_bad_line_is_reported(self):
+        from fixtures import CRUSHRC
+
+        rel = ".config/crush/crushrc"
+        lines = CRUSHRC.split("\n")
+        lines.insert(3, "permissions allow 'unclosed")
+        (self.home / rel).write_text("\n".join(lines), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [r.source_line for r in rows if r.text.startswith("permission setting:")], [3, 3, 5]
+        )
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line, r.timestamp_utc) for r in rows[3:]],
+            [
+                (
+                    "system",
+                    "parser: unparseable line (No closing quotation): permissions allow 'unclosed",
+                    4,
+                    "",
+                )
+            ],
+        )
+
+
+from fixtures import (
+    GOOSE_PERMISSION_SESSION,
+    GOOSE_PERMISSION_YAML,
+    GOOSE_SCHEDULE,
+    GOOSE_STANDING_MTIME,
+    build_goose_standing,
+    goose_permission_records,
+    goose_streamed_llm_records,
+)
+
 
 class GooseTests(ParserBase):
     REL = ".local/share/goose/sessions/sessions.db"
@@ -4345,7 +5528,12 @@ class GooseTests(ParserBase):
         self.assertTrue(p.secondary(self.artifact(self.HISTORY)))
         self.assertFalse(p.secondary(self.artifact(self.REL)))
         self.assertFalse(p.secondary(self.artifact(GOOSE_LEGACY_REL)))
-        self.assertFalse(p.secondary(self.artifact(".local/state/goose/logs/llm_request.0.jsonl")))
+        # The request logs repeat the database's messages (#126), with a
+        # wider window; the history keeps the default.
+        log = self.artifact(".local/state/goose/logs/llm_request.0.jsonl")
+        self.assertTrue(p.secondary(log))
+        self.assertEqual(p.secondary_tolerance(log), 600.0)
+        self.assertEqual(p.secondary_tolerance(self.artifact(self.HISTORY)), 2.0)
 
     def test_history_rows_have_no_time_session_or_project(self):
         # "run the tests" repeats the database's first prompt; the second
@@ -4457,9 +5645,19 @@ class GooseTests(ParserBase):
 
     def test_config_secrets_and_sidecars_not_wanted(self):
         p = GooseParser()
+        build_goose_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
         for a in self.col.artifacts:
-            if a.agent == "goose" and a.rel.endswith((".yaml", "-wal", "-shm")):
+            if a.agent != "goose" or a.rel.endswith("/permission.yaml"):
+                continue
+            if a.rel.endswith((".yaml", "-wal", "-shm", ".lock", "/roaming_peers.json")):
                 self.assertFalse(p.wants(a), a.rel)
+        for rel in (
+            ".config/goose/permission.yaml",
+            ".config/goose/roaming_trust.json",
+            ".local/share/goose/schedule.json",
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / GOOSE_LEGACY_REL)
@@ -4685,6 +5883,261 @@ class GooseTests(ParserBase):
         )
         self.assertEqual(rows[-1].session_id, GOOSE_SESSION)
 
+    # -- tool confirmations and standing permissions (issue 209) --------------
+
+    def _permission_rows(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_permission_records():
+            con.execute(sql)
+        con.commit()
+        con.close()
+        return [
+            r
+            for r in self.rows_for(GooseParser(), self.REL)
+            if r.session_id == GOOSE_PERMISSION_SESSION
+        ]
+
+    def test_tool_confirmation_rows(self):
+        rows = self._permission_rows()
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.tool_name, r.tool_use_id, r.text) for r in rows[2:]],
+            [
+                (301, "tool_use", "developer__shell", "call_p1", '{"command":"rm -rf build"}'),
+                (
+                    302,
+                    "system",
+                    "developer__shell",
+                    "call_p1",
+                    'permission request: developer__shell | {"command":"rm -rf build"}',
+                ),
+                (
+                    303,
+                    "system",
+                    "developer__shell",
+                    "call_p1",
+                    "permission decision: allow_once (toolConfirmationResponse)",
+                ),
+                (304, "tool_result", "developer__shell", "call_p1", "removed"),
+                (305, "tool_use", "developer__text_editor", "call_p2", '{"path":"/etc/hosts"}'),
+                (
+                    305,
+                    "system",
+                    "developer__text_editor",
+                    "call_p2",
+                    "permission decision: not executable (goose.executable=false)",
+                ),
+                (
+                    306,
+                    "tool_result",
+                    "developer__text_editor",
+                    "call_p2",
+                    "The user has declined to run this tool. DO NOT attempt to call this tool"
+                    " again.",
+                ),
+                (
+                    307,
+                    "system",
+                    "",
+                    "",
+                    'action required: {"actionType":"elicitation","id":"el_1",'
+                    '"message":"Pick one","requestedSchema":{}}',
+                ),
+            ],
+        )
+        self.assertEqual(rows[1].text, "permission mode: smart_approve")
+        decision = rows[4]
+        self.assertEqual(
+            (decision.timestamp_utc, decision.project_path),
+            ("2026-10-21T08:00:05.000Z", "/srv/proj"),
+        )
+
+    def test_answered_executable_false_has_no_verdict_row(self):
+        # A request the user answered keeps only the answer's decision row,
+        # even while its `_meta` still says false.
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_permission_records():
+            con.execute(sql.replace('"goose.executable":true', '"goose.executable":false'))
+        con.commit()
+        con.close()
+        rows = self.rows_for(GooseParser(), self.REL)
+        verdicts = [r.tool_use_id for r in rows if "goose.executable" in r.text]
+        self.assertEqual(verdicts, ["call_p2"])
+
+    def test_legacy_and_log_have_no_verdict_rows(self):
+        for rel in (GOOSE_LEGACY_REL, ".local/state/goose/logs/llm_request.0.jsonl"):
+            rows = self.rows_for(GooseParser(), rel)
+            self.assertFalse([r for r in rows if r.text.startswith("permission ")])
+
+    def _standing(self, rel):
+        build_goose_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(GooseParser(), rel)
+
+    def test_permission_yaml_rows(self):
+        rel = ".config/goose/permission.yaml"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [(r.source_line, r.text) for r in rows],
+            [
+                (
+                    3,
+                    "permission setting: user.always_allow=developer__shell (from %s, file mtime)"
+                    % rel,
+                ),
+                (
+                    6,
+                    "permission setting: user.never_allow=developer__text_editor"
+                    " (from %s, file mtime)" % rel,
+                ),
+                (
+                    10,
+                    "permission setting: smart_approve.ask_before="
+                    "computercontroller__automation_script (from %s, file mtime)" % rel,
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.timestamp_utc, r.session_id, r.project_path) for r in rows},
+            {("system", to_utc(GOOSE_STANDING_MTIME), "", "")},
+        )
+
+    def test_permission_yaml_bad_line_is_reported_not_fatal(self):
+        rel = ".config/goose/permission.yaml"
+        build_goose_standing(self.home)
+        path = self.home / rel
+        lines = GOOSE_PERMISSION_YAML.splitlines(keepends=True)
+        lines.insert(3, "  ask_bef\n")  # cut mid-write
+        path.write_text("".join(lines), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual([r.source_line for r in rows], [3, 7, 11, 4])
+        self.assertEqual(
+            rows[-1].text,
+            "parser: unparseable line (not a category, level or list item):   ask_bef",
+        )
+        self.assertEqual((rows[-1].turn_type, rows[-1].timestamp_utc), ("system", ""))
+
+    def test_roaming_trust_rows(self):
+        rel = ".config/goose/roaming_trust.json"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: roaming_trust.allowed=peerkeyaaaa (from %s, file mtime)" % rel,
+                "permission setting: roaming_trust.revoked_keys=peerkeybbbb"
+                " (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(GOOSE_STANDING_MTIME)})
+
+    def test_roaming_trust_not_json_is_one_row(self):
+        rel = ".config/goose/roaming_trust.json"
+        build_goose_standing(self.home)
+        (self.home / rel).write_text('{"allowed": ["peer', encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: %s is not JSON (" % rel), rows[0].text)
+
+    def test_schedule_rows(self):
+        rel = ".local/share/goose/schedule.json"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "scheduled task: nightly-report 0 0 2 * * * paused=false running=false"
+                " source=/home/alice/.local/share/goose/scheduled_recipes/nightly-report.yaml"
+                " last_run=2026-10-21T02:00:00.123Z current_session=-"
+                " recipe_base_dir=/srv/proj/recipes (from %s, file mtime)" % rel,
+                "scheduled task: weekly 0 0 9 * * 1 paused=true running=false"
+                " source=/home/alice/.local/share/goose/scheduled_recipes/weekly.yaml"
+                ' last_run=- current_session=- recipe_base_dir=- parameters=[["env","prod"]]'
+                " (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.timestamp_utc, r.session_id) for r in rows},
+            {("system", to_utc(GOOSE_STANDING_MTIME), "")},
+        )
+
+    def test_schedule_bad_record_is_reported_not_fatal(self):
+        rel = ".local/share/goose/schedule.json"
+        build_goose_standing(self.home)
+        (self.home / rel).write_text(
+            json.dumps([GOOSE_SCHEDULE[0], "oops", GOOSE_SCHEDULE[1]]), encoding="utf-8"
+        )
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(rows[1].text.startswith("scheduled task: weekly "))
+        self.assertEqual(rows[2].text, 'parser: unparseable record 2 (not a JSON object): "oops"')
+
+    # -- request logs as a secondary source (issue 126) ------------------------
+
+    LOG = ".local/state/goose/logs/llm_request.0.jsonl"
+
+    def _streamed(self):
+        path = self.home / self.LOG
+        path.write_text(
+            "".join(json.dumps(r) + "\n" for r in goose_streamed_llm_records()), encoding="utf-8"
+        )
+        return self.rows_for(GooseParser(), self.LOG)
+
+    def test_streamed_chunks_are_assembled(self):
+        rows = self._streamed()
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.tool_use_id, r.text) for r in rows],
+            [
+                (1, "system", "", "llm request | 1 messages | last user: run the tests"),
+                (2, "assistant", "", "All 3 tests pass."),
+                (2, "tool_use", "call_1", '{"command":"pytest -q"}'),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-03-01T09:00:05.000Z"})
+
+    def test_log_rows_repeating_the_database_are_dropped(self):
+        p = GooseParser()
+        log = self._streamed()
+        primary = self.rows_for(p, self.REL)
+        tolerance = p.secondary_tolerance(self.artifact(self.LOG))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in log])
+        self.assertEqual(dropped["goose"], 2)
+        recovered = [r for r in kept if r.source_file.endswith("llm_request.0.jsonl")]
+        # Only the request row, which no database row repeats, is kept.
+        self.assertEqual([r.text for r in recovered], [log[0].text])
+        # Within the default window the tool call, four seconds off, stays.
+        _, dropped = deduplicate(primary, [(r, 2.0) for r in log])
+        self.assertEqual(dropped["goose"], 1)
+
+    def test_request_log_truncated_line_is_reported_not_fatal(self):
+        path = self.home / self.LOG
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + json.dumps(
+                    {
+                        "data": {
+                            "role": "assistant",
+                            "created": 1772355609,
+                            "content": [{"type": "text", "text": "after the cut"}],
+                        }
+                    }
+                )
+                + "\n"
+            )
+        rows = self.rows_for(GooseParser(), self.LOG)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "system"), (2, "assistant"), (4, "assistant"), (3, "system")],
+        )
+        self.assertEqual((rows[1].text, rows[2].text), ("hi", "after the cut"))
+        self.assertEqual(rows[-1].text, bad_line_text())
+
 
 from doubleagent.parsers.aider import AiderParser
 from doubleagent.parsers.continue_dev import ContinueParser, load_session
@@ -4699,6 +6152,7 @@ class ContinueTests(ParserBase):
         self.assertEqual(
             [r.turn_type for r in rows],
             [
+                "system",
                 "system",
                 "system",
                 "user",
@@ -4719,12 +6173,14 @@ class ContinueTests(ParserBase):
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             # no per-message time: every row inherits sessions.json dateCreated
             self.assertEqual(r.timestamp_utc, "2026-10-02T10:00:00.000Z")
-        start, model, user, use1, res1, switch, asst, _use2, res2, canceled = rows
+        start, model, mode, user, use1, res1, switch, asst, _use2, res2, canceled = rows
         self.assertIn("session start: Fix bug mode=agent items=5", start.text)
         # chatModelTitle starts the session; item 5's promptLogs switch it
         self.assertEqual(
             (model.text, model.model, model.source_line), ("model: GPT-4o", "GPT-4o", 0)
         )
+        # the session's mode is a permission mode (#198)
+        self.assertEqual((mode.text, mode.source_line), ("permission mode: agent", 0))
         self.assertEqual(
             (switch.text, switch.model, switch.source_line),
             ("model: GPT-4o -> Claude Sonnet 4.5", "Claude Sonnet 4.5", 5),
@@ -4739,18 +6195,311 @@ class ContinueTests(ParserBase):
         )
         self.assertEqual(asst.text, "Renamed. Cleaning the build too.")
         # a call with no tool message keeps its outcome in toolCallStates
-        self.assertEqual((res2.tool_use_id, res2.text), ("call_2", "[canceled]"))
-        # the canceled state is a per-call decision, after its result row
+        self.assertEqual(
+            (res2.tool_use_id, res2.text), ("call_2", "[canceled] Permission denied by user")
+        )
+        # the canceled state is a per-call decision, after its result row,
+        # with the CLI's denial reason (#198)
         self.assertEqual(
             (canceled.text, canceled.tool_use_id, canceled.tool_name, canceled.timestamp_utc),
             (
-                "permission decision: canceled",
+                "permission decision: canceled reason=user",
                 "call_2",
                 "run_terminal_command",
                 "2026-10-02T10:00:00.000Z",
             ),
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 3, 4, 5, 5, 5, 5, 5])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 0, 1, 3, 4, 5, 5, 5, 5, 5])
+
+    def _write_session(self, sid: str, workspace: str, states: list, mode: str = "") -> str:
+        """A one-item session file `sid` in `workspace` whose assistant item
+        has `states`, the input reopened so the parser is offered it."""
+        calls = [s["toolCall"] for s in states]
+        sess = {
+            "sessionId": sid,
+            "title": "t",
+            "workspaceDirectory": workspace,
+            "history": [
+                {
+                    "message": {"role": "assistant", "content": "", "toolCalls": calls},
+                    "contextItems": [],
+                    "toolCallStates": states,
+                }
+            ],
+        }
+        if mode:
+            sess["mode"] = mode
+        rel = ".continue/sessions/%s.json" % sid
+        (self.home / rel).write_text(json.dumps(sess), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return rel
+
+    @staticmethod
+    def _state(call_id: str, status: str, output: list) -> dict:
+        call = {"id": call_id, "type": "function", "function": {"name": "t", "arguments": "{}"}}
+        return {"toolCallId": call_id, "toolCall": call, "status": status, "output": output}
+
+    def test_policy_decisions_in_states(self):
+        # #198: the CLI's policy refusal and the extension's Security Policy
+        # Violation; an errored call without that item is no decision.
+        violation = {"name": "Security Policy Violation", "content": "disabled"}
+        rel = self._write_session(
+            "5e5e",
+            "/srv/proj",
+            [
+                self._state("c1", "canceled", [{"content": "Command blocked by security policy"}]),
+                self._state("c2", "errored", [violation]),
+                self._state("c3", "errored", [{"name": "Tool Result", "content": "boom"}]),
+                self._state("c4", "canceled", []),
+            ],
+            mode="plan",
+        )
+        rows = self.rows_for(ContinueParser(), rel)
+        decisions = [
+            (r.tool_use_id, r.text) for r in rows if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            decisions,
+            [
+                ("c1", "permission decision: canceled reason=policy"),
+                ("c2", "permission decision: errored reason=policy"),
+                ("c4", "permission decision: canceled"),
+            ],
+        )
+        self.assertIn("permission mode: plan", [r.text for r in rows])
+        self.assertFalse([r for r in rows if r.text.startswith("scratch directory:")])
+
+    def test_cn_review_worktree_is_scratch(self):
+        # #198: `cn review` runs in <tmp>/cn-review-<ms>-<n>; a CLI session
+        # has no mode, so no permission mode row.
+        path = "/tmp/cn-review-1790935200000-0"
+        rel = self._write_session("6f6f", path, [])
+        rows = self.rows_for(ContinueParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.project_path, r.source_line, r.text) for r in rows[1:]],
+            [("system", path, 0, "scratch directory: %s (cn review worktree)" % path)],
+        )
+        rel = self._write_session("7a7a", "C:\\Users\\a\\AppData\\Local\\Temp\\cn-review-17-1", [])
+        texts = [r.text for r in self.rows_for(ContinueParser(), rel)]
+        self.assertTrue(texts[-1].startswith("scratch directory: C:\\Users"), texts)
+        rel = self._write_session("8b8b", "/srv/cn-review-notes", [])
+        texts = [r.text for r in self.rows_for(ContinueParser(), rel)]
+        self.assertFalse([t for t in texts if t.startswith("scratch directory:")])
+
+    PERMS = ".continue/permissions.yaml"
+
+    def test_permissions_yaml(self):
+        # #198: one standing-grant row per rule, at the file's mtime.
+        rows = self.rows_for(ContinueParser(), self.PERMS)
+        mtime = to_utc((self.home / self.PERMS).stat().st_mtime)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    n,
+                    mtime,
+                    "",
+                    "permission setting: %s (from .continue/permissions.yaml, file mtime)" % rule,
+                )
+                for n, rule in (
+                    (6, "allow=Read"),
+                    (7, "allow=Bash(npm*)"),
+                    (10, "exclude=Bash(rm*)"),
+                )
+            ],
+        )
+        self.assertFalse(ContinueParser().secondary(self.artifact(self.PERMS)))
+
+    def test_permissions_yaml_other_constructs(self):
+        path = self.home / self.PERMS
+        for text, line in (
+            ("allow:\n  - Read\nask: [Write]\n", 3),
+            ("allow:\n  - Read\nmodels:\n  - x\n", 3),
+            ("allow:\n  - {tool: Read}\n", 2),
+            ("- Read\n", 1),
+            ("allow: null\n  - Read\n", 2),
+        ):
+            path.write_text(text, encoding="utf-8")
+            rows = self.rows_for(ContinueParser(), self.PERMS)
+            self.assertEqual(
+                [(r.source_line, r.text) for r in rows],
+                [
+                    (
+                        0,
+                        "parser: unsupported YAML at line %d (only allow, ask and exclude lists"
+                        " of strings are read)" % line,
+                    )
+                ],
+                text,
+            )
+        path.write_text("# cn tool permissions\n\nallow: []\nask: []\nexclude: []\n")
+        self.assertEqual(self.rows_for(ContinueParser(), self.PERMS), [])
+        path.write_text("allow:\n- 'it''s'\n- \"a\\\"b\"\n", encoding="utf-8")
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in self.rows_for(ContinueParser(), self.PERMS)],
+            ["permission setting: allow=it's", 'permission setting: allow=a"b'],
+        )
+
+    HISTORY = ".continue/input_history.json"
+
+    def test_input_history(self):
+        # #198: the CLI's prompt history is a secondary source, newest first.
+        p = ContinueParser()
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                ("user", 1, "2026-10-02T10:01:00.000Z", "", "/model"),
+                ("user", 2, "2026-10-02T10:00:01.000Z", "", "rename foo"),
+            ],
+        )
+        art = self.artifact(self.HISTORY)
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        # The session rows carry the session's creation time, so a history
+        # entry pairs on text whatever the time; the slash command is kept.
+        primary = self.rows_for(p, ".continue/dev_data/0.2.0/chatInteraction.jsonl")
+        kept, dropped = deduplicate(primary, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["continue"], 1)
+        self.assertEqual([r.text for r in kept[len(primary) :]], ["/model"])
+        _, dropped = deduplicate(primary, [(r, 2.0) for r in rows])
+        self.assertEqual(dropped["continue"], 0)
+
+    def test_input_history_cut_keeps_earlier_entries(self):
+        path = self.home / self.HISTORY
+        raw = path.read_text(encoding="utf-8")
+        cut = raw[: raw.index("rename") + 3]
+        path.write_text(cut, encoding="utf-8")
+        rows = self.rows_for(ContinueParser(), self.HISTORY)
+        self.assertEqual([(r.turn_type, r.source_line) for r in rows], [("user", 1), ("system", 2)])
+        self.assertEqual(rows[0].text, "/model")
+        self.assertTrue(rows[1].text.startswith("parser: unparseable record 2 ("), rows[1].text)
+        self.assertTrue(rows[1].text.endswith(cut[cut.rindex("{") :]), rows[1].text)
+        # an element that is not an entry is reported and the walk goes on
+        path.write_text(json.dumps([7, {"text": "after", "timestamp": 1}]), encoding="utf-8")
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(ContinueParser(), self.HISTORY)],
+            [
+                (2, "after"),
+                (1, "parser: unparseable record 1 (not an object with a text): 7"),
+            ],
+        )
+
+    DEV = ".continue/dev_data/0.2.0/%s.jsonl"
+
+    def test_chat_feedback_is_secondary(self):
+        p = ContinueParser()
+        rel = self.DEV % "chatFeedback"
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.model, r.text) for r in rows],
+            [
+                ("user", CONTINUE_SESSION, "/srv/proj", "", "rename foo"),
+                ("assistant", CONTINUE_SESSION, "/srv/proj", "GPT-4o", "done"),
+                (
+                    "system",
+                    CONTINUE_SESSION,
+                    "/srv/proj",
+                    "GPT-4o",
+                    "chat feedback: feedback=true model=GPT-4o",
+                ),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-02T10:01:30.000Z"})
+        art = self.artifact(rel)
+        self.assertTrue(p.secondary(art))
+        # the rated reply's chatInteraction line holds the prompt and reply
+        primary = self.rows_for(p, self.DEV % "chatInteraction")
+        kept, dropped = deduplicate(primary, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["continue"], 2)
+        self.assertEqual([r.turn_type for r in kept[len(primary) :]], ["system"])
+
+    def test_edit_interaction_and_outcome(self):
+        p = ContinueParser()
+        rows = self.rows_for(p, self.DEV % "editInteraction")
+        self.assertEqual(
+            [(r.turn_type, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "GPT-4o",
+                    "2026-10-02T10:02:00.000Z",
+                    "edit interaction: file=/srv/proj/a.py",
+                ),
+                ("user", "", "2026-10-02T10:02:00.000Z", "add a docstring"),
+                ("assistant", "GPT-4o", "2026-10-02T10:02:00.000Z", 'def foo():\n    """Doc."""'),
+            ],
+        )
+        rows = self.rows_for(p, self.DEV % "editOutcome")
+        self.assertEqual(
+            [(r.turn_type, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "GPT-4o",
+                    "2026-10-02T10:02:30.000Z",
+                    "permission decision: edit accepted=false file=/srv/proj/a.py lines 1 -> 2",
+                )
+            ],
+        )
+        for event in ("editInteraction", "editOutcome"):
+            self.assertFalse(p.secondary(self.artifact(self.DEV % event)))
+
+    def test_truncated_new_dev_data_lines(self):
+        # Each new line-oriented file keeps the lines before and after a cut.
+        after = {
+            "chatFeedback": '{"sessionId": "0f1e", "prompt": "later", "feedback": false}',
+            "editInteraction": '{"prompt": "later", "filepath": "b.py"}',
+            "editOutcome": '{"accepted": true, "filepath": "b.py"}',
+        }
+        want = {
+            "chatFeedback": [
+                (1, "user"),
+                (1, "assistant"),
+                (1, "system"),
+                (3, "user"),
+                (3, "system"),
+            ],
+            "editInteraction": [
+                (1, "system"),
+                (1, "user"),
+                (1, "assistant"),
+                (3, "system"),
+                (3, "user"),
+            ],
+            "editOutcome": [(1, "system"), (3, "system")],
+        }
+        for event, line in after.items():
+            rel = self.DEV % event
+            write_bad_line(self.home / rel)
+            with open(self.home / rel, "a", encoding="utf-8") as fh:
+                fh.write("\n" + line + "\n")
+            rows = self.rows_for(ContinueParser(), rel)
+            self.assertEqual([(r.source_line, r.turn_type) for r in rows[:-1]], want[event], event)
+            self.assertEqual((rows[-1].source_line, rows[-1].text), (2, bad_line_text()), event)
+
+    def test_cn_log_policy_rule(self):
+        # #198: a "don't ask again" answer logs the rule it added.
+        path = self.home / ".continue/logs/cn.log"
+        path.write_text(
+            "2026-10-07 11:00:00.000 [a1b2c3d4] [info]: Added policy rule to permissions.yaml:"
+            " Bash(npm*)\n",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(ContinueParser(), ".continue/logs/cn.log")
+        self.assertEqual(
+            [(r.timestamp_utc, r.source_line, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "2026-10-07T11:00:00.000Z",
+                    1,
+                    "",
+                    "permission decision: allow always rule=Bash(npm*) (from logs/cn.log, log"
+                    " line time, host-local)",
+                )
+            ],
+        )
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(ContinueParser(), self.REL, include_thinking=True)
@@ -4999,6 +6748,12 @@ class AiderTests(ParserBase):
                 ("/add b.py", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
                 ("<blank>", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
                 (
+                    "/model claude-opus-4-5",
+                    "2026-10-02T13:00:02.000Z",
+                    self.S2,
+                    "/alice/" + self.CHAT,
+                ),
+                (
                     "delete the migrations folder",
                     "2026-10-02T13:05:00.000Z",
                     self.S2,
@@ -5009,19 +6764,36 @@ class AiderTests(ParserBase):
         self.assertEqual(sum(r.source_file == "/alice/.aider.llm.history" for r in rows), 2)
 
     def test_rows(self):
-        rows = self.rows_for(AiderParser(), self.CHAT)
-        self.assertEqual(
-            [r.turn_type for r in rows],
-            ["system", "user", "assistant", "tool_result", "system", "user", "tool_result", "user"],
-        )
-        for r in rows:
+        all_rows = self.rows_for(AiderParser(), self.CHAT)
+        for r in all_rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.project_path), ("h1", "alice", "aider", "/alice")
             )
-            self.assertEqual((r.model, r.git_branch, r.tool_use_id), ("", "", ""))
-        start, user, asst, tool, _start2, add, added, blank = rows
-        self.assertEqual([r.session_id for r in rows], [self.S1] * 4 + [self.S2] * 4)
+            self.assertEqual((r.git_branch, r.tool_use_id), ("", ""))
+        # the model and permission rows are tested below
+        rows = [r for r in all_rows if not r.text.startswith(("model: ", "permission decision: "))]
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            [
+                "system",
+                "tool_result",
+                "user",
+                "assistant",
+                "tool_result",
+                "system",
+                "tool_result",
+                "user",
+                "tool_result",
+                "user",
+                "user",
+                "tool_result",
+            ],
+        )
+        self.assertTrue(all(r.model == "" for r in rows))
+        start, announce, user, asst, tool, _start2, _announce2, add, added, blank = rows[:10]
+        self.assertEqual([r.session_id for r in rows], [self.S1] * 5 + [self.S2] * 7)
         self.assertEqual(start.timestamp_utc, "2026-10-02T12:00:00.000Z")
+        self.assertTrue(announce.text.startswith("Aider v0.86.1\nMain model: "))
         # the prompt takes its time from the matching input-history entry, and later rows inherit it
         self.assertEqual(
             (user.text, user.timestamp_utc), ("rename foo to bar", "2026-10-02T12:00:05.123Z")
@@ -5030,12 +6802,101 @@ class AiderTests(ParserBase):
         self.assertTrue(asst.text.startswith("Here is the change:\n\na.py\n<<<<<<< SEARCH"))
         self.assertTrue(asst.text.endswith(">>>>>>> REPLACE"))
         self.assertEqual(
-            tool.text, "Applied edit to a.py\nCommit abc1234 refactor: rename foo to bar"
+            tool.text,
+            "Applied edit to a.py\nCommit abc1234 refactor: rename foo to bar\npytest -q\n"
+            "Run shell command? (Y)es/(N)o/(D)on't ask again [Yes]: n",
         )
         self.assertEqual((add.text, add.timestamp_utc), ("/add b.py", "2026-10-02T13:00:02.000Z"))
         self.assertEqual(added.text, "Added b.py to the chat")
         self.assertEqual(blank.text, "<blank>")
-        self.assertEqual([r.source_line for r in rows], [2, 5, 7, 16, 19, 22, 23, 25])
+        self.assertEqual(
+            [r.source_line for r in rows], [2, 4, 9, 11, 20, 25, 27, 31, 32, 34, 36, 37]
+        )
+
+    def test_model_rows(self):
+        """The announcement lines give a `model:` row at a session's first
+        announcement and on each change, per role (#203)."""
+        rows = [r for r in self.rows_for(AiderParser(), self.CHAT) if r.text.startswith("model: ")]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.model, r.source_line, r.session_id) for r in rows],
+            [
+                (
+                    "system",
+                    "model: anthropic/claude-sonnet-4-5",
+                    "anthropic/claude-sonnet-4-5",
+                    5,
+                    self.S1,
+                ),
+                (
+                    "system",
+                    "model: anthropic/claude-haiku-4-5 (weak model)",
+                    "anthropic/claude-haiku-4-5",
+                    6,
+                    self.S1,
+                ),
+                # a new session starts afresh; `Model:` means no separate weak model
+                ("system", "model: gpt-4o", "gpt-4o", 28, self.S2),
+                # the /model switch re-announces
+                (
+                    "system",
+                    "model: gpt-4o -> claude-opus-4-5",
+                    "claude-opus-4-5",
+                    38,
+                    self.S2,
+                ),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 (editor model)",
+                    "claude-sonnet-4-5",
+                    39,
+                    self.S2,
+                ),
+                (
+                    "system",
+                    "model: gpt-4o -> claude-haiku-4-5 (weak model)",
+                    "claude-haiku-4-5",
+                    40,
+                    self.S2,
+                ),
+            ],
+        )
+        self.assertEqual(rows[3].timestamp_utc, "2026-10-02T13:00:02.000Z")
+
+    def test_model_line_outside_announcement(self):
+        """A `Weak model:` line is read only beside a main-model line."""
+        path = self.home / self.CHAT
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n#### what is the weak model?  \n> Weak model: not-an-announcement  \n")
+        rows = self.rows_for(AiderParser(), self.CHAT)
+        self.assertFalse(any("not-an-announcement" in r.text for r in rows if r.model))
+        self.assertEqual(sum(r.text.startswith("model: ") for r in rows), 6)
+
+    def test_permission_rows(self):
+        """Each confirm_ask line is a `permission decision:` row after its
+        `tool_result` row; a y or n answer may come from --yes-always (#203)."""
+        rows = self.rows_for(AiderParser(), self.CHAT)
+        idx = [i for i, r in enumerate(rows) if r.text.startswith("permission decision: ")]
+        self.assertEqual(
+            [(rows[i].text, rows[i].source_line, rows[i].session_id) for i in idx],
+            [
+                (
+                    "permission decision: no (Run shell command?) answer=n default=Yes;"
+                    " may be automatic (--yes-always)",
+                    23,
+                    self.S1,
+                ),
+                (
+                    "permission decision: no, don't ask again (Add URL to the chat?)"
+                    " answer=d default=Yes",
+                    43,
+                    self.S2,
+                ),
+            ],
+        )
+        for i in idx:
+            self.assertEqual(rows[i].turn_type, "system")
+        self.assertEqual(rows[idx[0]].timestamp_utc, "2026-10-02T12:00:05.123Z")
+        self.assertEqual(rows[idx[0] - 1].turn_type, "tool_result")
 
     def test_thinking_opt_in(self):
         # Aider records no reasoning; the flag must not change the rows.
@@ -5135,8 +6996,9 @@ class AiderTests(ParserBase):
         )
         rows, _, problems, deduplicated = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
-        # 8 chat rows, 3 input-history rows less the 2 the chat rows repeat, 2 LLM rows.
-        self.assertEqual(len(rows), 8 + 3 - 2 + 2)
+        # 12 chat rows, 6 model and 2 permission rows, 3 input-history rows less
+        # the 2 the chat rows repeat, 2 LLM rows.
+        self.assertEqual(len(rows), 12 + 6 + 2 + 3 - 2 + 2)
         self.assertEqual(deduplicated, {"aider": 2})
         self.assertEqual(
             {(r.host, r.user, r.agent, r.project_path) for r in rows},
@@ -5167,7 +7029,10 @@ from fixtures import (
     VSCODE_SESSION,
     VSCODE_WS,
     ZED_EXTERNAL,
+    ZED_TEMP_DIR,
     ZED_THREAD,
+    ZED_WORKTREE,
+    ZED_WORKTREE_THREAD,
 )
 
 
@@ -5195,10 +7060,25 @@ class ZedTests(ParserBase):
         con.close()
 
     def test_rows(self):
-        rows = [r for r in self.rows_for(ZedParser(), self.REL) if not model_or_permission_row(r)]
+        rows = [
+            r
+            for r in self.rows_for(ZedParser(), self.REL)
+            if not model_or_permission_row(r) and not r.text.startswith("scratch directory:")
+        ]
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "system", "system"],
+            [
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "tool_use",
+                "tool_result",
+                "assistant",
+                "system",
+                "system",
+                "system",
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -5209,7 +7089,10 @@ class ZedTests(ParserBase):
                 ("/srv/proj", "main", "anthropic/claude-sonnet-4-5"),
             )
             self.assertEqual(r.source_line, 1)
-        start, user, use, result, asst, resume, compaction = rows
+        start, user, use, result, _use2, _result2, asst, resume, compaction, draft = rows
+        # the blob's draft_prompt (source-derived, 9cd14da) follows the messages
+        self.assertEqual(draft.text, "unsent draft: and then lint (thread blob, as of updated_at)")
+        self.assertEqual(draft.timestamp_utc, "2026-10-03T09:01:05.000Z")
         self.assertEqual(start.timestamp_utc, "2026-10-03T09:00:00.000Z")  # project snapshot time
         self.assertEqual(start.text, "thread start: Fix flaky test version=0.3.0")
         self.assertEqual(
@@ -5232,8 +7115,8 @@ class ZedTests(ParserBase):
         self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["use pytest"])
 
     def test_sidebar_external_threads(self):
-        rows = self.rows_for(ZedParser(), self.SIDEBAR)
-        self.assertEqual(len(rows), 1)  # the native thread is skipped
+        rows = [r for r in self.rows_for(ZedParser(), self.SIDEBAR) if "agent=" in r.text]
+        self.assertEqual(len(rows), 1)
         r = rows[0]
         self.assertEqual(
             (r.turn_type, r.session_id, r.project_path), ("system", ZED_EXTERNAL, "/srv/proj")
@@ -5241,16 +7124,260 @@ class ZedTests(ParserBase):
         self.assertEqual(r.timestamp_utc, "2026-10-03T10:00:00.000Z")
         self.assertIn("agent=claude-code", r.text)
 
-    def test_settings_not_wanted(self):
-        art = next(a for a in self.col.artifacts if a.rel == ".config/zed/settings.json")
+    def test_db_sqlite_stores(self):
+        # Source-derived (zed-industries/zed at 9cd14da): the native sidebar
+        # state, project trust, draft prompts, the worktree registry, the
+        # archived worktrees and the sidebar terminals of db.sqlite.
+        art = self.artifact(self.SIDEBAR)
+        mtime = file_mtime(art)
+        rows = list(ZedParser().parse(art, Options()))
+        rel = self.SIDEBAR
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "2026-10-03T09:01:05.000Z",
+                    ZED_THREAD,
+                    "/srv/proj",
+                    "sidebar thread: title=Fix flaky test archived=false interacted_at=-"
+                    " main_worktree=-",
+                ),
+                (
+                    "2026-10-03T10:00:00.000Z",
+                    ZED_EXTERNAL,
+                    "/srv/proj",
+                    "external agent thread (no transcript in threads.db): agent=claude-code"
+                    " title=External thread",
+                ),
+                (
+                    "2026-10-03T12:00:00.000Z",
+                    ZED_WORKTREE_THREAD,
+                    ZED_WORKTREE,
+                    "sidebar thread: title=Fix tests in a worktree archived=true"
+                    " interacted_at=2026-10-03T11:59:00.000Z main_worktree=/srv/proj",
+                ),
+                (
+                    mtime,
+                    "",
+                    "/srv/proj",
+                    "permission setting: trusted_worktrees./srv/proj=true (from %s"
+                    " trusted_worktrees, file mtime)" % rel,
+                ),
+                (
+                    mtime,
+                    "",
+                    "/home/alice/remote",
+                    "permission setting: trusted_worktrees./home/alice/remote=true"
+                    " host=alice@build.example (from %s trusted_worktrees, file mtime)" % rel,
+                ),
+                (
+                    "2026-10-03T11:00:00.000Z",
+                    "",
+                    "/srv/proj",
+                    "unsent draft: refactor the parser\n[mention] file:///srv/proj/main.py",
+                ),
+                (
+                    mtime,
+                    "",
+                    "",
+                    "unsent draft: an orphan draft (from %s agent_draft_prompts, file mtime)" % rel,
+                ),
+                (
+                    "2026-10-03T11:00:00.500Z",
+                    "",
+                    ZED_WORKTREE,
+                    "scratch directory: %s (Zed-created git worktree of /srv/proj) (from %s"
+                    " created_git_worktrees, created_at)" % (ZED_WORKTREE, rel),
+                ),
+                (
+                    mtime,
+                    ZED_WORKTREE_THREAD,
+                    "/srv/proj",
+                    "archived worktree: %s of /srv/proj branch=fix-tests staged=a1b2c3"
+                    " unstaged=d4e5f6 original=0a0b0c ref=refs/archived-worktrees/1 (from %s"
+                    " archived_git_worktrees, file mtime)" % (ZED_WORKTREE, rel),
+                ),
+                (
+                    "2026-10-03T10:30:00.000Z",
+                    "",
+                    "/srv/proj",
+                    "sidebar terminal: zsh cwd=/srv/proj",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(r.turn_type, "system")
+        self.assertFalse(ZedParser().secondary(art))
+
+    def test_bad_kv_value_is_reported_not_fatal(self):
+        # A scoped_kv_store value that does not decode is its own parser:
+        # row, carried in full, after the file's other rows.
+        con = sqlite3.connect(str(self.home / self.SIDEBAR))
+        con.execute(
+            "INSERT INTO scoped_kv_store(namespace,key,value) VALUES (?,?,?)",
+            ("agent_draft_prompts", "cut-draft", '[{"type":"text","text":"cut'),
+        )
+        con.execute(
+            "INSERT INTO scoped_kv_store(namespace,key,value) VALUES (?,?,?)",
+            ("created_git_worktrees", "local\n/srv/wt2", '{"created_at_nanos":1}'),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(ZedParser(), self.SIDEBAR)
+        self.assertEqual(len(rows), 12)
+        self.assertTrue(rows[9].text.startswith("sidebar terminal: "))
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.text) for r in rows[10:]],
+            [
+                (
+                    "system",
+                    5,
+                    "",
+                    "parser: unparseable record 5 (agent_draft_prompts cut-draft: JSONDecodeError:"
+                    " Unterminated string starting at: line 1 column 24 (char 23)):"
+                    ' [{"type":"text","text":"cut',
+                ),
+                (
+                    "system",
+                    6,
+                    "",
+                    "parser: unparseable record 6 (created_git_worktrees: KeyError:"
+                    " 'created_at_seconds'):"
+                    ' {"created_at_nanos":1}',
+                ),
+            ],
+        )
+
+    def test_settings_rows(self):
+        # Source-derived (zed-industries/zed at 9cd14da): standing
+        # permission entries of the user settings file, JSONC.
+        rel = ".config/zed/settings.json"
+        art = self.artifact(rel)
+        rows = list(ZedParser().parse(art, Options()))
+        tail = " (from %s, file mtime)" % rel
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: agent.tool_permissions.default=confirm" + tail,
+                "permission setting: agent.tool_permissions.tools.terminal.always_allow="
+                '{"pattern":"^cargo test"}' + tail,
+                "permission setting: agent.tool_permissions.tools.terminal.always_deny="
+                '{"case_sensitive":false,"pattern":"^rm -rf"}' + tail,
+                "permission setting: agent.sandbox_permissions.network_hosts=*.npmjs.org" + tail,
+                "permission setting: agent.sandbox_permissions.allow_unsandboxed=false" + tail,
+                "permission setting: agent_servers.claude-acp.default_mode=plan" + tail,
+                "permission setting: session.trust_all_worktrees=false" + tail,
+                "permission setting: stable.agent.tool_permissions.default=allow" + tail,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "", file_mtime(art)),
+            )
+
+    def test_settings_not_object_and_empty(self):
+        rel = ".config/zed/settings.json"
+        (self.home / rel).write_text('{"agent": ', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(ZedParser(), rel)],
+            ["parser: %s is not a JSON object" % rel],
+        )
+        (self.home / rel).write_text("\n", encoding="utf-8")
+        self.assertEqual(self.rows_for(ZedParser(), rel), [])
+
+    def test_permission_decisions(self):
+        rows = self.rows_for(ZedParser(), self.REL)
+        i = next(n for n, r in enumerate(rows) if r.text == "permission decision: denied")
+        self.assertEqual(
+            (rows[i - 1].turn_type, rows[i - 1].tool_use_id), ("tool_result", "toolu_02")
+        )
+        self.assertEqual(
+            (rows[i].turn_type, rows[i].tool_name, rows[i].tool_use_id, rows[i].session_id),
+            ("system", "terminal", "toolu_02", ZED_THREAD),
+        )
+        # the approved call has no decision row
+        self.assertEqual(
+            [r.tool_use_id for r in rows if r.text.startswith("permission decision")], ["toolu_02"]
+        )
+        results = {
+            "t1": "Blocked by global default: deny",
+            "t2": "Command blocked by security rule for terminal tool",
+            "t3": "fetch tool is disabled",
+            "t4": "No such file or directory",
+        }
+        thread = {
+            "version": "0.3.0",
+            "messages": [
+                {
+                    "Agent": {
+                        "content": [],
+                        "tool_results": {
+                            k: {
+                                "tool_use_id": k,
+                                "tool_name": "terminal",
+                                "is_error": True,
+                                "content": [{"Text": v}],
+                            }
+                            for k, v in results.items()
+                        },
+                    }
+                }
+            ],
+        }
+        self._insert("auto", "json", json.dumps(thread).encode("utf-8"))
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "auto"]
+        self.assertEqual(
+            [(r.tool_use_id, r.text) for r in rows if r.turn_type == "system"][1:],
+            [
+                ("t1", "permission decision: auto_denied reason=Blocked by global default: deny"),
+                (
+                    "t2",
+                    "permission decision: auto_denied reason=Command blocked by security rule"
+                    " for terminal tool",
+                ),
+                ("t3", "permission decision: auto_denied reason=fetch tool is disabled"),
+            ],
+        )
+
+    def test_scratch_rows(self):
+        rows = [
+            r
+            for r in self.rows_for(ZedParser(), self.REL)
+            if r.text.startswith("scratch directory:")
+        ]
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "",
+                    ZED_TEMP_DIR,
+                    "2026-10-03T09:01:05.000Z",
+                    "scratch directory: %s (sandboxed terminal temp directory of thread %s)"
+                    " (thread blob, as of updated_at)" % (ZED_TEMP_DIR, ZED_THREAD),
+                )
+            ],
+        )
+
+    def test_wanted_files(self):
+        art = next(a for a in self.col.artifacts if a.rel == ".config/zed/keymap.json")
         self.assertFalse(ZedParser().wants(art))
         for rel in (
             "AppData/Local/Zed/threads/threads.db",
             "Library/Application Support/Zed/db/0-preview/db.sqlite",
             ".var/app/dev.zed.Zed/data/zed/threads/threads.db",
+            ".config/zed/settings.json",
+            ".config/zed/global_settings.json",
+            "AppData/Roaming/Zed/settings.json",
+            ".var/app/dev.zed.ZedPreview/config/zed/settings.json",
         ):
             self.assertTrue(ZedParser().wants(rel_only(rel)), rel)
-        for rel in (self.REL + "-journal", self.SIDEBAR + "-wal"):
+        for rel in (
+            self.REL + "-journal",
+            self.SIDEBAR + "-wal",
+            ".config/zed/settings_backup.json",
+            ".zed/settings.json",
+        ):
             self.assertFalse(ZedParser().wants(rel_only(rel)), rel)
 
     def test_corrupt_blob_is_reported_not_fatal(self):
@@ -5258,7 +7385,7 @@ class ZedTests(ParserBase):
         cut = blob[: len(blob) // 2]
         self._insert("bad-thread", "zstd", cut)
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
         bad = [r for r in rows if r.session_id == "bad-thread"]
         self.assertEqual(len(bad), 1)
         self.assertEqual(
@@ -5315,7 +7442,11 @@ class ZedTests(ParserBase):
 
     def test_model_and_thread_grant_rows(self):
         rows = self.rows_for(ZedParser(), self.REL)
-        state = [r for r in rows if model_or_permission_row(r)]
+        state = [
+            r
+            for r in rows
+            if model_or_permission_row(r) and not r.text.startswith("permission decision")
+        ]
         self.assertEqual(
             [r.text for r in state],
             [
@@ -5344,7 +7475,9 @@ class ZedTests(ParserBase):
             self.assertEqual(r.model, "anthropic/claude-sonnet-4-5")
         for r in state[1:]:
             self.assertEqual(r.timestamp_utc, "2026-10-03T09:01:05.000Z")
-        self.assertEqual(rows[len(state) + 1].turn_type, "user")
+        # then the sandbox temp directory row, then the first message
+        self.assertTrue(rows[len(state) + 1].text.startswith("scratch directory:"))
+        self.assertEqual(rows[len(state) + 2].turn_type, "user")
 
     def test_thread_without_model_or_grants_has_no_state_rows(self):
         self._insert("bare", "json", b'{"version":"0.3.0","messages":[]}')
@@ -5370,7 +7503,7 @@ class ZedTests(ParserBase):
         self._insert("list-thread", "json", b'["not", "an", "object"]')
         self._insert("cut-thread", "json", b'{"version":"0.3.0","messages":[{"User"')
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 17)
         by_session = {r.session_id: r for r in rows if r.session_id != ZED_THREAD}
         self.assertEqual(
             by_session["list-thread"].text,
@@ -5454,6 +7587,7 @@ class VsCodeTests(ParserBase):
                 "system",
                 "system",
                 "system",
+                "system",
                 "user",
                 "tool_use",
                 "tool_result",
@@ -5461,6 +7595,7 @@ class VsCodeTests(ParserBase):
                 "assistant",
                 "user",
                 "assistant",
+                "system",
                 "system",
                 "system",
                 "system",
@@ -5475,8 +7610,8 @@ class VsCodeTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        self.assertEqual([r.source_line for r in rows], [1] * 8 + [2, 2, 2] + [6] * 5)
-        start, model, mode, user, use, result, decision, asst, user2, asst2 = rows[:10]
+        self.assertEqual([r.source_line for r in rows], [1] * 9 + [2, 2, 2] + [6] * 6)
+        start, model, mode, level, user, use, result, decision, asst, user2, asst2 = rows[:11]
         self.assertEqual(
             (model.text, model.model, model.timestamp_utc),
             ("model: copilot/gpt-4.1", "copilot/gpt-4.1", "2026-10-03T11:00:01.000Z"),
@@ -5484,6 +7619,11 @@ class VsCodeTests(ParserBase):
         self.assertEqual(
             (mode.text, mode.timestamp_utc),
             ("permission mode: agent", "2026-10-03T11:00:01.000Z"),
+        )
+        # modeInfo.permissionLevel (issue 210), source-derived.
+        self.assertEqual(
+            (level.text, level.timestamp_utc),
+            ("permission level: default", "2026-10-03T11:00:01.000Z"),
         )
         self.assertEqual(
             (decision.text, decision.tool_use_id, decision.tool_name, decision.timestamp_utc),
@@ -5495,7 +7635,7 @@ class VsCodeTests(ParserBase):
                 "2026-10-03T11:00:02.000Z",
             ),
         )
-        confirm, model2, mode2, user3, chosen, asst3 = rows[10:]
+        confirm, model2, mode2, level2, user3, chosen, asst3 = rows[11:]
         self.assertEqual(
             (confirm.text, confirm.timestamp_utc),
             (
@@ -5507,12 +7647,14 @@ class VsCodeTests(ParserBase):
         self.assertEqual(
             (model2.text, model2.model, model2.timestamp_utc),
             (
-                "model: copilot/gpt-4.1 -> copilot/claude-sonnet-4",
+                # modelConfiguration rides with the model (issue 210).
+                "model: copilot/gpt-4.1 -> copilot/claude-sonnet-4 reasoningEffort=high",
                 "copilot/claude-sonnet-4",
                 "2026-10-03T11:00:20.000Z",
             ),
         )
         self.assertEqual(mode2.text, "permission mode: agent -> ask")
+        self.assertEqual(level2.text, "permission level: default -> autoApprove")
         self.assertEqual(user3.text, 'Allow: "Run npm install?"')
         self.assertEqual(
             (chosen.text, chosen.timestamp_utc),
@@ -5587,10 +7729,25 @@ class VsCodeTests(ParserBase):
         self.assertEqual(rows[2].model, "copilot/gpt-4o")
 
     def test_not_wanted(self):
-        for rel in (VSCODE_WS + "/workspace.json", ".config/Code/User/settings.json"):
+        for rel in (
+            VSCODE_WS + "/workspace.json",
+            VSCODE_WS + "/chatEditingSessions/%s/contents/aaaaaaa" % VSCODE_SESSION,
+        ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(VsCodeParser().wants(art), rel)
         for rel in (
+            ".config/Code/User/keybindings.json",
+            ".config/Code/User/profiles/p1/mcp.json",
+            ".config/Code/User/workspaceStorage/x/chatEditingSessions/s/contents/state.json",
+            ".config/Code/User/globalStorage/github.copilot-chat/state.vscdb",
+        ):
+            self.assertFalse(VsCodeParser().wants(rel_only(rel)), rel)
+        for rel in (
+            ".config/Code/User/settings.json",
+            ".config/Code/User/profiles/p1/settings.json",
+            ".config/Code/User/profiles/builtin/agents/globalStorage/state.vscdb",
+            "AppData/Roaming/Code/User/workspaceStorage/x/state.vscdb",
+            ".vscode-server/data/User/workspaceStorage/x/chatEditingSessions/s/state.json",
             "Library/Application Support/Code - Insiders/User/workspaceStorage/x/chatSessions/s.json",
             "AppData/Roaming/VSCodium/User/globalStorage/transferredChatSessions/s.json",
             ".config/Positron/User/globalStorage/emptyWindowChatSessions/s.jsonl",
@@ -5712,11 +7869,15 @@ from fixtures import (
     VSCODE_CLOUD_SESSIONS_MTIME,
     VSCODE_CLOUD_SESSIONS_REL,
     VSCODE_CLOUD_TASK,
+    VSCODE_EDITING_REL,
+    VSCODE_GRANTS_MTIME,
     VSCODE_MULTIROOT_FILE,
     VSCODE_MULTIROOT_WS,
     VSCODE_OLD_TASK,
     VSCODE_OTHER_MACHINE_SESSION,
+    VSCODE_PROFILE_SETTINGS_REL,
     VSCODE_STATE_REL,
+    VSCODE_WS_STATE_REL,
     build_vscode_agents_window,
 )
 
@@ -5764,6 +7925,7 @@ class VsCodeSyncTests(ParserBase):
 
     def test_owned_tasks_rows(self):
         rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        rows = [r for r in rows if r.text.startswith("session ")]
         self.assertEqual(
             [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
             [
@@ -5796,6 +7958,165 @@ class VsCodeSyncTests(ParserBase):
             ],
         )
         self.assertEqual([r for r in rows if "gho_not_real" in r.text], [])
+
+    def test_profile_state_grants_and_source_host(self):
+        # Issue 210, source-derived: the Copilot Chat repository selection,
+        # the GitHub account's usage records and the profile-scope grants.
+        rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        rest = [r for r in rows if not r.text.startswith("session ")]
+        ts = to_utc(VSCODE_GRANTS_MTIME)
+        src = "(from User/globalStorage/state.vscdb, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rest],
+            [
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:56:40.000Z",
+                    "source host repository: octocat/hello-world type=cloud agent selection"
+                    " (from state.vscdb GitHub.copilot-chat userSelectedRepositories, timestamp)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:58:20.000Z",
+                    "source host: github.com account octocat extension=GitHub.copilot-chat"
+                    " scopes=read:user,user:email (from state.vscdb github-octocat-usages,"
+                    " lastUsed)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:59:10.000Z",
+                    "source host: github.com account octocat mcp_server=github scopes=repo"
+                    " (from state.vscdb github-octocat-mcpserver-usages, lastUsed)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    ts,
+                    "permission setting: chat/autoconfirm-post.read_file=Read File " + src,
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    ts,
+                    "permission setting: chat.tools.global.autoApprove.optIn=true " + src,
+                ),
+            ],
+        )
+        self.assertEqual([r for r in rows if "gho_not_real" in r.text], [])
+
+    def test_workspace_state_grants(self):
+        rows = self.rows_for(VsCodeParser(), VSCODE_WS_STATE_REL)
+        src = "(from User/workspaceStorage/abc123/state.vscdb, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: chat/autoconfirm.run_in_terminal=true " + src,
+                "permission setting: chat/autoconfirm.mcp_github_create_issue="
+                + json.dumps(
+                    {"arguments": '{"repo":"x"}', "label": "Create issue"},
+                    separators=(",", ":"),
+                )
+                + " "
+                + src,
+                "permission setting: chat/servers/autoconfirm.github=true " + src,
+                "permission setting: chat.externalPath.workspaceAllowlist=/srv/shared " + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "/srv/proj", to_utc(VSCODE_GRANTS_MTIME)),
+            )
+
+    def test_grant_of_wrong_type_is_reported(self):
+        _vscdb(self.home / VSCODE_WS_STATE_REL, {"chat/autoconfirm-post": "7"})
+        rows = self.rows_for(VsCodeParser(), VSCODE_WS_STATE_REL)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(
+            rows[-1].text,
+            "parser: ItemTable value for chat/autoconfirm-post is not a JSON object or array",
+        )
+
+    def test_settings_rows(self):
+        rows = self.rows_for(VsCodeParser(), VSCODE_PROFILE_SETTINGS_REL)
+        src = " (from User/profiles/-5f3a1b2c/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: chat.tools.terminal.autoApprove.npm test=true" + src,
+                "permission setting: chat.tools.terminal.autoApprove.rm=false" + src,
+                "permission setting: chat.tools.edits.autoApprove={}" + src,
+                "permission setting: chat.permissions.default=autoApprove" + src,
+                "model setting: chat.defaultModel=copilot/gpt-5" + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc),
+                ("system", "", to_utc(VSCODE_GRANTS_MTIME)),
+            )
+        # The default profile's settings name no chat key: no row.
+        self.assertEqual(self.rows_for(VsCodeParser(), ".config/Code/User/settings.json"), [])
+
+    def test_settings_not_an_object(self):
+        (self.home / VSCODE_PROFILE_SETTINGS_REL).write_text("[1, 2", encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), VSCODE_PROFILE_SETTINGS_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith(
+                "parser: User/profiles/-5f3a1b2c/settings.json is not a JSON object ("
+            ),
+            rows[0].text,
+        )
+
+    def test_editing_state_rows(self):
+        self.assertTrue(VsCodeParser.has_secondary)
+        self.assertTrue(VsCodeParser().secondary(self.artifact(VSCODE_EDITING_REL)))
+        self.assertFalse(VsCodeParser().secondary(self.artifact(VSCODE_WS_STATE_REL)))
+        rows = self.rows_for(VsCodeParser(), VSCODE_EDITING_REL)
+        tail = " (from chatEditingSessions state.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    VSCODE_SESSION,
+                    "/srv/proj",
+                    to_utc(VSCODE_GRANTS_MTIME),
+                    "edit state: Accepted /srv/proj/test_a.py request=request_1"
+                    " model=copilot/gpt-4.1" + tail,
+                ),
+                (
+                    "system",
+                    VSCODE_SESSION,
+                    "/srv/proj",
+                    to_utc(VSCODE_GRANTS_MTIME),
+                    "edit state: Rejected /srv/proj/old.py request=request_1"
+                    " model=copilot/gpt-4.1 deleted=true" + tail,
+                ),
+            ],
+        )
+
+    def test_editing_state_bad_file(self):
+        for raw, want in (
+            ('{"version": 2, "recentSnap', "parser: file is not valid JSON ("),
+            ("[]", "parser: state.json is not a JSON object"),
+        ):
+            (self.home / VSCODE_EDITING_REL).write_text(raw, encoding="utf-8")
+            rows = self.rows_for(VsCodeParser(), VSCODE_EDITING_REL)
+            self.assertEqual(len(rows), 1, raw)
+            self.assertEqual(
+                (rows[0].session_id, rows[0].project_path), (VSCODE_SESSION, "/srv/proj")
+            )
+            self.assertTrue(rows[0].text.startswith(want), rows[0].text)
 
     def test_state_without_copilot_key_yields_nothing(self):
         # Cody's and Twinny's databases, and the plain-text placeholder.
@@ -5850,17 +8171,27 @@ from doubleagent.parsers.kilo_code import iter_json_array as kilo_iter_json_arra
 from doubleagent.parsers.opencode import OpenCodeParser
 from doubleagent.parsers.opencode import tool_summary as opencode_tool_summary
 from fixtures import (
+    KILO_LOG_NAME,
+    KILO_SANDBOX_DIR_HASH,
+    KILO_SANDBOX_SESSION_HASH,
     KILO_SESSION,
     KILO_TASK,
+    OPENCODE_ARCHIVED,
     OPENCODE_DELETED,
     OPENCODE_LEGACY_SESSION,
     OPENCODE_MIGRATED,
     OPENCODE_NEXT_DB_NAME,
     OPENCODE_NEXT_ONLY,
+    OPENCODE_PINNED_GONE,
     OPENCODE_SESSION,
+    OPENCODE_STATE_DB_NAME,
+    OPENCODE_STATE_MTIME,
     OPENCODE_V2_DB_NAME,
     OPENCODE_V2_ONLY,
     OPENCODE_V2_SESSION,
+    OPENCODE_WORKTREE,
+    build_kilo_state,
+    build_opencode_state,
 )
 
 
@@ -6264,6 +8595,7 @@ class OpenCodeTests(ParserBase):
                     "[error] aborted The user declined this tool call",
                     "",
                 ),
+                (OPENCODE_V2_ONLY, "system", "permission decision: rejected", ""),
                 (OPENCODE_V2_ONLY, "tool_use", "git status", ""),
                 (OPENCODE_V2_ONLY, "tool_result", "[exit 128] fatal: not a git repository", ""),
                 (OPENCODE_V2_ONLY, "system", "location switched: /srv/proj -> /srv/proj/web", ""),
@@ -6283,6 +8615,11 @@ class OpenCodeTests(ParserBase):
             ],
         )
         self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        decision = next(r for r in rows if r.text == "permission decision: rejected")
+        self.assertEqual(
+            (decision.tool_name, decision.tool_use_id, decision.timestamp_utc),
+            ("edit", "call_n2", "2026-10-03T11:20:02.950Z"),
+        )
         shell = [r for r in rows if r.tool_use_id == "sh_01N"]
         self.assertEqual(
             [(r.tool_name, r.timestamp_utc) for r in shell],
@@ -6405,6 +8742,263 @@ class OpenCodeTests(ParserBase):
             [r.text for r in rows if r.text.startswith("parser:")],
             ["parser: unparseable record %d (message.data: not a JSON object): [1]" % rowid],
         )
+
+    # -- standing state, past use, scratch directories (issue 194) -------------------
+    STATE = ".local/state/opencode/"
+    STATE_DB = ".local/share/opencode/" + OPENCODE_STATE_DB_NAME
+
+    def with_state(self):
+        build_opencode_state(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_state_db_rows(self):
+        self.with_state()
+        rows = self.rows_for(OpenCodeParser(), self.STATE_DB)
+        db = OPENCODE_STATE_DB_NAME
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[1:6]],
+            [
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:30.000Z",
+                    "session archived (from %s session_v2, time_archived)" % db,
+                ),
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:00.000Z",
+                    "permission setting: session bash git *=allow "
+                    "(from %s session_v2.permission, time_updated)" % db,
+                ),
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:00.000Z",
+                    "permission setting: session edit *.env=deny "
+                    "(from %s session_v2.permission, time_updated)" % db,
+                ),
+                (
+                    "",
+                    OPENCODE_WORKTREE,
+                    "2026-10-03T12:00:04.000Z",
+                    "scratch directory: %s (git worktree of /srv/proj strategy=git) "
+                    "(from %s worktree, time_created)" % (OPENCODE_WORKTREE, db),
+                ),
+                (
+                    "",
+                    "/srv/proj",
+                    "2026-10-03T12:00:03.000Z",
+                    "permission setting: bash npm test=allow (from %s permission, time_created)"
+                    % db,
+                ),
+            ],
+        )
+        self.assertTrue(all(r.turn_type == "system" for r in rows[:6]))
+        # A deny rule in 2.0: the result, then the decision on the call's id.
+        res, decision = rows[-2:]
+        self.assertEqual(res.text, "[error] permission.rejected Permission denied: edit")
+        self.assertEqual(
+            (decision.turn_type, decision.text, decision.tool_use_id, decision.timestamp_utc),
+            (
+                "system",
+                "permission decision: rejected (permission.rejected)",
+                "call_s1",
+                res.timestamp_utc,
+            ),
+        )
+
+    def test_bad_session_permission_is_reported(self):
+        import sqlite3
+
+        self.with_state()
+        con = sqlite3.connect(str(self.home / self.STATE_DB))
+        con.execute(
+            "UPDATE session_v2 SET permission = '{\"x\":' WHERE id = ?", (OPENCODE_ARCHIVED,)
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.STATE_DB)
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.text, r.session_id) for r in bad],
+            [
+                (
+                    'parser: unparseable record 1 (session_v2.permission: not a JSON array): {"x":',
+                    OPENCODE_ARCHIVED,
+                )
+            ],
+        )
+        self.assertIn("permission decision: rejected (permission.rejected)", [r.text for r in rows])
+
+    def test_v1_permission_decisions(self):
+        # 1.x refusal texts in a tool part's `state.error` (packages/core/src/
+        # v1/permission.ts:7-25 at 907b3bc), each followed by its decision.
+        import sqlite3
+
+        texts = {
+            "call_r1": "The user rejected permission to use this specific tool call.",
+            "call_r2": "The user rejected permission to use this specific tool call with the "
+            "following feedback: use the staging host",
+            "call_r3": "The user has specified a rule which prevents you from using this specific "
+            'tool call. Here are some of the relevant rules [{"permission":"bash"}]',
+            "call_r4": "Tool execution aborted",
+        }
+        con = sqlite3.connect(str(self.home / self.DB))
+        for n, (call, err) in enumerate(texts.items()):
+            data = {
+                "type": "tool",
+                "callID": call,
+                "tool": "bash",
+                "state": {
+                    "status": "error",
+                    "input": {"command": "rm -rf build"},
+                    "error": err,
+                    "time": {"start": 1791018004000 + n, "end": 1791018004500 + n},
+                },
+            }
+            con.execute(
+                "INSERT INTO part VALUES (?, 'msg_02', ?, 1791018004000, 1791018004000, ?)",
+                ("prt_07%d" % n, OPENCODE_SESSION, json.dumps(data)),
+            )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        got = [
+            (r.tool_use_id, r.text)
+            for r in rows
+            if r.text.startswith("permission decision:") and r.tool_use_id
+        ]
+        self.assertEqual(
+            got,
+            [
+                ("call_r1", "permission decision: rejected"),
+                ("call_r2", "permission decision: rejected with feedback"),
+                ("call_r3", "permission decision: denied by rule"),
+            ],
+        )
+        for call, _ in got:
+            res = next(r for r in rows if r.tool_use_id == call and r.turn_type == "tool_result")
+            dec = next(r for r in rows if r.tool_use_id == call and r.turn_type == "system")
+            self.assertEqual(rows.index(dec), rows.index(res) + 1)
+            self.assertEqual(dec.timestamp_utc, res.timestamp_utc)
+
+    def test_prompt_history_is_secondary(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "prompt-history.jsonl"
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [
+                (r.turn_type, r.tool_name, r.text, r.timestamp_utc, r.session_id, r.source_line)
+                for r in rows
+            ],
+            [
+                ("user", "", "list files", "", "", 1),
+                ("tool_use", "shell", "git status", "", "", 2),
+                ("user", "", "only the history kept this", "", "", 3),
+            ],
+        )
+
+    def test_prompt_history_truncated_line(self):
+        self.with_state()
+        path = self.home / self.STATE / "prompt-history.jsonl"
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"text": "after the cut", "pasted": []}\n')
+        rows = self.rows_for(OpenCodeParser(), self.STATE + "prompt-history.jsonl")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "list files",
+                "git status",
+                "only the history kept this",
+                "after the cut",
+                bad_line_text(),
+            ],
+        )
+        self.assertEqual((rows[-1].turn_type, rows[-1].source_line), ("system", 4))
+
+    def test_prompt_stash(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "prompt-stash.jsonl"
+        self.assertFalse(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "2026-10-03T12:00:05.000Z",
+                    "prompt stashed (unsent): draft: rotate the keys (from %s, timestamp)" % rel,
+                ),
+                (
+                    "system",
+                    "2026-10-03T12:00:06.000Z",
+                    "prompt stashed (unsent): older stash (from %s, timestamp)" % rel,
+                ),
+            ],
+        )
+        path = self.home / rel
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"input": "after the cut", "timestamp": 1791028810000}\n')
+        rows = self.rows_for(p, rel)
+        self.assertEqual(len(rows), 4)
+        self.assertIn("after the cut", rows[2].text)
+        self.assertEqual(rows[3].text, bad_line_text())
+
+    def test_pinned_sessions(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "session.json"
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    sid,
+                    to_utc(OPENCODE_STATE_MTIME),
+                    "session pinned: %s (from %s pinned, file mtime)" % (sid, rel),
+                )
+                for sid in (OPENCODE_SESSION, OPENCODE_PINNED_GONE)
+            ],
+        )
+        (self.home / rel).write_text('{"pinned": [', encoding="utf-8")
+        rows = self.rows_for(p, rel)
+        self.assertEqual([r.text for r in rows], ["parser: %s is not a JSON object" % rel])
+
+    def test_state_noise_not_wanted(self):
+        self.with_state()
+        p = OpenCodeParser()
+        for name in ("kv.json", "service.json"):
+            self.assertFalse(p.wants(self.artifact(self.STATE + name)), name)
+        # Kilo Code's TUI has no pinned-session file.
+        self.assertFalse(
+            KiloCodeParser().pinned_rx.match(".local/state/kilo/session.json"), "kilo pinned"
+        )
+
+    def test_history_pairs_with_the_transcript(self):
+        import contextlib
+
+        self.with_state()
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "opencode"])
+        timeline = read_jsonl(out / "timeline.jsonl")
+        hist = [r for r in timeline if r["source_file"].endswith("prompt-history.jsonl")]
+        # "list files" pairs with the 1.x transcript's prompt and the shell
+        # line "git status" with the 2.0 `shell` record's call, so both are
+        # dropped; the prompt no transcript holds is kept, as recovered.
+        self.assertEqual(
+            [(r["text"], r["recovered"]) for r in hist], [("only the history kept this", "yes")]
+        )
+        sessions = {r["session_id"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertIn(OPENCODE_PINNED_GONE, sessions)
 
 
 class KiloCodeTests(ParserBase):
@@ -6567,6 +9161,238 @@ class KiloCodeTests(ParserBase):
         self.assertEqual(run("[1, 2"), ([1, 2], [(3, "array cut off after record 2", "")]))
         self.assertEqual(run('{"a":1}'), ([], [(1, "not a JSON array", "")]))
         self.assertEqual(run("[1] x"), ([1], [(2, "unexpected data after the array", "")]))
+
+    # -- standing state, past use, remote control, retention (issues 192, 221) -------
+    LOG = ".local/share/kilo/log/" + KILO_LOG_NAME
+    CONFIG = ".config/kilo/kilo.jsonc"
+    POLICY = ".local/state/kilo-sandbox-policy/%s/%s.json" % (
+        KILO_SANDBOX_SESSION_HASH,
+        KILO_SANDBOX_DIR_HASH,
+    )
+    PREFERENCE = ".local/state/kilo-sandbox-preference/%s.json" % KILO_SANDBOX_DIR_HASH
+    RETENTION = ".local/share/kilo/retention/state.json"
+    HISTORY = ".local/state/kilo/prompt-history.jsonl"
+
+    def with_state(self):
+        build_kilo_state(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_config_permission_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        src = "(from %s, file mtime)" % self.CONFIG
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                ("system", "", to_utc(KILO_SHARE_MTIME), "permission setting: %s %s" % (t, src))
+                for t in (
+                    "permission.bash.git status=allow",
+                    "permission.bash.rm *=deny",
+                    "permission.webfetch=ask",
+                )
+            ],
+        )
+        (self.home / self.CONFIG).write_text('{"permission": "allow"}', encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        self.assertEqual([r.text for r in rows], ["permission setting: permission=allow " + src])
+        (self.home / self.CONFIG).write_text('{"model": "x"}', encoding="utf-8")
+        self.assertEqual(self.rows_for(KiloCodeParser(), self.CONFIG), [])
+        (self.home / self.CONFIG).write_text('{"permission": {', encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: %s could not be decoded" % self.CONFIG))
+
+    def test_sandbox_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.POLICY)
+        src = "(from %s, file mtime)" % self.POLICY
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: sandbox.%s %s" % (t, src)
+                for t in (
+                    "enabled=true",
+                    "mode=proxy",
+                    'allowedHosts=["registry.npmjs.org"]',
+                    'writablePaths=["/srv/proj"]',
+                    "version=3",
+                )
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.timestamp_utc) for r in rows}, {("", to_utc(KILO_SHARE_MTIME))}
+        )
+        rows = self.rows_for(KiloCodeParser(), self.PREFERENCE)
+        self.assertEqual(
+            [r.text for r in rows],
+            ["permission setting: sandbox.enabled=false (from %s, file mtime)" % self.PREFERENCE],
+        )
+        (self.home / self.PREFERENCE).write_text("{", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.PREFERENCE)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: %s is not true or false" % self.PREFERENCE]
+        )
+        (self.home / self.POLICY).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.POLICY)
+        self.assertEqual([r.text for r in rows], ["parser: %s is not a JSON object" % self.POLICY])
+
+    def test_retention_row(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.RETENTION)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T12:00:00.000Z",
+                    "sessions deleted by retention: deleted=12 scanned=40 skippedActive=1 "
+                    "failed=0 durationMs=830 reclaimedBytes=4096 (from retention/state.json, at)",
+                )
+            ],
+        )
+        (self.home / self.RETENTION).write_text("[]", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.RETENTION)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: retention/state.json is not a JSON object"]
+        )
+
+    def test_remote_control_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.LOG)
+        src = "(from log/%s, " % KILO_LOG_NAME
+        self.assertEqual(
+            [(r.source_line, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    2,
+                    "",
+                    "",
+                    "2026-10-03T10:00:05.000Z",
+                    "remote control: connection enabled connected=true " + src + "line time)",
+                ),
+                (
+                    3,
+                    KILO_SESSION,
+                    "/srv/proj",
+                    "2026-10-03T10:00:09.250Z",
+                    "remote control: session started model=anthropic/claude-sonnet-4-5 "
+                    "directory=/srv/proj " + src + "startedAt)",
+                ),
+                (
+                    4,
+                    KILO_SESSION,
+                    "",
+                    "2026-10-03T10:05:00.000Z",
+                    "remote control: session ended reason=disabled durationMs=290750 "
+                    "startedAt=2026-10-03T10:00:09.250Z " + src + "line time)",
+                ),
+                (
+                    5,
+                    "",
+                    "",
+                    "2026-10-03T10:05:00.000Z",
+                    "remote control: connection disabled " + src + "line time)",
+                ),
+            ],
+        )
+        self.assertFalse(KiloCodeParser.records_relay or KiloCodeParser.records_origin)
+
+    def test_remote_control_line_without_fields(self):
+        self.with_state()
+        bad = "INFO  2026-10-03T10:06:00 +1ms service=kilo-sessions remote session started"
+        with open(self.home / self.LOG, "a", encoding="utf-8") as fh:
+            fh.write(bad + "\n")
+            fh.write(
+                "INFO  2026-10-03T10:07:00 +1ms service=kilo-sessions connected=false "
+                "remote connection enabled\n"
+            )
+        rows = self.rows_for(KiloCodeParser(), self.LOG)
+        self.assertEqual(len(rows), 6)
+        self.assertTrue(rows[4].text.startswith("remote control: connection enabled connected=f"))
+        self.assertEqual(
+            (rows[5].text, rows[5].source_line, rows[5].timestamp_utc),
+            (
+                "parser: unparseable line (remote session started without its fields): " + bad,
+                6,
+                "",
+            ),
+        )
+
+    def test_prompt_history_is_secondary(self):
+        self.with_state()
+        p = KiloCodeParser()
+        self.assertTrue(KiloCodeParser.has_secondary)
+        self.assertTrue(p.secondary(self.artifact(self.HISTORY)))
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.text, r.timestamp_utc) for r in rows],
+            [("user", "", "fix the tests", ""), ("tool_use", "shell", "ls -la", "")],
+        )
+        path = self.home / self.HISTORY
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"input": "after the cut", "parts": []}\n')
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [r.text for r in rows], ["fix the tests", "ls -la", "after the cut", bad_line_text()]
+        )
+        rows = self.rows_for(p, ".local/state/kilo/prompt-stash.jsonl")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "prompt stashed (unsent): stashed idea "
+                "(from .local/state/kilo/prompt-stash.jsonl, timestamp)"
+            ],
+        )
+
+    def test_v1_refusal_in_kilo_db(self):
+        # packages/core/src/v1/permission.ts:7-27 at 87cc35c: the error's
+        # message is the part's `state.error` (session/processor.ts:299-312).
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.DB))
+        data = {
+            "type": "tool",
+            "callID": "call_k9",
+            "tool": "bash",
+            "state": {
+                "status": "error",
+                "input": {"command": "rm -rf /srv/proj/build"},
+                "error": "The user rejected permission to use this specific tool call with the "
+                "following feedback: not that directory",
+                "time": {"start": 1791021603500, "end": 1791021603600},
+            },
+        }
+        con.execute(
+            "INSERT INTO part VALUES ('prt_01JAXZ','msg_01JAXA',?,1791021603500,1791021603500,?)",
+            (KILO_SESSION, json.dumps(data)),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(KiloCodeParser(), self.DB)
+        dec = [r for r in rows if r.text.startswith("permission decision:")]
+        self.assertEqual(
+            [(r.text, r.tool_use_id, r.timestamp_utc) for r in dec],
+            [
+                (
+                    "permission decision: rejected with feedback",
+                    "call_k9",
+                    "2026-10-03T10:00:03.600Z",
+                )
+            ],
+        )
+
+    def test_state_files_wanted_by_kilo_only(self):
+        self.with_state()
+        for rel in (self.LOG, self.CONFIG, self.POLICY, self.PREFERENCE, self.RETENTION):
+            a = self.artifact(rel)
+            self.assertEqual(a.agent, "kilo-code", rel)
+            self.assertTrue(KiloCodeParser().wants(a), rel)
+            self.assertFalse(OpenCodeParser().wants(a), rel)
+        # Kilo's own auth file stays unwanted.
+        self.assertFalse(KiloCodeParser().wants(self.artifact(".local/share/kilo/auth.json")))
 
 
 from fixtures import (
@@ -6742,7 +9568,16 @@ from fixtures import (
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
     CLINE_CLI_TASK,
+    CLINE_CLOUD_SESSION,
+    CLINE_DENIED_SESSION,
+    CLINE_GLOBAL_SETTINGS,
+    CLINE_GLOBAL_STATE,
+    CLINE_HOOKS_LOG,
+    CLINE_IMPORTED_SESSION,
+    CLINE_MCP_SETTINGS,
     CLINE_OLD_SESSION,
+    CLINE_PENDING_SESSION,
+    CLINE_PENDING_START,
     CLINE_QUEUE_FAILED,
     CLINE_QUEUE_PENDING,
     CLINE_SESSION,
@@ -6750,9 +9585,16 @@ from fixtures import (
     CLINE_SYNC_SECRET,
     CLINE_TASK,
     ROO_CLI_TASK,
+    ROO_CLOUD_TOKEN,
     ROO_GONE_TASK,
     ROO_TASK,
+    ROO_VSCDB_REL,
+    ROO_WS_STATE_REL,
+    ROO_WS_VSCDB_REL,
     build_cline_blob_upload,
+    build_cline_denied_and_imported,
+    build_cline_hooks_log,
+    build_cline_settings_and_cloud,
     build_cline_sync_queue,
 )
 
@@ -7121,7 +9963,6 @@ class ClineTests(ParserBase):
     def test_config_and_secrets_not_wanted(self):
         p = ClineParser()
         for rel in (
-            CLINE_GS + "settings/cline_mcp_settings.json",
             ".cline/data/secrets.json",
             self.SDK + ".compaction.json",
             ".cline/data/db/cron.db",
@@ -7356,6 +10197,316 @@ class ClineTests(ParserBase):
             ["parser: sync-queue item x is not a JSON object"],
         )
 
+    # -- source review of 2026-10-21 (#190), source-derived
+
+    def _reopen(self, *builders) -> None:
+        for build in builders:
+            build(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_hooks_log_rows(self):
+        self._reopen(build_cline_hooks_log)
+        p = ClineParser()
+        self.assertTrue(p.wants(self.artifact(CLINE_HOOKS_LOG)))
+        self.assertTrue(p.secondary(self.artifact(CLINE_HOOKS_LOG)))
+        self.assertEqual(p.secondary_tolerance(self.artifact(CLINE_HOOKS_LOG)), 3600.0)
+        self.assertEqual(p.secondary_tolerance(self.artifact(self.INPUT_HISTORY)), 2.0)
+        rows = self.rows_for(p, CLINE_HOOKS_LOG)
+        s, old = CLINE_SESSION, CLINE_OLD_SESSION
+        self.assertEqual(
+            [
+                (r.source_line, r.turn_type, r.session_id, r.tool_name, r.tool_use_id, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    1,
+                    "system",
+                    s,
+                    "",
+                    "",
+                    "hook audit: agent_start cline_version=4.1.25 user=alice agent=agent_lead",
+                ),
+                (2, "user", s, "", "", "fix tests"),
+                (3, "tool_use", s, "bash", "call_1", "pytest -q"),
+                (4, "tool_result", s, "bash", "call_1", "3 passed"),
+                (5, "assistant", s, "", "", "Fixed."),
+                (6, "tool_use", old, "bash", "call_9", "git branch -D stale"),
+                (7, "tool_result", old, "bash", "call_9", "[error] exit code 1"),
+                (
+                    8,
+                    "system",
+                    old,
+                    "",
+                    "",
+                    "hook audit: agent_abort cline_version=4.1.25 user=alice agent=agent_lead"
+                    " reason=aborted by user",
+                ),
+                (
+                    9,
+                    "system",
+                    old,
+                    "",
+                    "",
+                    "hook audit: session_shutdown reason=stale_process pid=4100 source=cli",
+                ),
+            ],
+        )
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-03T10:01:42.500Z")
+        self.assertEqual({r.project_path for r in rows[:8]}, {"/srv/proj"})
+        self.assertEqual(rows[8].project_path, "")
+
+    def test_hooks_log_dedup_keeps_what_the_transcripts_lost(self):
+        self._reopen(build_cline_hooks_log)
+        p = ClineParser()
+        primary = self.rows_for(p, self.SDK + ".messages.json")
+        audit = self.rows_for(p, CLINE_HOOKS_LOG)
+        tolerance = p.secondary_tolerance(self.artifact(CLINE_HOOKS_LOG))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in audit])
+        self.assertEqual(dropped["cline"], 4)
+        survivors = kept[len(primary) :]
+        self.assertEqual(
+            [(r.session_id, r.turn_type, r.recovered) for r in survivors],
+            [
+                (CLINE_SESSION, "system", ""),
+                (CLINE_OLD_SESSION, "tool_use", "yes"),
+                (CLINE_OLD_SESSION, "tool_result", "yes"),
+                (CLINE_OLD_SESSION, "system", ""),
+                (CLINE_OLD_SESSION, "system", ""),
+            ],
+        )
+
+    def test_hooks_log_truncated_line(self):
+        self._reopen(build_cline_hooks_log)
+        path = self.home / CLINE_HOOKS_LOG
+        first, rest = path.read_bytes().split(b"\n", 1)
+        path.write_bytes(first + b"\n" + BAD_LINE.encode() + b"\n" + rest)
+        write_bad_line(path)
+        rows = self.rows_for(ClineParser(), CLINE_HOOKS_LOG)
+        self.assertEqual(len(rows), 11)
+        self.assertEqual((rows[0].source_line, rows[1].source_line), (1, 3))
+        self.assertEqual(rows[1].text, "fix tests")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[-2:]],
+            [(2, "system", bad_line_text()), (11, "system", bad_line_text())],
+        )
+
+    def test_standing_permission_settings(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        mtime = "2026-10-03T10:10:00.000Z"
+
+        def settings(rel):
+            rows = self.rows_for(p, rel)
+            got = [r for r in rows if r.text.startswith("permission setting:")]
+            for r in got:
+                self.assertEqual(
+                    (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                    ("system", mtime, "", ""),
+                )
+                self.assertTrue(r.text.endswith("(from %s, file mtime)" % rel), r.text)
+            return [r.text.split(" (from ")[0] for r in got]
+
+        self.assertEqual(
+            settings(CLINE_GLOBAL_STATE),
+            [
+                "permission setting: autoApprovalSettings.enabled=true",
+                "permission setting: autoApprovalSettings.maxRequests=20",
+                "permission setting: autoApprovalSettings.actions.readFiles=true",
+                "permission setting: autoApprovalSettings.actions.editFiles=true",
+                "permission setting: autoApprovalSettings.actions.executeSafeCommands=false",
+                "permission setting: autoApprovalSettings.actions.executeAllCommands=true",
+                "permission setting: autoApprovalSettings.actions.useBrowser=false",
+                "permission setting: autoApprovalSettings.actions.useMcp=true",
+                "permission setting: mode=act",
+            ],
+        )
+        self.assertEqual(
+            settings(CLINE_GLOBAL_SETTINGS),
+            [
+                "permission setting: toolAutoApprove=false",
+                "permission setting: planActMode=plan",
+                "permission setting: disabledTools=browser_action",
+                "permission setting: disabledPlugins=acme-plugin",
+                "permission setting: tools.web_fetch.enabled=false",
+            ],
+        )
+        self.assertEqual(
+            settings(CLINE_MCP_SETTINGS),
+            [
+                "permission setting: mcpServers.github.autoApprove=list_issues",
+                "permission setting: mcpServers.github.autoApprove=get_issue",
+                "permission setting: mcpServers.github.disabled=false",
+            ],
+        )
+        everything = " ".join(
+            r.text
+            for rel in (CLINE_GLOBAL_STATE, CLINE_GLOBAL_SETTINGS, CLINE_MCP_SETTINGS)
+            for r in self.rows_for(p, rel)
+        )
+        for secret in ("ghp_not_real", "npx", "apiProvider", "telemetryOptOut"):
+            self.assertNotIn(secret, everything)
+        # The extension's older copy under globalStorage is read the same way.
+        self.assertTrue(p.wants(self.artifact(CLINE_GS + "settings/cline_mcp_settings.json")))
+        self.assertEqual(self.rows_for(p, CLINE_GS + "settings/cline_mcp_settings.json"), [])
+
+    def test_cloud_origin_and_sync_rows(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        self.assertTrue(p.records_origin)
+        state = [
+            r for r in self.rows_for(p, CLINE_GLOBAL_STATE) if not r.text.startswith("permission")
+        ]
+        source = "(from %s cloudSessionStatuses, observedAt)" % CLINE_GLOBAL_STATE
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.text) for r in state],
+            [
+                (
+                    "system",
+                    "2026-10-03T10:10:00.000Z",
+                    "",
+                    "cloud task target: target=cloud repository_id=812345678 branch=main"
+                    " (from %s, file mtime)" % CLINE_GLOBAL_STATE,
+                ),
+                (
+                    "system",
+                    "2026-10-03T10:03:20.000Z",
+                    CLINE_CLOUD_SESSION,
+                    "session origin: remote cline-cloud session %s status completed %s"
+                    % (CLINE_CLOUD_SESSION, source),
+                ),
+                (
+                    "system",
+                    "2026-10-03T10:03:20.000Z",
+                    CLINE_CLOUD_SESSION,
+                    "session synced: cline-cloud holds session %s, no local transcript %s"
+                    % (CLINE_CLOUD_SESSION, source),
+                ),
+            ],
+        )
+        self.assertTrue(p.wants(self.artifact(CLINE_PENDING_START)))
+        pending = self.rows_for(p, CLINE_PENDING_START)
+        source = "(from %s, file mtime)" % CLINE_PENDING_START
+        self.assertEqual(
+            [(r.source_line, r.timestamp_utc, r.session_id, r.text) for r in pending],
+            [
+                (
+                    1,
+                    "2026-10-03T10:10:00.000Z",
+                    CLINE_PENDING_SESSION,
+                    "session origin: remote cline-cloud session %s sandbox start pending"
+                    " account=user:usr_0f9e8d7c endpoint=https://api.cline.bot %s"
+                    % (CLINE_PENDING_SESSION, source),
+                ),
+                (
+                    1,
+                    "2026-10-03T10:10:00.000Z",
+                    CLINE_PENDING_SESSION,
+                    "session synced: cline-cloud holds session %s, no local transcript %s"
+                    % (CLINE_PENDING_SESSION, source),
+                ),
+            ],
+        )
+        local = self.rows_for(p, self.SDK + ".json")
+        sessions = {
+            x.session_id: (x.origin, x.synced)
+            for x in summarise(
+                state + pending + local, frozenset({"cline"}), origin_agents=frozenset({"cline"})
+            )
+        }
+        self.assertEqual(
+            sessions,
+            {
+                CLINE_CLOUD_SESSION: ("remote", "yes"),
+                CLINE_PENDING_SESSION: ("remote", "yes"),
+                CLINE_SESSION: ("local", "no"),
+            },
+        )
+
+    def test_settings_files_that_are_not_objects(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        for rel, what in (
+            (CLINE_GLOBAL_STATE, "globalState.json"),
+            (CLINE_GLOBAL_SETTINGS, "global-settings.json"),
+            (CLINE_MCP_SETTINGS, "cline_mcp_settings.json"),
+        ):
+            (self.home / rel).write_text("[1, 2]", encoding="utf-8")
+            self.assertEqual(
+                [r.text for r in self.rows_for(p, rel)], ["parser: %s is not a JSON object" % what]
+            )
+        path = self.home / CLINE_PENDING_START
+        path.write_text('[{"account": "x"}, {"sessionId": "ses-1"}]', encoding="utf-8")
+        rows = self.rows_for(p, CLINE_PENDING_START)
+        self.assertEqual(
+            [(r.source_line, r.session_id, r.text.split(" ")[0]) for r in rows],
+            [
+                (2, "ses-1", "session"),
+                (2, "ses-1", "session"),
+                (1, "", "parser:"),
+            ],
+        )
+        self.assertEqual(rows[-1].text, "parser: pending-start record 1 has no sessionId")
+        path.write_text("{}", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(p, CLINE_PENDING_START)],
+            ["parser: cloud pending-start file is not a JSON array"],
+        )
+
+    def test_rejected_and_blocked_calls(self):
+        self._reopen(build_cline_denied_and_imported)
+        rel = ".cline/data/sessions/%s/%s.messages.json" % (
+            CLINE_DENIED_SESSION,
+            CLINE_DENIED_SESSION,
+        )
+        rows = self.rows_for(ClineParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id) for r in rows],
+            [
+                ("user", "", ""),
+                ("tool_use", "bash", "call_r"),
+                ("tool_use", "web_fetch", "call_b"),
+                ("tool_result", "bash", "call_r"),
+                ("system", "bash", "call_r"),
+                ("tool_result", "web_fetch", "call_b"),
+                ("system", "web_fetch", "call_b"),
+            ],
+        )
+        self.assertEqual(
+            rows[4].text,
+            "permission decision: rejected reason=This tool call was rejected by the user and"
+            " not executed. The user provided the following feedback:\n<feedback>\nnot that"
+            " one\n</feedback>",
+        )
+        self.assertEqual(
+            rows[6].text,
+            'permission decision: blocked reason=Tool "web_fetch" is disabled by policy',
+        )
+        self.assertEqual(
+            {(r.timestamp_utc, r.session_id, r.model) for r in rows[3:]},
+            {("2026-10-03T10:08:22.000Z", CLINE_DENIED_SESSION, "claude-sonnet-4-5")},
+        )
+        # A successful or merely failed call has no decision row.
+        plain = self.rows_for(ClineParser(), self.SDK + ".messages.json")
+        self.assertFalse([r for r in plain if r.text.startswith("permission decision:")])
+
+    def test_imported_session_names_its_source(self):
+        self._reopen(build_cline_denied_and_imported)
+        rel = ".cline/data/sessions/%s/%s.json" % (CLINE_IMPORTED_SESSION, CLINE_IMPORTED_SESSION)
+        start = self.rows_for(ClineParser(), rel)[0]
+        self.assertEqual(start.session_id, CLINE_IMPORTED_SESSION)
+        self.assertTrue(start.text.startswith("session start: source=desktop"), start.text)
+        self.assertIn(
+            " prompt=port the parser imported_from=claude-code"
+            " imported_session=5f0c1d2e-0000-4000-8000-00000000c1a0"
+            " imported_path=/home/u/.claude/projects/-srv-proj/5f0c1d2e.jsonl"
+            " imported_at=2026-10-03T10:11:45.000Z imported_provider=anthropic"
+            " imported_model=claude-opus-4-5",
+            start.text,
+        )
+        native = self.rows_for(ClineParser(), self.SDK + ".json")[0]
+        self.assertNotIn("imported_", native.text)
+
 
 class RooCodeTests(ParserBase):
     UI = ROO_GS + "tasks/%s/ui_messages.json" % ROO_TASK
@@ -7369,6 +10520,7 @@ class RooCodeTests(ParserBase):
                 "user",
                 "system",
                 "tool_use",
+                "system",
                 "tool_use",
                 "tool_result",
                 "system",
@@ -7382,7 +10534,16 @@ class RooCodeTests(ParserBase):
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "roo-code", ROO_TASK)
             )
             self.assertEqual((r.project_path, r.git_branch, r.model), ("/srv/proj", "", ""))
-        user, api, diff, cmd, out, condense, ask, feedback, _done = rows
+        user, api, diff, approved, cmd, out, condense, ask, feedback, _done = rows
+        # The tool ask marked isAnswered (approved, by a click or automatically).
+        self.assertEqual(
+            approved.text,
+            "permission decision: approved isAnswered=true (user or auto-approval)",
+        )
+        self.assertEqual(
+            (approved.tool_use_id, approved.tool_name, approved.timestamp_utc),
+            (diff.tool_use_id, "appliedDiff", diff.timestamp_utc),
+        )
         self.assertEqual(
             (user.text, user.timestamp_utc), ("rename the helper", "2026-10-03T10:03:20.000Z")
         )
@@ -7400,32 +10561,83 @@ class RooCodeTests(ParserBase):
         rows = self.rows_for(RooCodeParser(), self.CLI_API, include_thinking=True)
         self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["check the runner"])
 
+    GS_API = ROO_GS + "tasks/%s/api_conversation_history.json" % ROO_TASK
+    DENIED = "permission decision: denied feedback=leave conftest alone"
+    APPROVED = "permission decision: approved feedback=ok"
+
     def test_api_history_only_without_ui_messages(self):
+        # Beside ui_messages.json only the decision rows come from it.
+        rows = self.rows_for(RooCodeParser(), self.GS_API)
         self.assertEqual(
-            self.rows_for(
-                RooCodeParser(), ROO_GS + "tasks/%s/api_conversation_history.json" % ROO_TASK
-            ),
-            [],
+            [(r.turn_type, r.tool_use_id, r.tool_name, r.text) for r in rows],
+            [
+                ("system", "toolu_01B", "write_to_file", self.DENIED),
+                ("system", "toolu_01C", "read_file", self.APPROVED),
+            ],
         )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.timestamp_utc),
+                (ROO_TASK, "/srv/proj", "2026-10-03T10:05:05.000Z"),
+            )
         rows = self.rows_for(RooCodeParser(), self.CLI_API)
-        self.assertEqual([r.turn_type for r in rows], ["user", "tool_use", "tool_result"])
         self.assertEqual(
-            [r.timestamp_utc for r in rows],  # Roo records carry their own ts
+            [r.turn_type for r in rows],
+            [
+                "user",
+                "tool_use",
+                "tool_result",
+                "tool_use",
+                "tool_use",
+                "tool_result",
+                "system",
+                "tool_result",
+                "system",
+            ],
+        )
+        self.assertEqual(
+            [r.timestamp_utc for r in rows[:3]],  # Roo records carry their own ts
             ["2026-10-03T10:05:00.000Z", "2026-10-03T10:05:02.000Z", "2026-10-03T10:05:03.000Z"],
         )
         self.assertEqual(
             {(r.session_id, r.project_path) for r in rows}, {(ROO_CLI_TASK, "/srv/proj")}
         )
         self.assertEqual((rows[1].tool_use_id, rows[2].tool_use_id), ("toolu_01A", "toolu_01A"))
+        # Each decision follows its tool_result and joins its call.
+        self.assertEqual(
+            [(r.tool_use_id, r.tool_name, r.text) for r in rows[5:]],
+            [
+                ("toolu_01B", "", '{"status":"denied","feedback":"leave conftest alone"}'),
+                ("toolu_01B", "write_to_file", self.DENIED),
+                ("toolu_01C", "", '{"status":"approved","feedback":"ok"}\n\n[pytest]'),
+                ("toolu_01C", "read_file", self.APPROVED),
+            ],
+        )
+
+    def test_api_decisions_truncated_beside_ui_messages(self):
+        # The API history is read for decisions even beside ui_messages.json,
+        # so its bad records are reported there too.
+        write_bad_line(self.home / self.GS_API)
+        rows = self.rows_for(RooCodeParser(), self.GS_API)
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertTrue(rows[-1].text.startswith("parser: "), rows[-1].text)
+        self.assertEqual((rows[-1].session_id, rows[-1].project_path), (ROO_TASK, "/srv/proj"))
+        self.assertEqual([r.text for r in rows[:-1]], [self.DENIED, self.APPROVED])
 
     def test_history_item_and_index(self):
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/%s/history_item.json" % ROO_TASK)
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
         self.assertTrue(rows[0].text.startswith("task: rename the helper"))
         self.assertIn("mode=code", rows[0].text)
+        # HistoryItem.mode, the task's mode slug, is its permission mode.
+        self.assertEqual(
+            (rows[1].turn_type, rows[1].text, rows[1].session_id, rows[1].timestamp_utc),
+            ("system", "permission mode: code", ROO_TASK, rows[0].timestamp_utc),
+        )
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/_index.json")
         self.assertEqual(
-            [r.session_id for r in rows], [ROO_GONE_TASK]
+            [(r.session_id, r.text.split(":")[0]) for r in rows],
+            [(ROO_GONE_TASK, "task"), (ROO_GONE_TASK, "permission mode")],
         )  # tasks on disk are not repeated
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/%s/task_metadata.json" % ROO_TASK)
         self.assertEqual([r.text.split(":")[0] for r in rows], ["file roo_read", "file roo_edit"])
@@ -7465,8 +10677,8 @@ class RooCodeTests(ParserBase):
                 ("h1", "alice", "roo-code", "", "", ""),
             )
             self.assertTrue(r.source_file.endswith(self.CLI_HISTORY), r.source_file)
-        # The settings file beside it is configuration, not history.
-        self.assertFalse(p.wants(self.artifact(".roo/cli-settings.json")))
+        # The settings file beside it is read for permission state only.
+        self.assertFalse(p.secondary(self.artifact(".roo/cli-settings.json")))
 
     def test_cli_history_truncated(self):
         write_bad_line(self.home / self.CLI_HISTORY)
@@ -7504,18 +10716,160 @@ class RooCodeTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.UI)
         rows = self.rows_for(RooCodeParser(), self.UI)
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 11)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+        self.assertEqual(sum(r.text.startswith("parser:") for r in rows), 1)
+
+    # ---- standing settings, Roo Code Cloud (source-derived) -------------------
+
+    GLOBAL_STATE = ".vscode-mock/global-storage/global-state.json"
+    STANDING: ClassVar[list[str]] = [
+        "autoApprovalEnabled=true",
+        "alwaysAllowReadOnly=true",
+        "alwaysAllowExecute=false",
+        "allowedCommands=git status",
+        "allowedCommands=npm test",
+        "deniedCommands=rm -rf",
+        "mode=architect",
+        "roo-cline.allowedCommands=git status",
+    ]
+    SYNC: ClassVar[list[str]] = [
+        "user-settings.settings.taskSyncEnabled=true",
+        "organization-settings.cloudSettings.recordTaskMessages=true",
+        "organization-settings.cloudSettings.enableTaskSharing=false",
+    ]
+
+    def _expected_state(self, source):
+        cloud = "%s, Roo Code Cloud settings cache" % source
+        return [
+            "permission setting: %s (from %s, file mtime)" % (s, source) for s in self.STANDING
+        ] + ["sync setting: %s (from %s, file mtime)" % (s, cloud) for s in self.SYNC]
+
+    def test_global_state_rows(self):
+        p = RooCodeParser()
+        art = self.artifact(self.GLOBAL_STATE)
+        self.assertTrue(p.wants(art))
+        self.assertFalse(p.secondary(art))
+        rows = self.rows_for(p, self.GLOBAL_STATE)
+        self.assertEqual([r.text for r in rows], self._expected_state(self.GLOBAL_STATE))
+        for r in rows:
+            self.assertEqual((r.turn_type, r.session_id), ("system", ""))
+            self.assertEqual(r.timestamp_utc, file_mtime(art))
+        self.assertNotIn("customInstructions", " ".join(r.text for r in rows))
+
+    def test_state_vscdb_rows(self):
+        p = RooCodeParser()
+        self.assertIn("vscode", p.reads_agents)
+        art = self.artifact(ROO_VSCDB_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertTrue(p.wants(art))
+        rows = self.rows_for(p, ROO_VSCDB_REL)
+        source = "%s ItemTable RooVeterinaryInc.roo-cline" % ROO_VSCDB_REL
+        self.assertEqual([r.text for r in rows], self._expected_state(source))
+        # The fake state.vscdb beside the extension's tasks is not SQLite.
+        self.assertEqual(
+            self.rows_for(p, ".config/Code/User/globalStorage/state.vscdb"),
+            [],
+        )
+
+    def test_cli_settings_rows(self):
+        rows = self.rows_for(RooCodeParser(), ".roo/cli-settings.json")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: requireApproval=true (from .roo/cli-settings.json, file mtime)",
+                "permission setting: mode=code (from .roo/cli-settings.json, file mtime)",
+            ],
+        )
+
+    def test_mcp_always_allow_rows(self):
+        p = RooCodeParser()
+        rel = ROO_GS + "settings/mcp_settings.json"
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: mcpServers.github.alwaysAllow=%s (from %s, file mtime)"
+                % (tool, rel)
+                for tool in ("list_issues", "get_issue")
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {""})
+        self.assertNotIn("ghp-not-a-real-token", " ".join(r.text for r in rows))
+        # A project's .roo/mcp.json carries the project.
+        art = self.artifact(".roo/mcp.json")
+        proj = Artifact(
+            art.disk_path,
+            "/srv/proj/.roo/mcp.json",
+            art.rel,
+            art.agent,
+            Home(art.home.disk_path, "/srv/proj", "alice", "h1", project=True),
+        )
+        rows = list(p.parse(proj, Options()))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_bad_settings_files(self):
+        for rel, name in (
+            (".roo/cli-settings.json", "cli-settings.json"),
+            (self.GLOBAL_STATE, "global-state.json"),
+            (ROO_WS_STATE_REL, "workspace-state.json"),
+            (".roo/mcp.json", "mcp.json"),
+        ):
+            write_bad_line(self.home / rel)
+            rows = self.rows_for(RooCodeParser(), rel)
+            self.assertEqual(
+                [(r.turn_type, r.text) for r in rows],
+                [("system", "parser: %s is not a JSON object" % name)],
+                rel,
+            )
+
+    def test_retry_queue_rows(self):
+        p = RooCodeParser()
+        expected = (
+            "cloud upload queued: Task Message task=%s type=telemetry retries=2 "
+            "url=https://app.roocode.com/api/events lastError=fetch failed "
+            "(Roo Code Cloud retry queue, from %s roo.retryQueue, request timestamp)"
+        )
+        for rel, source in (
+            (ROO_WS_STATE_REL, ROO_WS_STATE_REL),
+            (ROO_WS_VSCDB_REL, ROO_WS_VSCDB_REL + " ItemTable RooVeterinaryInc.roo-cline"),
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            rows = self.rows_for(p, rel)
+            self.assertEqual([r.text for r in rows], [expected % (ROO_TASK, source)], rel)
+            self.assertEqual(
+                (rows[0].turn_type, rows[0].session_id, rows[0].timestamp_utc),
+                ("system", ROO_TASK, "2026-10-03T10:03:20.500Z"),
+            )
+            # Neither the bearer token nor the message body is written.
+            self.assertNotIn(ROO_CLOUD_TOKEN, rows[0].text)
+            self.assertNotIn("rename the helper", rows[0].text)
+        self.assertFalse(p.records_sync)
 
 
 from doubleagent.parsers.tabby import TabbyParser
 from fixtures import (
     TABBY_BACKUP2_REL,
     TABBY_BACKUP_REL,
+    TABBY_CLIENT_TOKEN,
+    TABBY_CONFIG_REL,
+    TABBY_ENDPOINT_TOKEN,
     TABBY_EVENTS_REL,
+    TABBY_INTELLIJ_REL,
     TABBY_REL,
     TABBY_SECRETS,
+    TABBY_VSCDB_REL,
+)
+
+TABBY_SOURCE_HOST = (
+    "source host: github.com integration acme kind=github api_base=- (account not recorded; "
+    "from integrations table, created_at)"
+)
+TABBY_SOURCE_REPO = (
+    "source host repository: https://github.com/acme/app type=github name=acme/app active=yes "
+    "(integration acme; from provided_repositories table, updated_at)"
 )
 
 
@@ -7524,15 +10878,27 @@ class TabbyTests(ParserBase):
         # The backups and the event log are secondary sources, the live
         # database is not (#122).
         p = TabbyParser()
-        for rel in (TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL):
+        for rel in (
+            TABBY_BACKUP_REL,
+            TABBY_BACKUP2_REL,
+            TABBY_EVENTS_REL,
+            TABBY_INTELLIJ_REL,
+            TABBY_VSCDB_REL,
+        ):
             self.assertTrue(p.secondary(self.artifact(rel)), rel)
         self.assertFalse(p.secondary(self.artifact(TABBY_REL)))
+        self.assertFalse(p.secondary(self.artifact(TABBY_CONFIG_REL)))
 
     def test_rows(self):
         rows = self.rows_for(TabbyParser(), TABBY_REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "assistant", "system", "user", "assistant", "system"],
+            [
+                *("system", "user", "assistant"),  # thread 7
+                *("system", "assistant", "assistant", "assistant"),  # page 4
+                *("system", "user", "assistant", "system"),  # user_events
+                *("system", "system"),  # integration, cached repository
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -7540,11 +10906,11 @@ class TabbyTests(ParserBase):
             )
             self.assertTrue(r.source_file.endswith(TABBY_REL), r.source_file)
         start, user, asst = rows[:3]
-        select = rows[-1]
+        select = rows[-3]
         # The user_events copy of the event log's completion line (#122).
         app = "https://github.com/acme/app"
         self.assertEqual(
-            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[3:6]],
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[7:10]],
             [
                 (
                     "cmpl-7f3a",
@@ -7595,7 +10961,10 @@ class TabbyTests(ParserBase):
 
     def test_backup_and_event_log(self):
         rows = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "system", "user", "assistant"])
+        self.assertEqual(
+            [r.turn_type for r in rows], ["system", "system", "user", "assistant", "system"]
+        )
+        self.assertEqual(rows.pop().text, TABBY_SOURCE_HOST)
         self.assertEqual(
             rows[0].text,
             "backup database db.backup-20260915.sqlite copied before a schema migration; it can "
@@ -7645,10 +11014,20 @@ class TabbyTests(ParserBase):
                 seen.add(a.rel)
                 self.assertEqual(
                     p.wants(a),
-                    a.rel in (TABBY_REL, TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL),
+                    a.rel
+                    in (
+                        TABBY_REL,
+                        TABBY_BACKUP_REL,
+                        TABBY_BACKUP2_REL,
+                        TABBY_EVENTS_REL,
+                        TABBY_CONFIG_REL,
+                        TABBY_INTELLIJ_REL,
+                    ),
                     a.rel,
                 )
-        self.assertIn(".tabby/config.toml", seen)
+        self.assertIn(".tabby-client/agent/config.toml", seen)
+        self.assertIn(".config/JetBrains/IntelliJIdea2025.2/options/intellij-tabby.xml", seen)
+        self.assertIn(".tabby/ee/db.sqlite-wal", seen)
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / TABBY_EVENTS_REL)
@@ -7676,11 +11055,9 @@ class TabbyTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(TabbyParser(), TABBY_REL)
-        self.assertEqual(
-            [r.turn_type for r in rows],
-            ["system", "user", "assistant", "system", "user", "assistant", "system", "system"],
-        )
-        self.assertIn("payload did not parse", rows[-1].text)
+        self.assertEqual(len(rows), 14)
+        self.assertIn("payload did not parse", rows[-3].text)
+        self.assertEqual([r.text for r in rows[-2:]], [TABBY_SOURCE_HOST, TABBY_SOURCE_REPO])
 
     def test_corrupt_backup_is_reported_not_fatal(self):
         (self.home / TABBY_BACKUP2_REL).write_bytes(b"SQLite format 3\x00" + b"\x00" * 84)
@@ -7700,11 +11077,13 @@ class TabbyTests(ParserBase):
                 ("system", "7", "2026-10-01T10:00:00.000Z"),
                 ("user", "7", "2026-10-01T10:00:00.000Z"),
                 ("assistant", "7", "2026-10-01T10:00:02.000Z"),
+                ("system", "", "2026-09-01T09:00:00.000Z"),
             ],
         )
+        self.assertEqual(rows.pop().text, TABBY_SOURCE_HOST)
         self.assertIn("db.backup-20261005.sqlite", rows[0].text)
         # The same texts and projects as the first backup and the live database.
-        first = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
+        first = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)[:-1]
         live = self.rows_for(TabbyParser(), TABBY_REL)
         self.assertEqual(
             [(r.text, r.project_path) for r in rows[1:4]],
@@ -7722,7 +11101,8 @@ class TabbyTests(ParserBase):
         # two backup copies of ephemeral thread 3. The event log's system rows
         # name the owner by id, the database's by email, so both are kept.
         rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["tabby"])
-        self.assertEqual(dropped, {"tabby": 8})
+        self.assertEqual(dropped, {"tabby": 10})
+        self.assertEqual(len([r for r in rows if r.text == TABBY_SOURCE_HOST]), 1)
         texts = [(r.source_file.rsplit("/", 1)[-1], r.turn_type, r.text) for r in rows]
         self.assertEqual(
             [t for t in texts if t[2] in ("def add(a, b):", "return a + b")],
@@ -7766,6 +11146,209 @@ class TabbyTests(ParserBase):
         for secret in TABBY_SECRETS:
             self.assertNotIn(secret, buf.getvalue())
 
+    def test_no_new_secret_reaches_rows(self):
+        # The model api_key, the client token and the VS Code endpoint token
+        # (#211) sit beside what the parser now reads.
+        rows, _, _, _ = cli.collect_rows(self.col, Options(), ["tabby"])
+        for r in rows:
+            for value in r.as_dict().values():
+                for secret in ("sk-tabby-test", TABBY_CLIENT_TOKEN, TABBY_ENDPOINT_TOKEN):
+                    self.assertNotIn(secret, str(value))
+
+    def test_pages(self):
+        # AI-written pages outlive their thread (#211; page.rs:92-150).
+        rows = [r for r in self.rows_for(TabbyParser(), TABBY_REL) if r.session_id == "page:4"]
+        app = "https://github.com/acme/app"
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    4,
+                    "2026-10-01T11:00:00.000Z",
+                    app,
+                    "page start | title Cache invalidation | author alice@example.com (Alice)"
+                    " | code_source acme-app",
+                ),
+                ("assistant", 4, "2026-10-01T11:00:00.000Z", app, "How the cache is cleared."),
+                (
+                    "assistant",
+                    9,
+                    "2026-10-01T11:00:10.000Z",
+                    app,
+                    "Clearing\n\nCall `clear()`. [attachments: code https://github.com/acme/app"
+                    " src/cache.rs:10]",
+                ),
+                (
+                    "assistant",
+                    10,
+                    "2026-10-01T11:00:20.000Z",
+                    app,
+                    "Expiry\n\nEntries expire after an hour.",
+                ),
+            ],
+        )
+
+    def test_source_host_rows(self):
+        # The integration and its cached repository list (schema.sql:142-165);
+        # the access token is never selected.
+        rows = self.rows_for(TabbyParser(), TABBY_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows[-2:]],
+            [
+                ("system", "", "2026-09-01T09:00:00.000Z", TABBY_SOURCE_HOST),
+                ("system", "", "2026-09-02T09:05:00.000Z", TABBY_SOURCE_REPO),
+            ],
+        )
+
+    def test_config_model_rows(self):
+        # config.rs:259-342: one row per configured model, at the file mtime (#211).
+        rows = self.rows_for(TabbyParser(), TABBY_CONFIG_REL)
+        mtime = to_utc((self.home / TABBY_CONFIG_REL).stat().st_mtime)
+        self.assertTrue(all(r.timestamp_utc == mtime for r in rows))
+        self.assertTrue(all((r.turn_type, r.session_id) == ("system", "") for r in rows))
+        if sys.version_info < (3, 11):
+            self.assertEqual(
+                [r.text for r in rows],
+                ["parser: config.toml model tables not read: Python 3.11 or later needed"],
+            )
+            return
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "model configured: completion StarCoder-1B via local"
+                " (from config.toml [model.completion.local], file mtime)",
+                "model configured: chat gpt-4o via http kind=openai/chat"
+                " endpoint=https://api.openai.com/v1 supported_models=gpt-4o,gpt-4o-mini"
+                " (from config.toml [model.chat.http], file mtime)",
+            ],
+        )
+
+    def test_bad_config_is_reported_not_fatal(self):
+        (self.home / TABBY_CONFIG_REL).write_text(
+            '[model.chat.http]\napi_key = "sk-tabby-test\n', encoding="utf-8"
+        )
+        rows = self.rows_for(TabbyParser(), TABBY_CONFIG_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: config.toml"), rows[0].text)
+        self.assertNotIn("sk-tabby-test", rows[0].text)
+
+    def test_intellij_command_history(self):
+        # CommandHistory.kt:5-31: newest first, no times (#211).
+        rows = self.rows_for(TabbyParser(), TABBY_INTELLIJ_REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    0,
+                    "",
+                    "",
+                    "inline edit command history: 2 commands, newest first"
+                    " (from intellij-tabby-command-history.xml, no times)",
+                ),
+                ("user", 1, "", "", "add docstrings"),
+                ("user", 2, "", "", "convert to async"),
+            ],
+        )
+
+    def test_truncated_intellij_history_is_reported_not_fatal(self):
+        path = self.home / TABBY_INTELLIJ_REL
+        path.write_text(path.read_text(encoding="utf-8")[:120], encoding="utf-8")
+        rows = self.rows_for(TabbyParser(), TABBY_INTELLIJ_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: not a readable XML document"))
+
+    def test_vscode_command_history(self):
+        # Config.ts:139-145 and quickPick.ts:322-351, read from the editor's
+        # state.vscdb through reads_agents (#211).
+        p = TabbyParser()
+        self.assertIn("vscode", p.reads_agents)
+        art = self.artifact(TABBY_VSCDB_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertTrue(p.wants(art))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.agent, r.turn_type, r.source_line, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "tabby",
+                    "system",
+                    0,
+                    "",
+                    "inline edit command history: 3 commands, newest first (from state.vscdb"
+                    " TabbyML.vscode-tabby edit.recentlyCommand, no times)",
+                ),
+                (
+                    "tabby",
+                    "user",
+                    1,
+                    "",
+                    "rename @file to snake case [context: file:///srv/proj/app/math.py]",
+                ),
+                ("tabby", "user", 2, "", "add type hints"),
+                ("tabby", "user", 3, "", "fix the typo"),
+            ],
+        )
+        # Another editor's state.vscdb without Tabby's row yields nothing.
+        other = self.artifact(".config/Code - Insiders/User/globalStorage/state.vscdb")
+        self.assertEqual(list(p.parse(other, Options())), [])
+        # A Tabby-attributed path is never routed as an editor database.
+        self.assertFalse(p.wants(self.artifact(".tabby-client/agent/config.toml")))
+
+    def test_volume_root(self):
+        """A Tabby server root collected from a Docker named volume has its
+        files at the base's root (#124); the parser reads them as it reads
+        a home's `.tabby`."""
+        from fixtures import TABBY_VOLUME_HOME, build_tabby_volume
+
+        p = TabbyParser()
+        for rel in (
+            "ee/db.sqlite",
+            "ee/dev-db.sqlite",
+            "ee/db.backup-20260915.sqlite",
+            "events/2025-10-01.json",
+            "config.toml",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+        for rel in (
+            "ee/db.sqlite-wal",
+            "usage_anonymous_id",
+            "x/ee/db.sqlite",
+            "events/today.json",
+            "agent/config.toml",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertTrue(p.secondary(rel_only("events/2025-10-01.json")))
+        self.assertFalse(p.secondary(rel_only("ee/db.sqlite")))
+
+        root = self.tmp / "volume"
+        build_tabby_volume(root)
+        col = open_input(root, self.cat)
+        self.assertEqual(col.kind, "collected")
+        wanted = sorted(a.rel for a in col.artifacts if a.agent == "tabby" and p.wants(a))
+        self.assertEqual(
+            wanted,
+            sorted(
+                [
+                    "ee/db.sqlite",
+                    "ee/db.backup-20260915.sqlite",
+                    "events/2025-10-01.json",
+                    "config.toml",
+                ]
+            ),
+        )
+        rows, _, problems, _ = cli.collect_rows(col, Options(), [])
+        self.assertEqual(problems, [])
+        self.assertEqual({(r.host, r.user, r.agent) for r in rows}, {("h2", "docker", "tabby")})
+        self.assertIn(
+            "Where is the cache cleared? [attachments: client_code src/cache.rs:10]",
+            [r.text for r in rows if r.session_id == "7"],
+        )
+        self.assertIn("dump the users table", [r.text for r in rows if r.session_id == "3"])
+        self.assertIn("chat_completion", [r.text for r in rows])
+        self.assertTrue(all(a.home.original == TABBY_VOLUME_HOME for a in col.artifacts))
+
 
 from doubleagent.parsers.openhands import OpenHandsParser
 from doubleagent.parsers.shellgpt import ShellGptParser, load_messages
@@ -7773,6 +11356,10 @@ from fixtures import (
     OPENHANDS_CLI_CONV,
     OPENHANDS_CONV,
     OPENHANDS_LEGACY,
+    OPENHANDS_PROJECT_HASH,
+    OPENHANDS_WT_CONV,
+    OPENHANDS_WT_DIR,
+    SHELLGPT_CACHE_COPY,
     SHELLGPT_CHAT,
     SHELLGPT_LEGACY_CHAT,
 )
@@ -7889,7 +11476,6 @@ class OpenHandsTests(ParserBase):
             ".openhands/settings.json",
             ".openhands/secrets.json",
             ".openhands/agent-canvas/dev_conversations/%s/meta.json" % OPENHANDS_CONV,
-            ".openhands/agent-canvas/dev_conversations/%s/base_state.json" % OPENHANDS_CONV,
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(OpenHandsParser().wants(art), rel)
@@ -7975,6 +11561,141 @@ class OpenHandsTests(ParserBase):
         self.assertEqual(rows[2].text, "parser: meta.json is not a JSON object")
         self.assertEqual(len(rows), 11)
 
+    WT = ".openhands/agent-canvas/dev_conversations/%s/" % OPENHANDS_WT_CONV
+    HISTORY = ".openhands/projects/%s/prompt_history.json" % OPENHANDS_PROJECT_HASH
+    SONNET, MINI, HAIKU = (
+        "litellm_proxy/claude-sonnet-4-5",
+        "openai/gpt-5-mini",
+        "litellm_proxy/claude-haiku-4-5",
+    )
+
+    def test_worktree_conversation_rows(self):
+        rows = self.conversation(self.WT + "events/")
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                ("system", rows[0].text),
+                ("system", "model: " + self.SONNET),
+                (
+                    "system",
+                    "scratch directory: %s (conversation worktree under the Agent Server's "
+                    "default conversation_worktree_root /tmp/conversation-worktrees)"
+                    % OPENHANDS_WT_DIR,
+                ),
+                ("user", "fix the tests"),
+                ("tool_use", "pytest"),
+                (
+                    "system",
+                    "permission decision: analyzed risk=LOW analyzer=LLMSecurityAnalyzer "
+                    'policy=ConfirmRisky details={"rationale":"runs the test suite"}',
+                ),
+                ("tool_result", "2 failed"),
+                ("tool_use", "{}"),
+                ("tool_result", "Switched LLM profile to 'fast'"),
+                ("system", "model: %s -> %s profile=fast" % (self.SONNET, self.MINI)),
+                ("tool_use", "rm -rf build"),
+                (
+                    "system",
+                    "permission decision: analyzed risk=HIGH analyzer=LLMSecurityAnalyzer "
+                    "policy=ConfirmRisky",
+                ),
+                ("tool_result", "[rejected by hook] rm is blocked by hook"),
+                (
+                    "system",
+                    "permission decision: rejected rejection_source=hook rm is blocked by hook",
+                ),
+                ("system", "model: %s -> %s" % (self.MINI, self.HAIKU)),
+                ("assistant", "Done."),
+            ],
+        )
+        self.assertTrue(rows[0].text.startswith("conversation start | Fix the tests"))
+        self.assertIn("model=" + self.SONNET, rows[0].text)
+        self.assertEqual({r.project_path for r in rows}, {OPENHANDS_WT_DIR})
+        self.assertEqual({r.session_id for r in rows}, {OPENHANDS_WT_CONV})
+        # Verdicts join to the analysed action's tool call.
+        low, high = (r for r in rows if r.text.startswith("permission decision: analyzed"))
+        self.assertEqual((low.tool_name, low.tool_use_id), ("terminal", "call_w1"))
+        self.assertEqual((high.tool_name, high.tool_use_id), ("terminal", "call_w3"))
+        self.assertEqual(low.timestamp_utc, "2026-10-03T09:00:02.500Z")
+        # The model column follows the switches.
+        self.assertEqual(rows[4].model, self.SONNET)
+        self.assertEqual((rows[8].model, rows[9].model), (self.SONNET, self.MINI))
+        self.assertEqual(rows[10].model, self.MINI)
+        self.assertEqual((rows[14].model, rows[15].model), (self.HAIKU, self.HAIKU))
+
+    def test_base_state_permission_and_model_rows(self):
+        rel = self.WT + "base_state.json"
+        rows = self.rows_for(OpenHandsParser(), rel)
+        tail = " (from base_state.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: confirmation_policy=ConfirmRisky threshold=HIGH "
+                "confirm_unknown=true" + tail,
+                "permission setting: security_analyzer=LLMSecurityAnalyzer" + tail,
+                "permission setting: blocked_actions.8a2f0c1d-0000-4000-8000-000000000006="
+                "rm is blocked by hook" + tail,
+                "model: %s -> litellm_proxy/claude-opus-4-1 (from base_state.json agent.llm, "
+                "file mtime)" % self.HAIKU,
+            ],
+        )
+        self.assertEqual({r.turn_type for r in rows}, {"system"})
+        self.assertEqual((rows[2].tool_name, rows[2].tool_use_id), ("terminal", "call_w3"))
+        self.assertEqual({r.session_id for r in rows}, {OPENHANDS_WT_CONV})
+        self.assertTrue(all(r.timestamp_utc for r in rows))
+        # A conversation with no analyzer says so; no switch, no model row.
+        rows = self.rows_for(
+            OpenHandsParser(), ".openhands/conversations/%s/base_state.json" % OPENHANDS_CLI_CONV
+        )
+        self.assertEqual(
+            [r.text for r in rows], ["permission setting: security_analyzer=none" + tail]
+        )
+
+    def test_prompt_history_is_secondary(self):
+        parser = OpenHandsParser()
+        art = next(a for a in self.col.artifacts if a.rel == self.HISTORY)
+        self.assertTrue(parser.wants(art))
+        self.assertTrue(parser.secondary(art))
+        self.assertTrue(parser.has_secondary)
+        event = next(a for a in self.col.artifacts if a.rel == self.event(self.CLI, 1))
+        self.assertFalse(parser.secondary(event))
+        rows = self.rows_for(parser, self.HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                ("user", "list the files", "2026-10-02T08:30:01.000Z", 1),
+                ("user", "and the hidden files?", "2026-10-02T08:45:00.000Z", 2),
+            ],
+        )
+        # The directory name is the SHA-256 of a conversation's working_dir.
+        self.assertEqual({(r.session_id, r.project_path) for r in rows}, {("", "/srv/proj")})
+
+    def test_prompt_history_cut_is_reported(self):
+        path = self.home / self.HISTORY
+        raw = path.read_text(encoding="utf-8")
+        cut = raw.index('"and the hidden')
+        path.write_text(raw[:cut], encoding="utf-8")
+        rows = self.rows_for(OpenHandsParser(), self.HISTORY)
+        self.assertEqual(rows[0].text, "list the files")
+        self.assertEqual(rows[1].turn_type, "system")
+        self.assertTrue(rows[1].text.startswith("parser: unparseable record 2 ("), rows[1].text)
+        self.assertEqual(rows[1].project_path, "/srv/proj")
+        self.assertEqual(len(rows), 2)
+
+    def test_prompt_history_bad_record_is_reported(self):
+        path = self.home / self.HISTORY
+        entries = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps(["oops", *entries]), encoding="utf-8")
+        rows = self.rows_for(OpenHandsParser(), self.HISTORY)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "list the files",
+                "and the hidden files?",
+                'parser: unparseable record 1 (not a JSON object): "oops"',
+            ],
+        )
+
 
 class ShellGptTests(ParserBase):
     CHAT = "AppData/Local/Temp/chat_cache/" + SHELLGPT_CHAT
@@ -8027,13 +11748,92 @@ class ShellGptTests(ParserBase):
             [r.turn_type for r in self.rows_for(ShellGptParser(), self.CHAT)],
         )
 
+    SGPTRC = ".config/shell_gpt/.sgptrc"
+    FUNCTION = ".config/shell_gpt/functions/execute_shell.py"
+    CACHE = "AppData/Local/Temp/shell_gpt/cache/"
+
     def test_not_wanted(self):
-        for rel in (
-            ".config/shell_gpt/.sgptrc",
-            "AppData/Local/Temp/shell_gpt/cache/0cc175b9c0f1b6a831c399e269772661",
-        ):
-            art = next(a for a in self.col.artifacts if a.rel == rel)
-            self.assertFalse(ShellGptParser().wants(art), rel)
+        art = self.artifact(".config/shell_gpt/roles/ShellGPT.json")
+        self.assertFalse(ShellGptParser().wants(art))
+        for rel in (self.SGPTRC, self.FUNCTION, self.CACHE + SHELLGPT_CACHE_COPY):
+            self.assertTrue(ShellGptParser().wants(self.artifact(rel)), rel)
+
+    def test_settings_rows(self):
+        rows = self.rows_for(ShellGptParser(), self.SGPTRC)
+        rel = self.SGPTRC
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "model: gpt-5.4-mini (configured default, from %s, file mtime)" % rel,
+                "permission setting: DEFAULT_EXECUTE_SHELL_CMD=true (from %s, file mtime)" % rel,
+                "permission setting: OPENAI_USE_FUNCTIONS=true (from %s, file mtime)" % rel,
+                "permission setting: SHELL_INTERACTION=false (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual(rows[0].model, "gpt-5.4-mini")
+        for r in rows:
+            self.assertEqual((r.turn_type, r.session_id), ("system", ""))
+            self.assertTrue(r.timestamp_utc.endswith("Z"))
+            self.assertNotIn("sk-not-real", r.text)
+            self.assertNotIn("API_BASE_URL", r.text)
+
+    def test_settings_bad_line_never_shows_the_line(self):
+        path = self.home / self.SGPTRC
+        path.write_text(
+            "DEFAULT_MODEL=gpt-4o\nOPENAI_API_KEY sk-not-real\nSHELL_INTERACTION=true\n",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(ShellGptParser(), self.SGPTRC)
+        self.assertEqual(
+            [r.text.split(" (")[0] for r in rows],
+            [
+                "model: gpt-4o",
+                "permission setting: SHELL_INTERACTION=true",
+                "parser: unparseable line 2",
+            ],
+        )
+        self.assertEqual(
+            rows[-1].text,
+            'parser: unparseable line 2 (no "=" separator; not shown, the file holds the API key)',
+        )
+        for r in rows:
+            self.assertNotIn("sk-not-real", r.text)
+
+    def test_function_rows(self):
+        rows = self.rows_for(ShellGptParser(), self.FUNCTION)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            rows[0].text,
+            "permission setting: function execute_shell.py "
+            "(from .config/shell_gpt/functions, file mtime)",
+        )
+        self.assertEqual(rows[0].turn_type, "system")
+        self.assertTrue(rows[0].timestamp_utc.endswith("Z"))
+
+    def test_response_cache_is_secondary(self):
+        parser = ShellGptParser()
+        self.assertTrue(parser.has_secondary)
+        cache = self.artifact(self.CACHE + SHELLGPT_CACHE_COPY)
+        self.assertTrue(parser.secondary(cache))
+        for rel in (self.CHAT, self.LEGACY, self.SGPTRC, self.FUNCTION):
+            self.assertFalse(parser.secondary(self.artifact(rel)), rel)
+        rows = self.rows_for(parser, self.CACHE + SHELLGPT_CACHE_COPY)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [("assistant", "30G is free on /.", "", "")],
+        )
+        self.assertEqual(self.rows_for(parser, self.CACHE + "d41d8cd98f00b204e9800998ecf8427e"), [])
+
+    def test_response_cache_dedup(self):
+        rows, _, _, deduplicated = cli.collect_rows(self.col, Options(), ["shellgpt"])
+        self.assertEqual(deduplicated, {"shellgpt": 1})
+        cached = [
+            r
+            for r in rows
+            if r.source_file.endswith("/shell_gpt/cache/" + "0cc175b9c0f1b6a831c399e269772661")
+        ]
+        self.assertEqual([(r.text, r.recovered) for r in cached], [("a cached response", "yes")])
+        self.assertFalse([r for r in rows if r.source_file.endswith(SHELLGPT_CACHE_COPY)])
 
     def test_loose_temp_directory_is_wanted(self):
         art = next(a for a in self.col.artifacts if a.rel == self.CHAT)
@@ -8058,19 +11858,40 @@ from doubleagent.parsers.pi import PiParser
 from doubleagent.parsers.pi import args_summary as pi_args_summary
 from fixtures import (
     LC_FILE,
+    LC_LEGACY_CKPT,
+    LC_LEGACY_CONFIG,
+    LC_LEGACY_DAILY,
+    LC_LEGACY_GIST,
+    LC_LEGACY_HISTORY,
+    LC_LEGACY_INPUT,
+    LC_LEGACY_LATEST,
+    LC_LEGACY_OLD_SESSION,
+    LC_LEGACY_SESSION,
+    LC_LEGACY_SNAPSHOTS,
     LC_SESSION,
     LETTA_AGENT,
     LETTA_CONV,
+    LETTA_LEGACY_SETTINGS_MTIME,
+    LETTA_LISTENER_FILE,
+    LETTA_LISTENER_HASH,
+    LETTA_LISTENER_MTIME,
     LETTA_LOCAL_CONV,
     LETTA_LOCAL_DIR,
+    LETTA_TASK,
+    PI_CRASHES,
+    PI_DEBUG_LOG,
+    PI_DELETED_PROMPT,
     PI_DIR,
     PI_EXPERIMENTAL,
     PI_FILE,
     PI_FORK,
     PI_FORK_FILE,
     PI_SESSION,
+    PI_SETTINGS,
     PI_TRUST,
+    _json,
     _jsonl,
+    letta_sessions_records,
     pi_session_records,
 )
 
@@ -8277,8 +12098,155 @@ class PiTests(ParserBase):
         self.assertEqual(len(rows), 1)
         self.assertIn("is not a JSON object", rows[0].text)
 
+    def test_default_project_trust_row(self):
+        # Since 1.3.0 (issue 201): the one key of settings.json read.
+        rows = self.rows_for(PiParser(), PI_SETTINGS)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: defaultProjectTrust=always "
+                    "(from .pi/agent/settings.json, file mtime)",
+                    "2026-10-01T10:53:20.000Z",
+                    "",
+                    1,
+                )
+            ],
+        )
+        _json(self.home / PI_SETTINGS, {"defaultProvider": "anthropic"})
+        self.assertEqual(self.rows_for(PiParser(), PI_SETTINGS), [])
+        (self.home / PI_SETTINGS).write_text("{not json", encoding="utf-8")
+        self.assertEqual(self.rows_for(PiParser(), PI_SETTINGS), [])
+
+    def test_permission_gate_refusal(self):
+        # little-coder's gate blocks the edit; pi records an error toolResult
+        # with the gate's reason, followed by the decision row (issue 201).
+        rows = self.rows_for(PiParser(), self.LC)
+        i = next(n for n, r in enumerate(rows) if r.text.startswith("permission decision:"))
+        result, decision = rows[i - 1], rows[i]
+        self.assertEqual(
+            (result.turn_type, result.text, result.tool_use_id),
+            ("tool_result", "[error] edit cancelled by user", "call_2"),
+        )
+        self.assertEqual(
+            (decision.turn_type, decision.text, decision.tool_name, decision.tool_use_id),
+            ("system", "permission decision: denied (edit cancelled by user)", "edit", "call_2"),
+        )
+        self.assertEqual(
+            (decision.timestamp_utc, decision.session_id), ("2026-10-01T11:00:15.000Z", LC_SESSION)
+        )
+        # A whitelist refusal is one too; an ordinary error result is not.
+        path = self.home / self.LC
+        recs = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+        recs[-1]["message"]["content"][0]["text"] = 'shell whitelist: "rm" is not in SAFE_PREFIXES'
+        recs[4]["message"].update(isError=True)  # "1 failing", not a refusal
+        _jsonl(path, recs)
+        texts = [r.text for r in self.rows_for(PiParser(), self.LC)]
+        self.assertEqual(
+            [t for t in texts if t.startswith("permission decision:")],
+            ['permission decision: denied (shell whitelist: "rm" is not in SAFE_PREFIXES)'],
+        )
+        plain = self.rows_for(PiParser(), self.REL)
+        self.assertFalse(any(r.text.startswith("permission decision:") for r in plain))
+
+    def test_debug_log_secondary(self):
+        art = self.artifact(PI_DEBUG_LOG)
+        self.assertTrue(PiParser().secondary(art))
+        self.assertEqual(PiParser().secondary_tolerance(art), 3600.0)
+        self.assertTrue(PiParser.has_secondary)
+        self.assertFalse(PiParser().secondary(self.artifact(self.REL)))
+        rows = self.rows_for(PiParser(), PI_DEBUG_LOG)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "debug snapshot: /debug wrote 4 message(s) of the open session, which "
+                    "the log does not name (from .pi/agent/pi-debug.log, Debug output at line)",
+                    "2026-10-01T09:02:00.000Z",
+                    1,
+                ),
+                ("user", "fix the failing test", "2026-10-01T09:00:01.000Z", 10),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 provider=anthropic",
+                    "2026-10-01T09:00:02.000Z",
+                    11,
+                ),
+                ("tool_use", "npm test", "2026-10-01T09:00:02.000Z", 11),
+                ("tool_result", "1 failing", "2026-10-01T09:00:07.000Z", 12),
+                ("user", PI_DELETED_PROMPT, "2026-10-01T09:01:40.000Z", 13),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.agent, r.session_id, r.project_path), ("pi", "", ""))
+        self.assertEqual(rows[3].tool_use_id, "toolu_01")
+
+    def test_debug_log_dedup_against_the_session(self):
+        # The four rows the session file also holds are dropped, within the
+        # one-hour window; the prompt no session holds is recovered.
+        primary = self.rows_for(PiParser(), self.REL)
+        tolerance = PiParser().secondary_tolerance(self.artifact(PI_DEBUG_LOG))
+        secondary = [(r, tolerance) for r in self.rows_for(PiParser(), PI_DEBUG_LOG)]
+        kept, dropped = deduplicate(primary, secondary)
+        self.assertEqual(dropped, {"pi": 4})
+        survivors = kept[len(primary) :]
+        self.assertEqual(
+            [(r.turn_type, r.recovered) for r in survivors], [("system", ""), ("user", "yes")]
+        )
+        self.assertEqual(survivors[1].text, PI_DELETED_PROMPT)
+
+    def test_debug_log_bad_line_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, PiParser, PI_DEBUG_LOG, 10)
+        self.assertEqual((row.session_id, row.project_path), ("", ""))
+
+    def test_crash_rows(self):
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(
+            (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line),
+            ("system", "2026-10-01T09:05:00.000Z", PI_SESSION, "/srv/proj", 1),
+        )
+        self.assertEqual(
+            r.text,
+            "crash: uncaught_exception Cannot read properties of undefined version=1.3.0 "
+            "sessionFile=/home/alice/%s%s (from .pi/agent/crashes.json, record timestamp)\n"
+            "TypeError: Cannot read properties of undefined\n    at run (ext.ts:3:1)"
+            % (PI_DIR, PI_FILE),
+        )
+        self.assertFalse(PiParser().secondary(self.artifact(PI_CRASHES)))
+        # An older record shape (no kind, version or session file).
+        _json(
+            self.home / PI_CRASHES,
+            [{"timestamp": "2026-10-01T09:06:00.000Z", "message": "boom", "cwd": "/srv/proj"}],
+        )
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual(
+            [(r.text, r.session_id) for r in rows],
+            [
+                (
+                    "crash: - boom version=- sessionFile=- "
+                    "(from .pi/agent/crashes.json, record timestamp)",
+                    "",
+                )
+            ],
+        )
+
+    def test_truncated_crash_log_keeps_earlier_records(self):
+        text = (self.home / PI_CRASHES).read_text(encoding="utf-8")
+        (self.home / PI_CRASHES).write_text(
+            text.rstrip().rstrip("]") + ', {"timestamp": "2026-10-01T09:0', encoding="utf-8"
+        )
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual([r.turn_type for r in rows], ["system", "system"])
+        self.assertTrue(rows[0].text.startswith("crash: uncaught_exception"), rows[0].text)
+        self.assertEqual(rows[1].source_line, 2)
+        self.assertTrue(rows[1].text.startswith("parser: unparseable record 2 ("), rows[1].text)
+
     def test_config_not_wanted(self):
-        for rel in (".pi/agent/auth.json", ".pi/agent/settings.json"):
+        for rel in (".pi/agent/auth.json",):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(PiParser().wants(art), rel)
         for rel in (
@@ -8390,6 +12358,173 @@ class LittleCoderTests(ParserBase):
         self.assertEqual(rows[-1].source_line, 2)
         self.assertTrue(rows[-1].text.startswith("parser: unparseable record 2 ("), rows[-1].text)
         self.assertTrue(rows[-1].text.endswith("): " + cut), rows[-1].text)
+
+    # ---- the v0.0.x layout under ~/.little-coder (issue 157) ----------------
+
+    LEGACY_TYPES: ClassVar[list] = [
+        "system",
+        "user",
+        "tool_use",
+        "tool_result",
+        "assistant",
+        "tool_use",
+        "tool_result",
+        "system",
+    ]
+
+    def test_legacy_session_rows(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual([r.turn_type for r in rows], self.LEGACY_TYPES)
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path, r.timestamp_utc),
+                ("little-coder", LC_LEGACY_SESSION, "", "2026-09-20T10:15:00.000Z"),
+            )
+        saved, user, use, result, reply, write, denied, decision = rows
+        self.assertEqual(
+            (denied.turn_type, denied.text), ("tool_result", "Denied: user rejected this operation")
+        )
+        self.assertEqual(
+            saved.text,
+            "session saved: little-coder v0.0.x session %s turn_count=1 input_tokens=1200 "
+            "output_tokens=60 (saved_at 2026-09-20 10:15:00, host local time)" % LC_LEGACY_SESSION,
+        )
+        self.assertEqual(user.text, "list the files")
+        self.assertEqual((use.tool_name, use.tool_use_id, use.text), ("Bash", "toolu_l1", "ls"))
+        self.assertEqual((result.tool_use_id, result.text), ("toolu_l1", "README.md"))
+        self.assertEqual(reply.text, "One file.")
+        self.assertEqual((write.tool_name, write.text), ("Write", "/srv/proj/b.py"))
+        self.assertEqual(
+            (decision.text, decision.tool_name, decision.tool_use_id),
+            (
+                "permission decision: denied (Denied: user rejected this operation)",
+                "Write",
+                "toolu_l2",
+            ),
+        )
+        self.assertEqual([r.source_line for r in rows], [0, 1, 2, 3, 4, 4, 5, 5])
+        self.assertFalse(LittleCoderParser().secondary(self.artifact(LC_LEGACY_DAILY)))
+
+    def test_legacy_copies_are_secondary(self):
+        self.assertTrue(LittleCoderParser.has_secondary)
+        for rel in (LC_LEGACY_LATEST, LC_LEGACY_HISTORY, LC_LEGACY_INPUT):
+            self.assertTrue(LittleCoderParser().secondary(self.artifact(rel)), rel)
+        for rel in (self.HISTORY, LC_LEGACY_CONFIG, LC_LEGACY_SNAPSHOTS):
+            self.assertFalse(LittleCoderParser().secondary(self.artifact(rel)), rel)
+        daily = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        latest = self.rows_for(LittleCoderParser(), LC_LEGACY_LATEST)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in latest],
+            [(r.turn_type, r.text, r.timestamp_utc) for r in daily],
+        )
+
+    def test_legacy_history_json(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_HISTORY)
+        old = [r for r in rows if r.session_id == LC_LEGACY_OLD_SESSION]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in old[1:]],
+            [("user", "an old prompt", "2026-09-19T08:00:00.000Z", 1)],
+        )
+        new = [r for r in rows if r.session_id == LC_LEGACY_SESSION]
+        self.assertEqual([r.turn_type for r in new], self.LEGACY_TYPES)
+        self.assertEqual({r.source_line for r in new}, {2})
+
+    def test_legacy_history_cut_keeps_earlier_sessions(self):
+        path = self.home / LC_LEGACY_HISTORY
+        text = path.read_text(encoding="utf-8")
+        cut = text[: text.index('"list the files"') + 8]
+        path.write_text(cut, encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.session_id) for r in rows[:2]],
+            [("system", LC_LEGACY_OLD_SESSION), ("user", LC_LEGACY_OLD_SESSION)],
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[-1].source_line, 2)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable record 2 ("), rows[-1].text)
+
+    def test_legacy_session_cut_keeps_earlier_messages(self):
+        path = self.home / LC_LEGACY_DAILY
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text[: text.index('"One file."')], encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual(
+            [r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result", "system"]
+        )
+        self.assertEqual(rows[1].session_id, LC_LEGACY_SESSION)
+        self.assertEqual(rows[1].timestamp_utc, "2026-09-20T10:15:00.000Z")
+        self.assertEqual(rows[-1].source_line, 4)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable record 4 ("), rows[-1].text)
+        path.write_text("not json", encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual([r.text for r in rows], ["parser: session file is not a JSON object"])
+
+    def test_legacy_input_history(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_INPUT)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [("user", "list the files", "", "", 1), ("user", "an older prompt", "", "", 2)],
+        )
+
+    def test_legacy_config_rows(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_CONFIG)
+        src = "(from .little-coder/config.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (
+                    "system",
+                    "session synced: gist %s %s" % (LC_LEGACY_GIST, src),
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+                (
+                    "system",
+                    "session relayed: telegram chat 424242 %s" % src,
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+                (
+                    "system",
+                    "permission setting: permission_mode=manual %s" % src,
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+            ],
+        )
+        # The tokens in the same file are never printed.
+        for r in rows:
+            self.assertNotIn("not-a-real", r.text)
+            self.assertNotIn("ghp_", r.text)
+        self.assertTrue(LittleCoderParser.records_sync and LittleCoderParser.records_relay)
+        (self.home / LC_LEGACY_CONFIG).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_CONFIG)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: .little-coder/config.json is not a JSON object"]
+        )
+
+    def test_legacy_snapshots(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_SNAPSHOTS)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [
+                ("system", "2026-09-20T10:14:00.000Z", LC_LEGACY_CKPT, 1),
+                ("system", "2026-09-20T10:14:30.500Z", LC_LEGACY_CKPT, 2),
+            ],
+        )
+        self.assertEqual(
+            rows[1].text,
+            "little-coder v0.0.x checkpoint 2: turn_count=1 prompt=list the files "
+            "files=/srv/proj/a.py (backup 0123456789abcdef@v1); /srv/proj/b.py (did not exist) "
+            "(created_at host local time)",
+        )
+
+    def test_legacy_noise_not_wanted(self):
+        for rel in (
+            ".little-coder/mcp.json",
+            ".little-coder/checkpoints/%s/backups/0123456789abcdef@v1" % LC_LEGACY_CKPT,
+        ):
+            self.assertFalse(LittleCoderParser().wants(self.artifact(rel)), rel)
 
 
 class LettaTests(ParserBase):
@@ -8517,6 +12652,8 @@ class LettaTests(ParserBase):
         self.assertEqual(dropped["letta"], 1)
 
     def test_sessions_history(self):
+        # One exit line per CLI session (issue 158), each followed by the
+        # session's model row.
         rows = self.rows_for(LettaParser(), ".letta/sessions.jsonl")
         self.assertEqual(
             [(r.turn_type, r.session_id, r.project_path) for r in rows],
@@ -8525,22 +12662,158 @@ class LettaTests(ParserBase):
                 ("system", "s-0", "/srv/old"),
                 ("system", "s-1", "/srv/proj"),
                 ("system", "s-1", "/srv/proj"),
-                ("system", "s-1", "/srv/proj"),
             ],
         )
-        self.assertIn("exit_reason=user_exit messages=4 tool_calls=1", rows[4].text)
+        self.assertEqual(
+            rows[2].text,
+            "letta session end: agent=%s exit_reason=exit_command messages=4 tool_calls=1 "
+            "wall_ms=60000" % LETTA_AGENT,
+        )
+        self.assertIn("exit_reason=logout", rows[0].text)
         self.assertEqual(rows[2].model, "claude-sonnet-4-5")
-        # One model row per CLI session, after its start line; the exit
-        # line names the same model and adds none.
         self.assertEqual(
             (rows[3].text, rows[3].model, rows[3].timestamp_utc, rows[3].source_line),
             (
                 "model: claude-sonnet-4-5 provider=anthropic",
                 "claude-sonnet-4-5",
-                "2026-10-01T12:00:00.000Z",
+                "2026-10-01T12:01:00.000Z",
                 2,
             ),
         )
+
+    def test_sessions_start_line(self):
+        # No caller writes recordSessionStart's line; one is still read.
+        rec = dict(letta_sessions_records()[1], timestamp=1790856000000)
+        for key in ("message_count", "tool_call_count", "exit_reason"):
+            del rec[key]
+        _jsonl(self.home / ".letta/sessions.jsonl", [rec])
+        rows = self.rows_for(LettaParser(), ".letta/sessions.jsonl")
+        self.assertEqual(
+            rows[0].text,
+            "letta session start: agent=%s provider=anthropic model=claude-sonnet-4-5 "
+            "project=/srv/proj" % LETTA_AGENT,
+        )
+
+    def test_transcript_project_from_exit_line(self):
+        # The exit line after the turn names its project; with no later
+        # line, the latest earlier one does.
+        f = self.home / ".letta/sessions.jsonl"
+        older, end = letta_sessions_records()
+        _jsonl(f, [older, dict(end, project="/srv/other")])
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/other"})
+        _jsonl(f, [older])
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/old"})
+
+    def test_permission_settings(self):
+        rel = ".config/letta/settings.json"
+        rows = self.rows_for(LettaParser(), rel)
+        src = "(from .config/letta/settings.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                ("system", "", to_utc(LETTA_LEGACY_SETTINGS_MTIME), t)
+                for t in (
+                    "permission setting: permissions.mode=acceptEdits " + src,
+                    "permission setting: permissions.allow=Bash(npm test) " + src,
+                    "permission setting: permissions.deny=Bash(rm -rf:*) " + src,
+                    "permission setting: permissions.additionalDirectories=/srv/shared " + src,
+                )
+            ],
+        )
+
+    def test_routing_relay_rows(self):
+        self.assertTrue(LettaParser.records_relay)
+        rel = ".letta/channels/telegram/routing.json"
+        rows = self.rows_for(LettaParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    LETTA_CONV,
+                    "2026-10-01T12:20:00.000Z",
+                    "session relayed: telegram chat 123456789 type direct thread - account "
+                    "bot-1 agent %s enabled=true outbound=true detached=- "
+                    "updated=2026-10-01T12:21:00.000Z (from %s, createdAt)" % (LETTA_AGENT, rel),
+                )
+            ],
+        )
+        (self.home / rel).write_text("[]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(LettaParser(), rel)],
+            ["parser: %s is not a JSON object with a routes list" % rel],
+        )
+
+    def test_scheduled_task_rows(self):
+        rows = self.rows_for(LettaParser(), ".letta/crons.json")
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    LETTA_CONV,
+                    "2026-10-01T12:10:00.000Z",
+                    "scheduled task: %s name=nightly tests status=active cron=0 2 * * * "
+                    "timezone=UTC recurring=true scheduled_for=- agent=%s conversation=%s "
+                    "fire_count=1 last_fired=2026-10-02T02:00:00.000Z "
+                    "last_run=2026-10-02T02:00:00.000Z outcome=queued "
+                    "reason=scheduled_time_matched error=- cancel_reason=- "
+                    "(from .letta/crons.json, created_at) description: run the suite "
+                    "prompt: run the test suite and report failures"
+                    % (LETTA_TASK, LETTA_AGENT, LETTA_CONV),
+                )
+            ],
+        )
+        rel = ".letta/runs/%s.jsonl" % LETTA_TASK
+        rows = self.rows_for(LettaParser(), rel)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                (LETTA_CONV, "2026-10-02T02:00:00.000Z", 1),
+                (LETTA_CONV, "2026-10-03T02:00:00.000Z", 2),
+            ],
+        )
+        self.assertEqual(
+            rows[1].text,
+            "scheduled task run: %s action=finished status=skipped outcome=missed "
+            "reason=scheduler_inactive agent=%s conversation=%s run=- scheduled_for=- "
+            "fired=- missed=1 summary=missed error=- (from %s, ts)"
+            % (LETTA_TASK, LETTA_AGENT, LETTA_CONV, rel),
+        )
+        self.assertFalse(LettaParser().secondary(self.artifact(rel)))
+        self.assertFalse(LettaParser().secondary(self.artifact(".letta/crons.json")))
+
+    def test_interrupted_turn_rows(self):
+        rel = ".letta/listener-state/%s/%s" % (LETTA_LISTENER_HASH, LETTA_LISTENER_FILE)
+        rows = self.rows_for(LettaParser(), rel)
+        ts = to_utc(LETTA_LISTENER_MTIME)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "interrupted turn: agent %s conversation %s run run-2 "
+                    "tool_calls=call_7,call_8 unstarted=call_8 results=2 "
+                    "working_directory=/srv/proj acting_user=user-1 (from %s, file mtime)"
+                    % (LETTA_AGENT, LETTA_CONV, rel),
+                ),
+                ("tool_result", "call_7", "[error] permission denied"),
+                (
+                    "system",
+                    "call_8",
+                    "permission decision: deny reason=not on main "
+                    "(from %s, interrupted turn, file mtime)" % rel,
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.timestamp_utc), (LETTA_CONV, "/srv/proj", ts)
+            )
+        self.assertFalse(LettaParser().secondary(self.artifact(rel)))
 
     def test_schema_1_bare_messages(self):
         path = self.home / self.LOCAL
@@ -8583,21 +12856,32 @@ class LettaTests(ParserBase):
             ".letta/transcripts/%s/%s/state.json" % (LETTA_AGENT, LETTA_CONV),
             ".letta/lc-local-backend/conversations/%s/manifest.json" % LETTA_LOCAL_DIR,
             ".letta/transcripts/%s/%s/payload-auto-a1b2c3.json" % (LETTA_AGENT, LETTA_LOCAL_CONV),
+            ".letta/channels/telegram/accounts.json",
+            ".letta/listener-state/%s/%s.recovery-%s"
+            % (LETTA_LISTENER_HASH, LETTA_LISTENER_FILE, "ab" * 12),
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(LettaParser().wants(art), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
-        for rel, n in ((self.TRANSCRIPT, 5), (self.TWIN, 7), (self.LOCAL, 7)):
+        runs = ".letta/runs/%s.jsonl" % LETTA_TASK
+        for rel, n in (
+            (self.TRANSCRIPT, 5),
+            (self.TWIN, 7),
+            (self.LOCAL, 7),
+            (".letta/sessions.jsonl", 4),
+            (runs, 2),
+        ):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
             self.assertEqual((rows[-1].turn_type, rows[-1].text), ("system", bad_line_text()), rel)
 
     def test_bad_line_mid_file_keeps_the_rows_around_it(self):
-        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL):
+        runs = ".letta/runs/%s.jsonl" % LETTA_TASK
+        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL, ".letta/sessions.jsonl", runs):
             with self.subTest(rel=rel):
-                CodexTests.check_bad_line(self, LettaParser, rel, 2)
+                CodexTests.check_bad_line(self, LettaParser, rel, 1)
         row = CodexTests.check_bad_line(self, LettaParser, self.LOCAL, 3)
         self.assertEqual((row.session_id, row.project_path), (LETTA_LOCAL_CONV, "/srv/proj"))
 
@@ -8774,7 +13058,16 @@ class LettaSyncTests(ParserBase):
                     "/srv/proj/" + rel,
                     "session synced: last session on localhost:8283 agent agent-selfhost "
                     "conversation conv-sh1 (from .letta/settings.local.json, file mtime)",
-                )
+                ),
+                # The project's standing rule (issue 202).
+                (
+                    "",
+                    "/srv/proj",
+                    to_utc(LETTA_LOCAL_SETTINGS_MTIME),
+                    "/srv/proj/" + rel,
+                    "permission setting: permissions.allow=Bash(ls) "
+                    "(from .letta/settings.local.json, file mtime)",
+                ),
             ],
         )
 
@@ -8969,19 +13262,36 @@ class HermesTests(ParserBase):
             "AppData/Local/hermes/profiles/x/sessions/abc.jsonl",
             ".hermes/state-snapshots/1/state.db",
             "AppData/Local/hermes/profiles/x/state-snapshots/20261001-120000/state.db",
+            # issue 208
+            ".hermes/config.yaml",
+            ".hermes/profiles/work/config.yaml",
+            ".hermes/pairing/telegram-approved.json",
+            "AppData/Local/hermes/platforms/pairing/discord-approved.json",
+            ".hermes/.hermes_history",
+            ".hermes/cron/output/a1b2/2026-10-01_09-00-00.md",
+            ".hermes/response_store.db",
+            "trajectory_samples.jsonl",
+            "failed_trajectories.jsonl",
+            ".config/Hermes/connections.json",
+            "Library/Application Support/Hermes/connections.json",
+            "AppData/Roaming/Hermes/connections.json",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
             ".hermes/state-snapshots/1/manifest.json",
             ".hermes/state-snapshots/1/projects.db",
             ".hermes/state-snapshots/state.db",
-            ".hermes/response_store.db",
+            ".hermes/state-snapshots/1/response_store.db",
             ".hermes/sessions/abc.json",
+            ".hermes/pairing/telegram-pending.json",
+            ".hermes/cron/jobs.json",
+            ".config/Hermes/connection.json",
+            "srv/proj/trajectory_samples.jsonl",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
             if a.agent == "hermes" and a.rel.endswith(
-                (".yaml", "auth.json", "sessions.json", "manifest.json", "-wal", "-shm")
+                ("auth.json", "sessions.json", "manifest.json", "-wal", "-shm")
             ):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertEqual(decode_content('\x00json:{"text":"x"}'), {"text": "x"})
@@ -9361,12 +13671,17 @@ class HermesTests(ParserBase):
             "sessions/abc.jsonl",
             "state-snapshots/20261001-120000/state.db",
             "pastes/pending.json",
+            "config.yaml",
+            "response_store.db",
+            ".hermes_history",
+            "pairing/telegram-approved.json",
+            "cron/output/a1b2/2026-10-01_09-00-00.md",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
-            "config.yaml",
+            "auth.json",
             "state.db-wal",
-            "response_store.db",
+            "pairing/telegram-pending.json",
             "sessions/abc.json",
             "state-snapshots/state.db",
             ".config/Hermes/state.db",
@@ -9383,7 +13698,14 @@ class HermesTests(ParserBase):
         wanted = sorted(a.rel for a in col.artifacts if a.agent == "hermes" and p.wants(a))
         self.assertEqual(
             wanted,
-            sorted(["state.db", "sessions/%s.jsonl" % HERMES_DIVERTED, "pastes/pending.json"]),
+            sorted(
+                [
+                    "state.db",
+                    "sessions/%s.jsonl" % HERMES_DIVERTED,
+                    "pastes/pending.json",
+                    "config.yaml",  # no command_allowlist: no rows
+                ]
+            ),
         )
         rows, _, problems, _ = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
@@ -9396,6 +13718,416 @@ class HermesTests(ParserBase):
         self.assertIn("show the env", [r.text for r in rows if r.session_id == HERMES_DIVERTED])
         self.assertEqual(len([r for r in rows if r.text.startswith("debug report uploaded:")]), 2)
         self.assertTrue(all(a.home.original == HERMES_VOLUME_HOME for a in col.artifacts))
+
+    # -- issue 208: relay, permissions, deletion, past use, origin, scratch ---------------
+    # Source-derived from hermes-agent 86fa9e6; no real install has shown these.
+
+    def hermes_art(self, rel, path, project=""):
+        """An artifact for the file at `path` with `rel` as its path, in a
+        project base `project` when given."""
+        art = dc_replace(self.artifact(self.REL), disk_path=path, rel=rel, original=str(path))
+        if project:
+            art = dc_replace(art, home=dc_replace(art.home, project=True, original=project))
+        return art
+
+    def hermes_file(self, rel, text):
+        path = self.tmp / "h208" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def gateway_rows(self):
+        from fixtures import build_hermes_gateway
+
+        db = self.tmp / "gateway" / "state.db"
+        build_hermes_gateway(db)
+        return list(HermesParser().parse(self.hermes_art(".hermes/state.db", db), Options()))
+
+    def test_gateway_session_rows(self):
+        from fixtures import HERMES_IMPORTED, HERMES_TG, HERMES_WORKTREE
+
+        p = HermesParser()
+        self.assertTrue(p.records_relay)
+        rows = self.gateway_rows()
+        by_session = {}
+        for r in rows:
+            if r.turn_type == "system" and not r.text.startswith(("parser:", "permission d")):
+                by_session.setdefault(r.session_id, []).append((r.text, r.timestamp_utc))
+        self.assertEqual(
+            by_session[HERMES_TG],
+            [
+                ("session start | Ops | source=telegram | archived=1", "2026-10-01T18:00:00.000Z"),
+                ("model: openai/gpt-5", "2026-10-01T18:00:00.000Z"),
+                (
+                    "session relayed: telegram chat -100123 type group thread - user 42 name "
+                    "alice_tg display Ops chat (from state.db sessions, started_at)",
+                    "2026-10-01T18:00:00.000Z",
+                ),
+                (
+                    "permission setting: yolo_mode=true (from state.db sessions.model_config, "
+                    "started_at)",
+                    "2026-10-01T18:00:00.000Z",
+                ),
+            ],
+        )
+        self.assertEqual(
+            by_session[HERMES_IMPORTED][0][0],
+            "session start | Imported from Claude Code: fix tests | source=claude-code | "
+            "imported from claude-code /home/alice/.claude/projects/-srv-proj/c1.jsonl session c1",
+        )
+        self.assertFalse([t for t, _ in by_session[HERMES_IMPORTED] if "relayed" in t])
+        self.assertEqual(
+            by_session[HERMES_WORKTREE][-1],
+            (
+                "scratch directory: /srv/proj/.worktrees/feat (git worktree the agent created "
+                "in /srv/proj, branch hermes/feat)",
+                "2026-10-01T18:20:00.000Z",
+            ),
+        )
+        relayed = [r for r in rows if r.text.startswith("session relayed:")]
+        self.assertEqual([r.session_id for r in relayed], [HERMES_TG])
+
+    def test_terminal_permission_decisions(self):
+        rows = self.gateway_rows()
+        texts = [(r.turn_type, r.tool_use_id, r.text) for r in rows if r.tool_use_id]
+        self.assertEqual(
+            [t for t in texts if t[0] == "system"],
+            [
+                (
+                    "system",
+                    "call_a",
+                    "permission decision: blocked BLOCKED by smart approval: deletes system files",
+                ),
+                (
+                    "system",
+                    "call_b",
+                    "permission decision: approved (Command required approval (restarts a "
+                    "service) and was approved by the user.)",
+                ),
+                ("system", "call_c", "permission decision: pending pattern=pipe_to_shell "
+                 "smart_denied=false"),
+            ],
+        )  # fmt: skip
+        for i, t in enumerate(texts):  # each right after its call's tool_result
+            if t[0] == "system":
+                self.assertEqual((texts[i - 1][0], texts[i - 1][1]), ("tool_result", t[1]))
+        perm = next(r for r in rows if r.tool_use_id == "call_a" and r.turn_type == "system")
+        self.assertEqual(
+            (perm.tool_name, perm.timestamp_utc), ("terminal", "2026-10-01T18:00:03.000Z")
+        )
+
+    def test_deletion_generation_and_room_rows(self):
+        from fixtures import HERMES_DELETED, HERMES_SWEPT
+
+        rows = self.gateway_rows()
+        deleted = [r for r in rows if r.text.startswith("session deleted:")]
+        tail = " (from state.db state_meta gateway.retired_session.v1, retired_at)"
+        self.assertEqual(
+            [(r.session_id, r.text, r.timestamp_utc) for r in deleted],
+            [
+                (HERMES_DELETED, "session deleted: %s%s" % (HERMES_DELETED, tail),
+                 "2026-10-01T18:40:00.500Z"),
+                (HERMES_SWEPT, "session deleted: %s sweep%s" % (HERMES_SWEPT, tail),
+                 "2026-10-01T18:41:00.000Z"),
+            ],
+        )  # fmt: skip
+        peers = [r for r in rows if r.text.startswith("relay peer:")]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.session_id) for r in peers],
+            [
+                (
+                    "relay peer: telegram agent:main:telegram:group:-100123 generation 2 "
+                    "(from state.db conversation_generations)",
+                    "",
+                    "",
+                )
+            ],
+        )
+        rooms = [r for r in rows if r.text.startswith("bot mode room")]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in rooms],
+            [
+                ("system", "bot mode room Planning (room1) seq 1 message.user actor user:u1 "
+                 "(Alice): plan the release", "2026-10-01T19:00:01.000Z"),
+                ("system", "bot mode room Planning (room1) seq 2 message.member actor "
+                 "member:m1 (-): Draft plan ready.", "2026-10-01T19:00:02.000Z"),
+                ("system", 'bot mode room Planning (room1) seq 4 room.renamed actor system:s '
+                 '(-): {"name":"Release"}', "2026-10-01T19:00:04.000Z"),
+            ],
+        )  # fmt: skip
+
+    def test_gateway_bad_records_are_reported(self):
+        from fixtures import HERMES_BADORIGIN
+
+        def reason(text):
+            try:
+                json.loads(text)
+            except ValueError as e:
+                return str(e)
+            return ""
+
+        rows = self.gateway_rows()
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.session_id, r.source_line, r.timestamp_utc, r.text) for r in bad],
+            [
+                (HERMES_BADORIGIN, 4, "", "parser: unparseable record 4 (sessions.origin_json: "
+                 "%s): {bad" % reason("{bad")),
+                ("broken", 4, "", "parser: unparseable record 4 (state_meta.value: %s): {nope"
+                 % reason("{nope")),
+                ("", 3, "", 'parser: unparseable record 3 (hosted_room_events.payload_json: '
+                 '%s): {"name": "Plan' % reason('{"name": "Plan')),
+            ],
+        )  # fmt: skip
+        self.assertEqual(rows[-3:], bad)  # after every other row of the file
+        self.assertIn(
+            "session start | Bad | source=cli",
+            [r.text for r in rows if r.session_id == HERMES_BADORIGIN],
+        )
+
+    def test_prompt_history(self):
+        from fixtures import HERMES_HISTORY_TEXT
+
+        rel = ".hermes/.hermes_history"
+        path = self.hermes_file(rel, HERMES_HISTORY_TEXT)
+        art = self.hermes_art(rel, path)
+        p = HermesParser()
+        self.assertTrue(p.secondary(art))
+        self.assertEqual(p.secondary_tolerance(art), 14 * 3600 + 2.0)
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (2, "user", "list files", "2026-10-01T12:00:01.250Z", ""),
+                (5, "system", "slash command: /model openai/gpt-5", "2026-10-01T14:00:05.123Z", ""),
+                (8, "user", "first line\nsecond line", "2026-10-01T14:01:00.000Z", ""),
+            ],
+        )
+        # the TUI's UTC entry pairs with the state.db prompt it repeats
+        live = self.rows_for(p, self.REL)
+        kept, dropped = deduplicate(live, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["hermes"], 1)
+        self.assertEqual([r.text for r in kept[len(live) :]], [r.text for r in rows[1:]])
+
+    def test_prompt_history_truncated_line(self):
+        from fixtures import HERMES_HISTORY_TEXT
+
+        rel = ".hermes/.hermes_history"
+        path = self.hermes_file(rel, HERMES_HISTORY_TEXT)
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n# 2026-10-01 15:00:00.000\n+after the cut\n")
+        rows = list(HermesParser().parse(self.hermes_art(rel, path), Options()))
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                ("user", "list files"),
+                ("system", "slash command: /model openai/gpt-5"),
+                ("user", "first line\nsecond line"),
+                ("user", "after the cut"),
+                ("system", "parser: unparseable line (not a FileHistory line): " + BAD_LINE),
+            ],
+        )
+
+    def test_cron_run_files(self):
+        from fixtures import (
+            HERMES_CRON_JOB,
+            HERMES_CRON_PROMPT,
+            HERMES_CRON_REPLY,
+            hermes_cron_docs,
+        )
+
+        p = HermesParser()
+        out = {}
+        for name, doc in hermes_cron_docs().items():
+            rel = ".hermes/cron/output/%s/%s" % (HERMES_CRON_JOB, name)
+            art = self.hermes_art(rel, self.hermes_file(rel, doc))
+            self.assertTrue(p.secondary(art))
+            self.assertEqual(p.secondary_tolerance(art), 14 * 3600 + 2.0)
+            out[name] = [(r.turn_type, r.text, r.timestamp_utc) for r in p.parse(art, Options())]
+        head = "cron run: job %s (from cron/output, file name time, host-local)" % HERMES_CRON_JOB
+        self.assertEqual(
+            out["2026-10-01_09-00-00.md"],
+            [
+                ("system", head, "2026-10-01T09:00:00.000Z"),
+                ("user", HERMES_CRON_PROMPT, "2026-10-01T09:00:00.000Z"),
+                ("assistant", HERMES_CRON_REPLY, "2026-10-01T09:00:00.000Z"),
+            ],
+        )
+        self.assertEqual(
+            [t[:2] for t in out["2026-09-30_09-00-00.md"]],
+            [("system", head), ("user", "Summarise yesterday."), ("assistant", "Nothing new.")],
+        )
+        self.assertEqual(
+            [t[:2] for t in out["2026-09-29_09-00-00.md"]],
+            [
+                ("system", head),
+                (
+                    "system",
+                    "cron run output: # Cron Job: Daily summary (FAILED)\n\n"
+                    "Error: provider unreachable",
+                ),
+            ],
+        )
+
+    def test_response_store(self):
+        from fixtures import HERMES_API_SESSION, build_hermes_responses
+
+        rel = ".hermes/response_store.db"
+        path = self.tmp / "h208" / rel
+        build_hermes_responses(path)
+        art = self.hermes_art(rel, path)
+        p = HermesParser()
+        self.assertTrue(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        head = (
+            "api server response %s status=completed model=hermes-agent conversation=%s"
+            " (from response_store.db responses, created_at)"
+        )
+        reason = ""
+        try:
+            json.loads("{cut")
+        except ValueError as e:
+            reason = str(e)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (2, "system", head % ("resp_1", "-"), "2026-10-01T20:00:00.000Z",
+                 HERMES_API_SESSION),
+                (2, "user", "what is 2+2?", "", HERMES_API_SESSION),
+                (2, "assistant", "4", "", HERMES_API_SESSION),
+                (1, "system", head % ("resp_2", "math"), "2026-10-01T20:00:10.000Z",
+                 HERMES_API_SESSION),
+                (1, "user", "and 3+3?", "", HERMES_API_SESSION),
+                (1, "assistant", "6", "", HERMES_API_SESSION),
+                (3, "system", "parser: unparseable record 3 (responses.data: %s): {cut" % reason,
+                 "", ""),
+            ],
+        )  # fmt: skip
+
+    def test_pairing_and_allowlist_settings(self):
+        from fixtures import HERMES_CONFIG_YAML, HERMES_PAIRING
+
+        p = HermesParser()
+        rel = ".hermes/pairing/telegram-approved.json"
+        art = self.hermes_art(rel, self.hermes_file(rel, json.dumps(HERMES_PAIRING)))
+        self.assertFalse(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (1, "permission setting: pairing.telegram.42 user_name=alice_tg (from "
+                 "pairing/telegram-approved.json, approved_at)", "2026-10-01T12:00:00.000Z", ""),
+                (2, 'parser: unparseable record 2 (not an object): {"43":"not an object"}', "",
+                 ""),
+            ],
+        )  # fmt: skip
+        rel = ".hermes/config.yaml"
+        art = self.hermes_art(rel, self.hermes_file(rel, HERMES_CONFIG_YAML))
+        rows = list(p.parse(art, Options()))
+        tail = " (from config.yaml, file mtime)"
+        self.assertEqual(
+            [(r.source_line, r.text) for r in rows],
+            [
+                (5, "permission setting: command_allowlist=rm -rf /tmp/*" + tail),
+                (6, "permission setting: command_allowlist=git push --force*" + tail),
+                (7, "permission setting: command_allowlist=echo 'hi'" + tail),
+            ],
+        )
+        self.assertTrue(all(r.timestamp_utc.endswith("Z") for r in rows))
+
+    def test_allowlist_that_is_not_a_flat_list(self):
+        p = HermesParser()
+        rel = ".hermes/config.yaml"
+        cases = {
+            "command_allowlist:\n  - ok\n  - key: value\n": (
+                ["permission setting: command_allowlist=ok (from config.yaml, file mtime)"],
+                "line 3: not a string item of command_allowlist",
+            ),
+            "command_allowlist: [a, b]\n": ([], "line 1: command_allowlist is not a block list"),
+            "command_allowlist:\n  - one\n    two\n": (
+                ["permission setting: command_allowlist=one (from config.yaml, file mtime)"],
+                "line 3: not a string item of command_allowlist",
+            ),
+        }
+        for text, (settings, problem) in cases.items():
+            art = self.hermes_art(rel, self.hermes_file(rel, text))
+            rows = [r.text for r in p.parse(art, Options())]
+            self.assertEqual(
+                rows,
+                [
+                    *settings,
+                    "parser: config.yaml command_allowlist is not a flat list (%s)" % problem,
+                ],
+            )
+        for text in ("model: x\n", "command_allowlist: []\nother: 1\n", "command_allowlist:\n"):
+            art = self.hermes_art(rel, self.hermes_file(rel, text))
+            self.assertEqual(list(p.parse(art, Options())), [], text)
+
+    def test_desktop_connections(self):
+        from fixtures import HERMES_CONNECTIONS
+
+        p = HermesParser()
+        rel = ".config/Hermes/connections.json"
+        art = self.hermes_art(rel, self.hermes_file(rel, json.dumps(HERMES_CONNECTIONS)))
+        self.assertFalse(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        tail = " (from connections.json, file mtime)"
+        self.assertEqual(
+            [(r.source_line, r.text, r.session_id) for r in rows],
+            [
+                (2, "remote backend: remote Homelab https://hermes.example.net" + tail, ""),
+                (3, "remote backend: ssh Build box ci@build:22" + tail, ""),
+                (4, "remote backend: cloud Cloud https://x.cloud.example org=acme name=prod"
+                 + tail, ""),
+                (0, "remote backend quarantined by the app: missing label" + tail, ""),
+                (5, 'parser: unparseable record 5 (not an object): "not an object"', ""),
+            ],
+        )  # fmt: skip
+        self.assertFalse([r for r in rows if "not-real" in r.text])
+
+    def test_trajectory_file(self):
+        from fixtures import _jsonl, hermes_trajectory_records
+
+        p = HermesParser()
+        rel = "trajectory_samples.jsonl"
+        path = self.tmp / "h208" / "proj" / rel
+        _jsonl(path, hermes_trajectory_records())
+        art = self.hermes_art(rel, path, project="/srv/proj")
+        self.assertTrue(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        line2 = json.dumps(hermes_trajectory_records()[1])
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                (1, "system", "trajectory: model=anthropic/claude-sonnet-4 completed=true (from "
+                 "trajectory_samples.jsonl, timestamp host-local)", "2026-10-01T12:00:05.000Z"),
+                (1, "system", "trajectory system prompt: You are a function calling AI model.",
+                 ""),
+                (1, "user", "list files", ""),
+                (1, "assistant", "<tool_call>ls</tool_call>", ""),
+                (1, "tool_result", "<tool_response>a.txt</tool_response>", ""),
+                (1, "assistant", "One file.", ""),
+                (2, "system", "parser: unparseable line (conversations is not a list): " + line2,
+                 ""),
+            ],
+        )  # fmt: skip
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        self.assertEqual({r.session_id for r in rows}, {""})
+
+    def test_trajectory_truncated_line(self):
+        from fixtures import _jsonl, hermes_trajectory_records
+
+        rel = "failed_trajectories.jsonl"
+        path = self.tmp / "h208" / "proj" / rel
+        _jsonl(path, hermes_trajectory_records()[:1])
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(hermes_trajectory_records()[0]) + "\n")
+        rows = list(HermesParser().parse(self.hermes_art(rel, path, "/srv/proj"), Options()))
+        self.assertEqual([r.text for r in rows if r.turn_type == "user"], ["list files"] * 2)
+        self.assertEqual(rows[-1].text, bad_line_text())
+        self.assertEqual((rows[-1].source_line, rows[-1].project_path), (2, "/srv/proj"))
 
 
 class AgentZeroTests(ParserBase):
@@ -9595,7 +14327,11 @@ class AgentZeroTests(ParserBase):
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
-            if a.agent == "agent-zero" and a.rel not in (self.REL, AGENT_ZERO_TG_REL):
+            if a.agent == "agent-zero" and a.rel not in (
+                self.REL,
+                AGENT_ZERO_TG_REL,
+                AGENT_ZERO_TASKS_REL,
+            ):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertTrue(any(a.rel.endswith("messages/1.txt") for a in self.col.artifacts))
 
@@ -9684,6 +14420,311 @@ class AgentZeroTests(ParserBase):
         )
         self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
 
+    # -- permissions, models, past use, origin (issue 204) -----------------------
+
+    def _extras(self):
+        from fixtures import build_agent_zero_extras
+
+        build_agent_zero_extras(self.home)
+        for rel in (
+            AGENT_ZERO_ACP_REL,
+            AGENT_ZERO_TG_STATE_REL,
+            AGENT_ZERO_POLICY_REL,
+            AGENT_ZERO_CONNECTOR_ENV_REL,
+        ):
+            os.utime(self.home / rel, (1790877600, 1790877600))
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_flags_and_new_paths(self):
+        p = AgentZeroParser()
+        self.assertTrue(AgentZeroParser.has_secondary)
+        self.assertTrue(AgentZeroParser.records_origin)
+        for rel, secondary in (
+            ("agent-zero/inst-1/usr/scheduler/tasks.json", True),
+            ("agent-zero/tmp/scheduler/tasks.json", True),
+            ("scheduler/tasks.json", True),
+            ("plugins/_telegram_integration/state.json", True),
+            ("agent-zero/usr/plugins/_tool_access/config.json", False),
+            ("agents/dev/plugins/_tool_access/config.json", False),
+            (
+                "agent-zero/usr/projects/p/.a0proj/agents/dev/plugins/_tool_access/config.json",
+                False,
+            ),
+            ("Desktop/agent-zero/usr/plugins/_orchestrator/config.json", False),
+            ("agent-zero/usr/plugins/_infection_check/.toggle-0", False),
+            (".agent-zero/.env", False),
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+            self.assertEqual(p.secondary(rel_only(rel)), secondary, rel)
+        for rel in (
+            "agent-zero/usr/plugins/_telegram_integration/config.json",
+            "agent-zero/usr/plugins/_infection_check/config.json",
+            "agent-zero/usr/plugins/_memory/.toggle-1",
+            "agent-zero/usr/scheduler/tasks.yaml",
+            "agent-zero/usr/.env",
+            ".agent-zero/session_cookies.json",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertEqual(p.secondary_tolerance(rel_only("scheduler/tasks.json")), 60.0)
+
+    def test_scheduler_tasks(self):
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    AGENT_ZERO_CHAT,
+                    "2026-10-01T11:00:00.000Z",
+                    "/a0/usr/projects/demo",
+                    "scheduled task: Nightly listing type=scheduled state=idle",
+                ),
+                ("user", AGENT_ZERO_CHAT, "", "/a0/usr/projects/demo", "## Task:\nlist files"),
+                (
+                    "assistant",
+                    AGENT_ZERO_CHAT,
+                    "2026-10-01T12:00:05.500Z",
+                    "/a0/usr/projects/demo",
+                    "There is one file, a.txt.",
+                ),
+                (
+                    "system",
+                    "TaskUuid02",
+                    "2026-10-02T09:00:00.000Z",
+                    "",
+                    "scheduled task: Webhook probe type=adhoc state=error",
+                ),
+                ("user", "TaskUuid02", "", "", "## Task:\nprobe the webhook"),
+                (
+                    "system",
+                    "TaskUuid02",
+                    "2026-10-02T09:01:00.000Z",
+                    "",
+                    "scheduled task failed: connection refused",
+                ),
+            ],
+        )
+        self.assertTrue(AgentZeroParser().secondary(self.artifact(AGENT_ZERO_TASKS_REL)))
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        self.assertNotIn(AGENT_ZERO_TASK_TOKEN, joined)
+        self.assertNotIn("You run on a schedule.", joined)
+
+    def test_scheduler_bad_record_and_bad_file(self):
+        path = self.home / AGENT_ZERO_TASKS_REL
+        tasks = agent_zero_tasks()
+        path.write_text(json.dumps({"tasks": [tasks[0], "oops", tasks[1]]}), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        # The records before and after the bad one are still read.
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("scheduled task:")],
+            [
+                "scheduled task: Nightly listing type=scheduled state=idle",
+                "scheduled task: Webhook probe type=adhoc state=error",
+            ],
+        )
+        self.assertEqual(
+            (rows[-1].text, rows[-1].source_line),
+            ('parser: unparseable record 2 (not a JSON object): "oops"', 2),
+        )
+        path.write_text('{"tasks": [', encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: scheduler tasks file not JSON ("))
+
+    def test_permission_decisions_and_chat_settings(self):
+        self._extras()
+        mtime = "2026-10-01T18:00:00.000Z"
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_ACP_REL)
+        settings = [(r.text, r.project_path, r.timestamp_utc) for r in rows[1:5]]
+        self.assertEqual(
+            settings,
+            [
+                ("permission mode: act (acp, as of file mtime)", "/home/alice/src/webapp", mtime),
+                (
+                    "model: requested openai/gpt-5 (acp, as of file mtime)",
+                    "/home/alice/src/webapp",
+                    mtime,
+                ),
+                (
+                    "model: requested chat=openrouter/anthropic/claude-sonnet-4"
+                    " utility=ollama/qwen3 (chat override, as of file mtime)",
+                    "/home/alice/src/webapp",
+                    mtime,
+                ),
+                (
+                    "scratch directory: /a0/usr/workdir/acp (acp container transport,"
+                    " from chat.json data.workdir_path, as of file mtime)",
+                    "/a0/usr/workdir/acp",
+                    mtime,
+                ),
+            ],
+        )
+        # The editor's workspace is the chat's project path.
+        self.assertEqual(rows[0].project_path, "/home/alice/src/webapp")
+        self.assertEqual(rows[5].project_path, "/home/alice/src/webapp")
+        decisions = [
+            (r.text, r.tool_name, r.timestamp_utc, r.source_line)
+            for r in rows
+            if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            decisions,
+            [
+                (
+                    "permission decision: blocked tool=code_execution_tool profile=developer",
+                    "code_execution_tool",
+                    "2026-10-01T15:53:22.000Z",
+                    1,
+                ),
+                (
+                    "permission decision: denied automatically (provider MCP approval request)",
+                    "mcp_approval_request",
+                    "2026-10-01T15:53:23.000Z",
+                    2,
+                ),
+                (
+                    "permission decision: passed (infection check)",
+                    "",
+                    "2026-10-01T15:53:24.000Z",
+                    3,
+                ),
+                (
+                    "permission decision: terminated (infection check)",
+                    "",
+                    "2026-10-01T15:53:25.000Z",
+                    4,
+                ),
+            ],
+        )
+        # Each follows the warning row it reads.
+        for i, r in enumerate(rows):
+            if r.text.startswith("permission decision:"):
+                self.assertTrue(rows[i - 1].text.startswith("warning: "), rows[i - 1].text)
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        self.assertNotIn(AGENT_ZERO_OVERRIDE_KEY, joined)
+
+    def test_override_preset_and_plain_chat(self):
+        chat = agent_zero_chat()
+        chat["data"]["chat_model_override"] = {"preset_name": "Fast"}
+        (self.home / self.REL).write_text(json.dumps(chat), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertEqual(
+            rows[1].text, "model: requested preset Fast (chat override, as of file mtime)"
+        )
+        self.assertEqual(rows[1].project_path, "/a0/usr/projects/demo")
+        chat["data"]["chat_model_override"] = None
+        (self.home / self.REL).write_text(json.dumps(chat), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertFalse([r for r in rows if r.text.startswith(("model: requested", "scratch"))])
+
+    def test_telegram_deleted_chat(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TG_STATE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    AGENT_ZERO_TG_DELETED,
+                    "2026-10-01T18:00:00.000Z",
+                    "session deleted: telegram bot opsbot chat 777 user 555 ctxid "
+                    "%s (from state.json, no chat.json in the input, file mtime)"
+                    % AGENT_ZERO_TG_DELETED,
+                )
+            ],
+        )
+        self.assertTrue(AgentZeroParser().secondary(self.artifact(AGENT_ZERO_TG_STATE_REL)))
+        (self.home / AGENT_ZERO_TG_STATE_REL).write_text("{", encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TG_STATE_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: state.json not JSON ("), rows[0].text)
+
+    def test_standing_settings(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_POLICY_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tool_access.%s profile=developer (from %s, file mtime)"
+                % (entry, AGENT_ZERO_POLICY_REL)
+                for entry in (
+                    "mode=custom",
+                    "default=allow",
+                    "mcp_default=block",
+                    "blocked=code_execution_tool",
+                    "blocked=mcp:github.create_issue",
+                )
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.project_path, r.timestamp_utc) for r in rows},
+            {("", "", "2026-10-01T18:00:00.000Z")},
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_PROJECT_POLICY_REL)
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: tool_access.mode=inherit project=demo (from %s, file"
+                    " mtime)" % AGENT_ZERO_PROJECT_POLICY_REL,
+                    "/a0/usr/projects/demo",
+                )
+            ],
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_ORCHESTRATOR_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: orchestrator.%s (from %s, file mtime)"
+                % (entry, AGENT_ZERO_ORCHESTRATOR_REL)
+                for entry in (
+                    "codex.bypass_sandbox=true",
+                    "claude.permission_mode=bypassPermissions",
+                    "claude.allowed_tools=Bash,Read,Edit",
+                    "hermes.yolo=false",
+                )
+            ],
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TOGGLE_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: infection_check=enabled (from %s, file mtime)"
+                % AGENT_ZERO_TOGGLE_REL
+            ],
+        )
+        (self.home / AGENT_ZERO_POLICY_REL).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_POLICY_REL)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: %s is not a JSON object" % AGENT_ZERO_POLICY_REL]
+        )
+
+    def test_connector_origin_reads_two_keys_only(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_CONNECTOR_ENV_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "RemCtx01",
+                    "2026-10-01T18:00:00.000Z",
+                    "session origin: remote agent-zero instance https://a0.example.net context"
+                    " RemCtx01 (from .agent-zero/.env, file mtime)",
+                )
+            ],
+        )
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        for secret in (AGENT_ZERO_RESTORE_TOKEN, "localhost:50080", "no equals sign"):
+            self.assertNotIn(secret, joined)
+
+    def test_extras_noise_not_wanted(self):
+        self._extras()
+        p = AgentZeroParser()
+        noise = self.artifact("agent-zero/usr/plugins/_telegram_integration/config.json")
+        self.assertFalse(p.wants(noise))
+        self.assertTrue(p.wants(self.artifact(AGENT_ZERO_TOGGLE_REL)))
+
     # -- Docker volume layout (issue 175) --------------------------------------
 
     def _volume(self):
@@ -9767,9 +14808,21 @@ class AgentZeroTests(ParserBase):
 
 from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (
+    AGENT_ZERO_ACP_REL,
     AGENT_ZERO_BOT_TOKEN,
+    AGENT_ZERO_CONNECTOR_ENV_REL,
+    AGENT_ZERO_ORCHESTRATOR_REL,
+    AGENT_ZERO_OVERRIDE_KEY,
+    AGENT_ZERO_POLICY_REL,
+    AGENT_ZERO_PROJECT_POLICY_REL,
+    AGENT_ZERO_RESTORE_TOKEN,
+    AGENT_ZERO_TASK_TOKEN,
+    AGENT_ZERO_TASKS_REL,
     AGENT_ZERO_TG_CHAT,
+    AGENT_ZERO_TG_DELETED,
     AGENT_ZERO_TG_REL,
+    AGENT_ZERO_TG_STATE_REL,
+    AGENT_ZERO_TOGGLE_REL,
     GOOSE_GATEWAY_SESSION,
     HERMES_PASTES_REL,
     OI_ARCHIVED,
@@ -9778,6 +14831,7 @@ from fixtures import (
     OI_ROLLOUT,
     OI_SESSION,
     agent_zero_relayed_chat,
+    agent_zero_tasks,
     goose_gateway_records,
     hermes_pastes_records,
     open_interpreter_rollout_records,
@@ -10045,11 +15099,17 @@ class OpenInterpreterTests(ParserBase):
         arts = {a.rel: a for a in self.col.artifacts}
         for rel in (
             ".openinterpreter/auth.json",
-            ".openinterpreter/config.toml",
             ".openinterpreter/session_index.jsonl",
         ):
             self.assertEqual(arts[rel].agent, "open-interpreter")
             self.assertFalse(p.wants(arts[rel]), rel)
+        # config.toml is read for its standing permission keys (#200); the
+        # fixture's names none, so it gives no rows.
+        config = arts[".openinterpreter/config.toml"]
+        self.assertTrue(p.wants(config))
+        self.assertEqual(list(p.parse(config, Options())), [])
+        self.assertTrue(p.wants(rel_only(".openinterpreter/rules/default.rules")))
+        self.assertFalse(CodexParser().wants(rel_only(".openinterpreter/rules/default.rules")))
         self.assertFalse(p.wants(arts[CodexTests.REL]))
         self.assertFalse(CodexParser().wants(arts[OI_ROLLOUT]))
         self.assertFalse(CodexParser().wants(arts[self.LEDGER]))
@@ -10108,6 +15168,8 @@ from fixtures import (
     NANOBOT_KEY,
     NANOBOT_LEGACY_REL,
     NANOBOT_REL,
+    NANOBOT_SWEEP_RELS,
+    NANOBOT_TOKEN,
     OPENCLAW_AGENT,
     OPENCLAW_CHECKPOINT,
     OPENCLAW_COLD_SESSION,
@@ -10127,13 +15189,24 @@ class OpenClawTests(ParserBase):
     DB = OPENCLAW_AGENT + "/agent/openclaw-agent.sqlite"
     LEGACY = OPENCLAW_AGENT + "/sessions/%s.jsonl" % OPENCLAW_LEGACY
 
-    def test_rows(self):
-        # The public share row is checked in test_public_share_row.
-        rows = [
+    def transcript(self, sid):
+        """The database rows of generation `sid` that come from its
+        transcript: not the rows of the session metadata and side tables
+        (which name their table in the text), the pending prompts or the
+        rows recovered from the full-text index."""
+        return [
             r
             for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_SESSION and not r.text.startswith("session synced:")
+            if r.session_id == sid
+            and "openclaw-agent.sqlite" not in r.text
+            and not r.recovered
+            and r.text != "also restart nginx"
         ]
+
+    def test_rows(self):
+        # The rows of the session metadata and side tables are checked in
+        # the tests further down.
+        rows = self.transcript(OPENCLAW_SESSION)
         self.assertEqual(
             [r.turn_type for r in rows],
             ["system", "system", "user", "assistant", "tool_use", "tool_result", "system"],
@@ -10210,7 +15283,7 @@ class OpenClawTests(ParserBase):
 
     def test_archives_in_database(self):
         rows = self.rows_for(OpenClawParser(), self.DB)
-        reset = [r for r in rows if r.session_id == OPENCLAW_RESET_SESSION]
+        reset = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual(
             [(r.turn_type, r.text.split(":")[0]) for r in reset],
             [
@@ -10222,7 +15295,13 @@ class OpenClawTests(ParserBase):
         self.assertIn("archive=reset", reset[0].text)
         # A published archive is parsed in full too: the blob is the
         # canonical copy, the .jsonl.deleted.* file the secondary one.
-        published = [r for r in rows if r.session_id == OPENCLAW_DELETED]
+        published = [
+            r
+            for r in rows
+            if r.session_id == OPENCLAW_DELETED
+            and not r.recovered
+            and not r.text.startswith("session forgotten")
+        ]
         self.assertEqual(
             [(r.turn_type, r.text, r.timestamp_utc) for r in published],
             [
@@ -10234,6 +15313,13 @@ class OpenClawTests(ParserBase):
                     "2026-10-01T09:00:00.000Z",
                 ),
                 ("user", "check disk space on the server", "2026-10-01T09:00:01.000Z"),
+                (
+                    "system",
+                    "session deleted: %s archive %s.jsonl.deleted.2026-10-02T08-00-00.000Z.zst"
+                    " (from openclaw-agent.sqlite session_transcript_archives reason deleted,"
+                    " created_at)" % (OPENCLAW_DELETED, OPENCLAW_DELETED),
+                    "2026-10-02T08:00:00.000Z",
+                ),
             ],
         )
         self.assertEqual({r.project_path for r in published}, {"/srv/proj"})
@@ -10352,7 +15438,7 @@ class OpenClawTests(ParserBase):
         )
         # The deleted session's prompt is kept once, from the database.
         self.assertEqual(
-            [r.source_file for r in users if r.session_id == OPENCLAW_DELETED],
+            [r.source_file for r in users if r.session_id == OPENCLAW_DELETED and not r.recovered],
             ["/alice/" + self.DB],
         )
         # Each copy keeps the session-start row that names it.
@@ -10393,10 +15479,12 @@ class OpenClawTests(ParserBase):
 
     def test_credentials_never_emitted(self):
         rows = self.rows_for(OpenClawParser(), self.DB, include_thinking=True)
+        rows += self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
         self.assertTrue(rows)
-        self.assertFalse(
-            [r for r in rows if OPENCLAW_TOKEN in "|".join(str(v) for v in r.as_dict().values())]
-        )
+        for token in (OPENCLAW_TOKEN, OPENCLAW_SOCKET_TOKEN):
+            self.assertFalse(
+                [r for r in rows if token in "|".join(str(v) for v in r.as_dict().values())]
+            )
         out = self.tmp / "out"
         import contextlib
 
@@ -10404,9 +15492,9 @@ class OpenClawTests(ParserBase):
             cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--include-thinking"])
         for f in out.iterdir():
             if f.is_file():
-                self.assertNotIn(
-                    OPENCLAW_TOKEN, f.read_text(encoding="utf-8", errors="replace"), f.name
-                )
+                text = f.read_text(encoding="utf-8", errors="replace")
+                self.assertNotIn(OPENCLAW_TOKEN, text, f.name)
+                self.assertNotIn(OPENCLAW_SOCKET_TOKEN, text, f.name)
 
     def test_truncated_line_is_reported_not_fatal(self):
         clean = [(r.turn_type, r.text) for r in self.rows_for(OpenClawParser(), self.LEGACY)]
@@ -10439,11 +15527,7 @@ class OpenClawTests(ParserBase):
         con.commit()
         con.close()
         line = bytes(blob).rstrip(b"\n").count(b"\n") + 2
-        rows = [
-            r
-            for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_RESET_SESSION
-        ]
+        rows = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
         self.assertEqual(rows[1].text, "check disk space on the server")
         try:
@@ -10477,10 +15561,8 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
-        ]
-        self.assertEqual(len(rows), 9)
+        rows = self.transcript(OPENCLAW_SESSION)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].timestamp_utc), ("system", "2026-10-01T09:01:40.000Z")
         )
@@ -10497,10 +15579,8 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
-        ]
-        self.assertEqual(len(rows), 9)
+        rows = self.transcript(OPENCLAW_SESSION)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("event seq 9 unreadable: not a JSON object", rows[-1].text)
 
@@ -10517,7 +15597,8 @@ class OpenClawTests(ParserBase):
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
         # After the session-start and starting-model rows.
-        share = rows[2]
+        share = next(r for r in rows if r.text.startswith("session synced:"))
+        self.assertEqual([r.text.split(":")[0] for r in rows[:2]], ["session start", "model"])
         self.assertEqual(
             (share.turn_type, share.text, share.timestamp_utc, share.project_path),
             (
@@ -10585,7 +15666,11 @@ class OpenClawTests(ParserBase):
     )
 
     def test_backup_rows(self):
-        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+            if r.text.startswith("backup uploaded:")
+        ]
         self.assertEqual(
             [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
             [
@@ -10615,7 +15700,11 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+            if r.text.startswith(("backup uploaded:", "parser:"))
+        ]
         self.assertEqual(len(rows), 3)
         self.assertTrue(rows[1].text.startswith("backup uploaded: git"))
         self.assertTrue(
@@ -10710,17 +15799,337 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r
-            for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_RESET_SESSION
-        ]
+        rows = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
         self.assertEqual(rows[1].text, "check disk space on the server")
         self.assertEqual(
             (rows[-1].source_line, rows[-1].text),
             (rowid, "parser: archive %s line 2: unparseable line (not a JSON object): 42" % name),
         )
+
+    # -- issue 206: relay, permission, model, past-use and deletion rows ---------
+
+    def db(self):
+        return sqlite3.connect(str(self.home / self.DB))
+
+    def texts(self, prefix, rel=None, sid=None):
+        return [
+            r
+            for r in self.rows_for(OpenClawParser(), rel or self.DB)
+            if r.text.startswith(prefix) and (sid is None or r.session_id == sid)
+        ]
+
+    def test_relay_row_from_conversation(self):
+        self.assertTrue(OpenClawParser.records_relay)
+        rows = self.texts("session relayed:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:00.500Z",
+                    "/srv/proj",
+                    "session relayed: telegram account default direct peer 123456789 thread -"
+                    " role primary (from openclaw-agent.sqlite session_conversations and"
+                    " conversations, first_seen_at)",
+                )
+            ],
+        )  # the reset session's Control UI conversation and delivery are no relay
+
+    def test_relay_row_fallbacks(self):
+        con = self.db()
+        con.execute("DELETE FROM session_conversations")
+        con.commit()
+        con.close()
+        self.assertEqual(
+            [r.text for r in self.texts("session relayed:")],
+            [
+                "session relayed: telegram account default direct (from openclaw-agent.sqlite"
+                " session_windows, started_at)"
+            ],
+        )
+        con = self.db()
+        con.execute("UPDATE session_windows SET channel = 'webchat'")
+        con.commit()
+        con.close()
+        rows = self.texts("session relayed:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:02:00.000Z",
+                    "session relayed: telegram account default direct from 123456789 to -"
+                    " (from openclaw-agent.sqlite session_nodes.entry_json delivery,"
+                    " updated_at)",
+                )
+            ],
+        )
+        con = self.db()
+        con.execute("UPDATE session_windows SET hook_external_content_source = 'gmail'")
+        con.commit()
+        con.close()
+        self.assertEqual(
+            [r.text for r in self.texts("session relayed:")],
+            [
+                "session relayed: gmail hook (from openclaw-agent.sqlite session_windows"
+                " hook_external_content_source, started_at)"
+            ],
+        )
+
+    def test_model_override_row(self):
+        rows = self.texts("model: gpt-5 provider=openai source=")
+        self.assertEqual(
+            [(r.session_id, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "gpt-5",
+                    "2026-10-01T09:02:00.000Z",
+                    "model: gpt-5 provider=openai source=user (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json modelOverride, updated_at)",
+                )
+            ],
+        )
+
+    def test_session_permission_settings(self):
+        rows = self.texts("permission setting:")
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in rows],
+            [
+                "permission setting: elevatedLevel=on",
+                "permission setting: execHost=gateway",
+                'permission setting: toolOverrides={"mcpServers":"off"}',
+                "permission setting: sendPolicy=allow",
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {OPENCLAW_SESSION})
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-01T09:02:00.000Z"})
+        self.assertTrue(
+            rows[0].text.endswith(
+                "(from openclaw-agent.sqlite session_nodes.entry_json, updated_at)"
+            )
+        )
+
+    def test_archived_row(self):
+        rows = self.texts("session archived:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_RESET_SESSION,
+                    "2026-10-01T09:46:40.000Z",
+                    "session archived: manual by human:operator-1 (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json, archivedAt)",
+                )
+            ],
+        )
+
+    def test_forgotten_from_memory_row(self):
+        rows = self.texts("session forgotten from memory:")
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_DELETED,
+                    "/srv/proj",
+                    "2026-10-02T08:33:20.000Z",
+                    "session forgotten from memory: %s agent main reason=forgotten (from"
+                    " openclaw-agent.sqlite memory_session_tombstones, created_at)"
+                    % OPENCLAW_DELETED,
+                )
+            ],
+        )
+
+    def test_pending_inputs(self):
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), self.DB)
+            if r.text in ("also restart nginx", "show the biggest directories")
+            or r.text.startswith("pending input:")
+        ]
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.recovered, r.text) for r in rows],
+            [
+                ("user", OPENCLAW_SESSION, "2026-10-01T09:00:50.000Z", "", "also restart nginx"),
+                (
+                    "system",
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:50.000Z",
+                    "",
+                    "pending input: cancelled, not consumed by the transcript (input in-1 run"
+                    " run-1; from openclaw-agent.sqlite session_pending_inputs, accepted_at)",
+                ),
+                (
+                    "user",
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:30.000Z",
+                    "yes",
+                    "show the biggest directories",
+                ),
+            ],
+        )  # the prompt consumed by a transcript entry the database holds yields nothing
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_bad_pending_input_is_reported_not_fatal(self):
+        con = self.db()
+        con.execute(
+            "INSERT INTO session_pending_inputs VALUES (9,'in-9',?,?,'run-9',?,'queued',1,NULL)",
+            (OPENCLAW_KEY, OPENCLAW_SESSION, BAD_LINE),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), self.DB)
+        self.assertIn("also restart nginx", [r.text for r in rows])
+        reason = bad_line_text().split("(", 1)[1].split("): ", 1)[0]
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                9,
+                "parser: session_pending_inputs message_json unparseable (%s): %s"
+                % (reason, BAD_LINE),
+            ),
+        )
+
+    def test_full_text_index_rows(self):
+        rows = [r for r in self.rows_for(OpenClawParser(), self.DB) if r.recovered]
+        fts = [r for r in rows if r.text == OPENCLAW_FTS_ONLY]
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.source_line) for r in fts],
+            [("user", OPENCLAW_DELETED, "2026-10-01T07:33:20.000Z", 2)],
+        )  # the index row of an entry the transcript holds is dropped
+        self.assertEqual(
+            [r.text for r in rows], ["show the biggest directories", OPENCLAW_FTS_ONLY]
+        )
+
+    def test_delivery_rows(self):
+        rows = self.texts("channel delivery")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:06.000Z",
+                    "channel delivery: turn replied channel telegram conversation conv-tg"
+                    " platform message tg-msg-77 (from openclaw-agent.sqlite"
+                    " conversation_deliveries, created_at)",
+                ),
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:01:30.000Z",
+                    "channel delivery reply: thanks, looks fine (reply message tg-msg-78; from"
+                    " openclaw-agent.sqlite conversation_deliveries, reply_timestamp)",
+                ),
+            ],
+        )
+
+    def test_postgres_anchor_is_one_row(self):
+        for rel, label, where in (
+            (self.DB, "agent", "transcripts are"),
+            (OPENCLAW_STATE_DB, "state", "the Gateway state is"),
+        ):
+            path = self.home / rel
+            for side in ("-wal", "-shm"):
+                Path(str(path) + side).unlink(missing_ok=True)
+            path.unlink()
+            con = sqlite3.connect(str(path))
+            con.execute(
+                "CREATE TABLE openclaw_engine_anchor (store_id TEXT NOT NULL, engine TEXT NOT NULL"
+                " CHECK (engine = 'postgres'), schema TEXT NOT NULL)"
+            )
+            con.execute(
+                "INSERT INTO openclaw_engine_anchor VALUES ('st-1','postgres','oc_%s_0123')" % label
+            )
+            con.commit()
+            con.close()
+            rows = self.rows_for(OpenClawParser(), rel)
+            self.assertEqual(
+                [(r.turn_type, r.source_line, r.text) for r in rows],
+                [
+                    (
+                        "system",
+                        0,
+                        "parser: %s database is a PostgreSQL anchor (store st-1, schema"
+                        " oc_%s_0123): %s on the database server" % (label, label, where),
+                    )
+                ],
+            )
+
+    def test_state_permission_rows(self):
+        rows = self.texts("permission ", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in rows],
+            [
+                "permission decision: allow-once status=allowed kind=exec resolver=device"
+                " reason=user approval appr-1",
+                "permission decision: pending status=pending kind=exec resolver=- reason=-"
+                " approval appr-2",
+                "permission setting: defaults.security=allowlist",
+                "permission setting: defaults.ask=on-miss",
+                "permission setting: agents.main.autoAllowSkills=true",
+                "permission setting: agents.main.allowlist=df source=allow-always",
+                "permission setting: agents.main.mcpTools=github/search source=allow-always",
+                "permission setting: standing grant grant-1 allow-always cron job cron-7 agent"
+                " main binding exec:df approval appr-1 expires=- revoked=- uses=3",
+                "permission setting: channel telegram account default allowFrom=123456789",
+            ],
+        )
+        allowed, pending = rows[:2]
+        self.assertEqual(
+            (allowed.session_id, allowed.tool_name, allowed.tool_use_id, allowed.timestamp_utc),
+            (OPENCLAW_SESSION, "exec", "call_01", "2026-10-01T09:00:04.500Z"),
+        )
+        self.assertTrue(allowed.text.endswith("operator_approvals, resolved_at_ms)"))
+        self.assertTrue(pending.text.endswith("operator_approvals, created_at_ms)"))
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-01T08:58:20.000Z")
+        self.assertTrue(rows[2].text.endswith("exec_approvals_config, updated_at_ms)"))
+
+    def test_channel_ingress_row(self):
+        rows = self.texts("channel ingress:", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "",
+                    "2026-10-01T09:00:00.900Z",
+                    'channel ingress: telegram account default status completed: {"text":"check'
+                    ' disk space on the server"} (from state/openclaw.sqlite'
+                    " channel_ingress_events, received_at)",
+                )
+            ],
+        )
+
+    def test_source_host_row(self):
+        rows = self.texts("source host:", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:03:20.000Z",
+                    "source host: github account octo-bot id 4242 identity system-configured;"
+                    " publication published repository octo/infra branch openclaw/disk-check"
+                    " pull request https://github.com/octo/infra/pull/7 (from"
+                    " state/openclaw.sqlite github_publication_requests, created_at_ms)",
+                )
+            ],
+        )
+
+    def test_bad_exec_config_withholds_the_text(self):
+        con = sqlite3.connect(str(self.home / OPENCLAW_STATE_DB))
+        con.execute(
+            "UPDATE exec_approvals_config SET raw_json = ?",
+            ('{"socket": {"token": "%s"' % OPENCLAW_SOCKET_TOKEN,),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        self.assertTrue(rows[-1].text.startswith("parser: exec_approvals_config raw_json"))
+        self.assertTrue(
+            rows[-1].text.endswith("text withheld, it holds the approvals socket token)")
+        )
+        self.assertFalse([r for r in rows if OPENCLAW_SOCKET_TOKEN in r.text])
 
 
 from fixtures import (
@@ -10731,7 +16140,9 @@ from fixtures import (
     NANOBOT_WEBUI_SESSION_REL,
     OPENCLAW_BACKUP_COMMIT,
     OPENCLAW_BACKUP_KEY,
+    OPENCLAW_FTS_ONLY,
     OPENCLAW_SHARE_ID,
+    OPENCLAW_SOCKET_TOKEN,
     OPENCLAW_STATE_DB,
 )
 
@@ -10741,16 +16152,22 @@ class NanobotTests(ParserBase):
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "system", "user", "tool_use", "tool_result", "assistant"],
+            ["system", "system", "system", "user", "tool_use", "tool_result", "assistant"],
         )
         for r in rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "nanobot", NANOBOT_KEY)
             )
             self.assertEqual((r.project_path, r.git_branch, r.model), ("/srv/proj", "", ""))
-        start, hidden, user, use, result, asst = rows
+        start, relayed, hidden, user, use, result, asst = rows
         self.assertIn("last_channel=telegram:123456789", start.text)
         self.assertEqual(start.timestamp_utc, "2026-10-01T10:15:00.000Z")
+        # Issue 207: the session key names a messaging platform; the
+        # metadata's last_channel is the same route, so one row.
+        self.assertEqual(
+            (relayed.text, relayed.timestamp_utc, relayed.source_line),
+            ("session relayed: telegram chat 123456789 (from session key)", start.timestamp_utc, 1),
+        )
         self.assertTrue(hidden.text.startswith("summarised history:"))
         self.assertEqual(
             (user.text, user.timestamp_utc),
@@ -10764,7 +16181,7 @@ class NanobotTests(ParserBase):
             (result.tool_use_id, result.timestamp_utc), ("call_abc123", "2026-10-01T10:15:05.000Z")
         )
         self.assertEqual(asst.text, "python3 (pid 4242) is listening on 8080.")
-        self.assertEqual([r.source_line for r in rows], [1, 3, 4, 5, 6, 7])
+        self.assertEqual([r.source_line for r in rows], [1, 1, 3, 4, 5, 6, 7])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(NanobotParser(), NANOBOT_REL, include_thinking=True)
@@ -10814,7 +16231,10 @@ class NanobotTests(ParserBase):
     def test_not_wanted(self):
         p = NanobotParser()
         for rel in (
-            ".nanobot/config.json",
+            ".nanobot/workspace/cron/jobs.json",
+            ".nanobot/workspace/cron/action.jsonl",
+            ".nanobot/workspace/triggers/triggers.json",
+            ".nanobot/workspace/triggers/inbox/d-2.json",
             ".nanobot/sessions/%s/.workspace" % "0123456789abcdef0123456789abcdef",
             ".nanobot/sessions/0123456789abcdef0123456789abcdef/dGVsZWdyYW06MTIzNDU2Nzg5.checkpoint.json",
         ):
@@ -10834,6 +16254,7 @@ class NanobotTests(ParserBase):
         for rel in (
             ".nanobot/webui/websocket_chat-1.json",  # legacy thread, shape not recorded
             ".nanobot/history/cli_history.bak",
+            ".nanobot/workspace/config.json",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
 
@@ -10845,7 +16266,7 @@ class NanobotTests(ParserBase):
                 '"timestamp": "2026-10-01T10:16:00.000000"}' + "\n"
             )
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual(
             (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (9, "user", "after the cut")
         )
@@ -10989,9 +16410,10 @@ class NanobotTests(ParserBase):
         self.assertEqual(by_text["list the old logs"], ["000001.jsonl"])
         self.assertEqual(by_text["first line\nsecond line"], ["cli_history"])
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        # Five more: the frozen discord:555 JSONL's model row and four
-        # message rows, which sessions.sqlite3 also holds (issue 178).
-        self.assertEqual(inv["deduplicated"], {"nanobot": 10})
+        # Six more: the frozen discord:555 JSONL's relay row (issue 207),
+        # model row and four message rows, which sessions.sqlite3 also holds
+        # (issue 178).
+        self.assertEqual(inv["deduplicated"], {"nanobot": 11})
 
     # -- sessions.sqlite3 (issue 178) -----------------------------------------------------
     DB_ROWS: ClassVar[list[tuple[int, str, str, str]]] = [
@@ -11010,6 +16432,7 @@ class NanobotTests(ParserBase):
             "session start: key=discord:555 last_channel=discord:555"
             " updated_at=2026-10-03T11:00:31 workspace=/srv/proj",
         ),
+        (1, "system", NANOBOT_DB_KEY, "session relayed: discord chat 555 (from session key)"),
         (1, "system", NANOBOT_DB_KEY, "model: smart (preset)"),
         (1, "user", NANOBOT_DB_KEY, "rotate the api key"),
         (2, "tool_use", NANOBOT_DB_KEY, "./rotate.sh"),
@@ -11159,6 +16582,243 @@ class NanobotTests(ParserBase):
         self.assertFalse(p.wants(rel_only(".nanobot-work/history/cli_history.bak")))
         self.assertFalse(p.wants(rel_only("work/.nanobot/history/cli_history")))
 
+    # -- issue 207: relay, model switches, permission state, run records, sidebar -------
+    def test_relay_from_last_channel(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["unified"])
+        self.assertEqual(
+            [r.text for r in rows[:2]],
+            [
+                "session start: key=unified:default last_channel=telegram:777"
+                " updated_at=2026-10-04T08:05:00 workspace=/srv/proj",
+                "session relayed: telegram chat 777 (from metadata.last_channel)",
+            ],
+        )
+        self.assertTrue(NanobotParser.records_relay)
+        # The WebUI, CLI, heartbeat and legacy sessions are local.
+        for rel in (NANOBOT_WEBUI_SESSION_REL, NANOBOT_LEGACY_REL):
+            rows = self.rows_for(NanobotParser(), rel)
+            self.assertFalse([r for r in rows if r.text.startswith("session relayed:")], rel)
+
+    def test_model_switch_rows(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["unified"])
+        models = [(r.source_line, r.text, r.model) for r in rows if r.text.startswith("model:")]
+        # The metadata's preset (`smart`) is the last switch's, so no start
+        # row names it; the first switch has no recorded previous preset,
+        # and the failed `/model nope` switches nothing.
+        self.assertEqual(
+            models,
+            [
+                (5, "model: fast (preset) requested=fast resolved=gpt-5.4-mini", "fast"),
+                (
+                    7,
+                    "model: fast -> smart (preset) requested=smart resolved=claude-opus-5-5",
+                    "smart",
+                ),
+            ],
+        )
+        by_text = {r.text: r for r in rows}
+        self.assertEqual(
+            (by_text["good morning"].model, by_text["/model nope"].model), ("", "smart")
+        )
+        self.assertEqual(by_text["/model fast"].turn_type, "user")
+
+    def test_permission_mode_from_workspace_scope(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_SESSION_REL)
+        self.assertEqual(
+            (rows[1].turn_type, rows[1].text, rows[1].timestamp_utc, rows[1].source_line),
+            (
+                "system",
+                "permission mode: access_mode=restricted project=/srv/proj"
+                " (from session metadata workspace_scope)",
+                rows[0].timestamp_utc,
+                1,
+            ),
+        )
+
+    def test_config_permission_settings(self):
+        p = NanobotParser()
+        art = self.artifact(NANOBOT_SWEEP_RELS["config"])
+        self.assertTrue(p.wants(art))
+        self.assertFalse(p.secondary(art))
+        rows = self.rows_for(p, NANOBOT_SWEEP_RELS["config"])
+        tail = " (from .nanobot/config.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: " + x + tail
+                for x in (
+                    "tools.restrictToWorkspace=true",
+                    "tools.ssrfWhitelist=100.64.0.0/10",
+                    "tools.exec.enable=true",
+                    "tools.exec.sandbox=bwrap",
+                    "tools.exec.denyPatterns=rm -rf /",
+                    "tools.exec.denyPatterns=curl *",
+                    "channels.telegram.allowFrom=123456789",
+                )
+            ],
+        )
+        mtime = to_utc((self.home / NANOBOT_SWEEP_RELS["config"]).stat().st_mtime)
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "", mtime),
+            )
+            self.assertNotIn(NANOBOT_TOKEN, r.text)
+            self.assertNotIn("123:abc", r.text)
+
+    def test_config_snake_case_and_bad_file(self):
+        path = self.home / NANOBOT_SWEEP_RELS["config"]
+        path.write_text('{"tools": {"restrict_to_workspace": false}}', encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["config"])
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tools.restrict_to_workspace=false"
+                " (from .nanobot/config.json, file mtime)"
+            ],
+        )
+        path.write_text('{"tools": ', encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["config"])
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: config.json did not parse: "))
+
+    def test_pairing_rows(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["pairing"])
+        mtime = to_utc((self.home / NANOBOT_SWEEP_RELS["pairing"]).stat().st_mtime)
+        self.assertEqual(
+            [(r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    mtime,
+                    "permission setting: pairing.approved.telegram=123456789"
+                    " (from .nanobot/pairing.json, file mtime)",
+                ),
+                (
+                    mtime,
+                    "permission setting: pairing.approved.telegram=555"
+                    " (from .nanobot/pairing.json, file mtime)",
+                ),
+                (
+                    "2026-10-05T08:00:00.500Z",
+                    "permission setting: pairing.pending.discord=999"
+                    " expires_at=2026-10-05T08:10:00.500Z delivery_status=sent"
+                    " (from .nanobot/pairing.json, created_at)",
+                ),
+            ],
+        )
+        self.assertFalse([r for r in rows if "ABCD-EFGH" in r.text])
+
+    def test_cron_run_record(self):
+        p = NanobotParser()
+        rel = NANOBOT_SWEEP_RELS["cron"]
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        self.assertEqual(p.secondary_tolerance(self.artifact(rel)), 15 * 3600.0)
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "2026-10-05T08:00:00.000Z",
+                    "user",
+                    "Scheduled cron job triggered: morning digest\n\nsummarise the inbox",
+                ),
+                ("2026-10-05T08:00:05.000Z", "assistant", "Three new mails."),
+                (
+                    "2026-10-05T08:00:05.000Z",
+                    "system",
+                    "cron run: job morning digest (job1) run job1:1791187200000:ab12cd34 status=ok",
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in rows},
+            {(NANOBOT_SWEEP_RELS["run_key"], "/alice/.nanobot/workspace")},
+        )
+
+    def test_trigger_run_record(self):
+        rel = NANOBOT_SWEEP_RELS["trigger"]
+        self.assertTrue(NanobotParser().secondary(self.artifact(rel)))
+        rows = self.rows_for(NanobotParser(), rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "2026-10-05T09:00:00.000Z",
+                    "user",
+                    "Local trigger received: ci\n\nbuild failed on main",
+                ),
+                (
+                    "2026-10-05T09:00:01.000Z",
+                    "system",
+                    "trigger run: trigger ci (t1) delivery d-1 status=error attempts=1"
+                    " error=target channel is not enabled: slack",
+                ),
+            ],
+        )
+
+    def test_run_record_in_project_and_bad_file(self):
+        p = NanobotParser()
+        project = cast(
+            Artifact, SimpleNamespace(rel="cron/runs/x.json", home=SimpleNamespace(project=True))
+        )
+        home = cast(
+            Artifact, SimpleNamespace(rel="cron/runs/x.json", home=SimpleNamespace(project=False))
+        )
+        self.assertTrue(p.wants(project))
+        self.assertFalse(p.wants(home))
+        self.assertTrue(p.wants(rel_only(".nanobot-work/triggers/runs/d.json")))
+        (self.home / NANOBOT_SWEEP_RELS["cron"]).write_text("[]", encoding="utf-8")
+        rows = self.rows_for(p, NANOBOT_SWEEP_RELS["cron"])
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [("parser: cron run record is not a JSON object", "/alice/.nanobot/workspace")],
+        )
+
+    def test_sidebar_cache(self):
+        p = NanobotParser()
+        rel = NANOBOT_SWEEP_RELS["sidebar"]
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "2026-10-04T09:00:00.000Z",
+                    "system",
+                    "websocket:chat-9",
+                    "webui sidebar entry: key=websocket:chat-9 preview=draft the release notes"
+                    " updated_at=2026-10-04T09:10:00 (from .webui_session_index.json version 8)",
+                )
+            ],
+        )
+
+    def test_sidebar_bad_entry(self):
+        path = self.home / NANOBOT_SWEEP_RELS["sidebar"]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["sessions"] = ["cut", *data["sessions"]]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["sidebar"])
+        self.assertEqual([r.session_id for r in rows], ["websocket:chat-9", ""])
+        self.assertEqual(rows[-1].text, 'parser: unparseable record 1 (not a JSON object): "cut"')
+
+    def test_sweep_timeline(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "nanobot"])
+        sessions = {
+            s["session_id"]: s
+            for s in read_jsonl(out / "sessions.jsonl")
+            if s["agent"] == "nanobot"
+        }
+        self.assertEqual(sessions["telegram:123456789"]["relayed"], "yes")
+        self.assertEqual(sessions["unified:default"]["relayed"], "yes")
+        self.assertEqual(sessions["discord:555"]["relayed"], "yes")
+        self.assertEqual(sessions["websocket:chat-1"]["relayed"], "no")
+        # The run records' session is gone: its turns are recovered from them.
+        self.assertEqual(sessions[NANOBOT_SWEEP_RELS["run_key"]]["recovered"], "yes")
+
 
 from doubleagent import vscode_state
 from doubleagent.parsers.cody import CodyParser, chat_time
@@ -11180,6 +16840,16 @@ from fixtures import (
     PEARAI_SESSION,
     PEARAI_TASK,
     PEARAI_UI_TASK,
+    TWINNY_415_CHANGE,
+    TWINNY_415_CHANGES_REL,
+    TWINNY_415_CONVERSATION,
+    TWINNY_415_EMAIL,
+    TWINNY_415_LOG_DIR,
+    TWINNY_415_LOG_OLD_REL,
+    TWINNY_415_LOG_REL,
+    TWINNY_415_REL,
+    TWINNY_415_WS,
+    TWINNY_415_WS_DB_REL,
     TWINNY_ACTIVE,
     TWINNY_API_KEY,
     TWINNY_CONVERSATION,
@@ -11187,6 +16857,7 @@ from fixtures import (
     TWINNY_SAID_REL,
     TWINNY_VSCDB_REL,
     _vscdb,
+    build_twinny_415,
     build_twinny_said,
     cody_vscode_state,
     twinny_said_records,
@@ -11194,15 +16865,18 @@ from fixtures import (
 
 
 class ReadsAgentsRoutingTests(ParserBase):
-    """`reads_agents` offers a `vscode` state.vscdb to the Cody and Twinny
-    parsers as well as to the VS Code parser, and nothing else to them."""
+    """`reads_agents` offers a `vscode` state.vscdb to the Cody, Twinny,
+    Roo Code and Tabby parsers as well as to the VS Code parser, and nothing
+    else to them."""
 
     def test_state_vscdb_offered_to_extension_parsers(self):
         parsers = by_agent()
         art = next(a for a in self.col.artifacts if a.rel == CODY_VSCDB_REL)
         self.assertEqual(art.agent, "vscode")
         offered = cli.parsers_for(art, parsers)
-        self.assertEqual({p.agent for p in offered}, {"vscode", "cody", "twinny"})
+        self.assertEqual(
+            {p.agent for p in offered}, {"vscode", "cody", "twinny", "roo-code", "tabby"}
+        )
         self.assertEqual(len(offered), len(set(map(id, offered))))
         # The VS Code parser reads the Copilot Chat row of the same database
         # (issue 153), which Cody's has none of.
@@ -11226,8 +16900,12 @@ class ReadsAgentsRoutingTests(ParserBase):
             r.agent for r in rows if r.source_file.endswith("/User/globalStorage/state.vscdb")
         }
         # `vscode` rows come from the Copilot Chat cloud agent tasks (issue 153),
-        # `cursor` rows from Cursor's own state.vscdb (issue 51).
-        self.assertEqual(from_vscdb, {"cody", "cursor", "twinny", "vscode"})
+        # `cursor` rows from Cursor's own state.vscdb (issue 51), `pearai`
+        # rows from PearAI's (issue 193), `roo-code` permission settings
+        # (issue 191) and `tabby` inline-edit command history (issue 211).
+        self.assertEqual(
+            from_vscdb, {"cody", "cursor", "pearai", "roo-code", "tabby", "twinny", "vscode"}
+        )
         rows, _, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
         self.assertEqual({r.agent for r in rows}, {"twinny"})
 
@@ -11456,6 +17134,230 @@ class CodyTests(ParserBase):
             " title=Run terminal command\npytest -q\nAllow Cody to run this command?",
         )
 
+    # ---- issue 197: settings, model preferences, legacy JetBrains history ----
+
+    def settings_col(self):
+        from fixtures import build_cody_settings
+
+        build_cody_settings(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_settings_permission_rows(self):
+        from fixtures import CODY_MCP_TOKEN, CODY_SETTINGS_REL
+
+        self.settings_col()
+        art = self.artifact(CODY_SETTINGS_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertIn(CodyParser, [type(x) for x in cli.parsers_for(art, by_agent())])
+        rows = self.rows_for(CodyParser(), CODY_SETTINGS_REL)
+        src = " (from %s, file mtime)" % CODY_SETTINGS_REL
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: cody.agentic.context.experimentalOptions.shell.allow"
+                '=["git","ls"]' + src,
+                "permission setting: cody.agentic.context.experimentalOptions.shell.block"
+                '=["sudo"]' + src,
+                "permission setting: cody.agentic.context.experimentalShell=true" + src,
+                "permission setting: cody.chat.agenticContext=false" + src,
+                'permission setting: cody.mcpServers.github.disabledTools=["delete_repo"]' + src,
+                "permission setting: cody.mcpServers.web.disabled=true" + src,
+            ],
+        )
+        mtime = to_utc((self.home / CODY_SETTINGS_REL).lstat().st_mtime)
+        self.assertEqual(
+            {(r.turn_type, r.agent, r.session_id, r.timestamp_utc, r.source_line) for r in rows},
+            {("system", "cody", "", mtime, 1)},
+        )
+        self.assertNotIn(CODY_MCP_TOKEN, " ".join(r.text for r in rows))
+        self.assertFalse(CodyParser().secondary(art))
+
+    def test_settings_without_cody_yield_nothing(self):
+        from fixtures import CODY_SETTINGS_REL
+
+        self.settings_col()
+        path = self.home / CODY_SETTINGS_REL
+        path.write_text('{"editor.fontSize": 14}\n', encoding="utf-8")
+        self.assertEqual(self.rows_for(CodyParser(), CODY_SETTINGS_REL), [])
+        # A broken settings file is the editor's problem unless it names Cody.
+        path.write_text('{"editor.fontSize": 14', encoding="utf-8")
+        self.assertEqual(self.rows_for(CodyParser(), CODY_SETTINGS_REL), [])
+        path.write_text('{"cody.chat.agenticContext": tru', encoding="utf-8")
+        rows = self.rows_for(CodyParser(), CODY_SETTINGS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: settings.json is not a JSON object")],
+        )
+
+    def test_model_preferences_file(self):
+        from fixtures import CODY_PREFS_REL
+
+        self.settings_col()
+        rows = self.rows_for(CodyParser(), CODY_PREFS_REL)
+        src = "endpoint=https://sourcegraph.com/ (from %s, file mtime)" % CODY_PREFS_REL
+        self.assertEqual(
+            [(r.text, r.model) for r in rows],
+            [
+                (
+                    "model setting: selected.chat=%s %s" % (CODY_MODEL_SWITCHED, src),
+                    CODY_MODEL_SWITCHED,
+                ),
+                ("model setting: defaults.chat=%s %s" % (CODY_MODEL, src), CODY_MODEL),
+                ("model setting: defaults.edit=%s %s" % (CODY_MODEL, src), CODY_MODEL),
+            ],
+        )
+        mtime = to_utc((self.home / CODY_PREFS_REL).lstat().st_mtime)
+        self.assertEqual({(r.session_id, r.timestamp_utc) for r in rows}, {("", mtime)})
+        (self.home / CODY_PREFS_REL).write_text('{"https://', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(CodyParser(), CODY_PREFS_REL)],
+            ["parser: cody-model-preferences is not a JSON object"],
+        )
+
+    def test_model_preferences_in_vscode_row(self):
+        self.settings_col()
+        rows = self.rows_for(CodyParser(), CODY_VSCDB_REL)
+        # The chat rows come first, unchanged.
+        self.assertEqual([r.text for r in rows[:2]][1], "explain build.sh")
+        src = "(from %s cody-model-preferences, file mtime)" % CODY_VSCDB_REL
+        self.assertEqual(
+            [r.text for r in rows[4:]],
+            [
+                "model setting: selected.chat=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL_SWITCHED, src),
+                "model setting: defaults.chat=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL, src),
+                "model setting: defaults.edit=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL, src),
+            ],
+        )
+        self.assertEqual({r.source_line for r in rows[4:]}, {0})
+
+    def test_not_wanted_beside_new_inputs(self):
+        self.settings_col()
+        for rel in (
+            ".config/VSCodium/User/keybindings.json",
+            ".local/share/Cody-nodejs/JetBrains-globalState/cody-anonymous-user-id",
+        ):
+            self.assertFalse(CodyParser().wants(self.artifact(rel)), rel)
+
+    def legacy_artifact(self, text=None):
+        from fixtures import CODY_LEGACY_REL, CODY_LEGACY_XML
+
+        proj = self.tmp / "srv" / "proj"
+        path = proj / CODY_LEGACY_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(CODY_LEGACY_XML if text is None else text, encoding="utf-8")
+        (proj / ".idea/workspace.xml").write_text("<project />", encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        return Artifact(path, "/srv/proj/" + CODY_LEGACY_REL, CODY_LEGACY_REL, "cody", home)
+
+    def test_legacy_history_rows(self):
+        from fixtures import CODY_LEGACY_ACCOUNT, CODY_LEGACY_ID, CODY_LEGACY_UPDATED
+
+        art = self.legacy_artifact()
+        p = CodyParser()
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        ws = Artifact(
+            art.disk_path.parent / "workspace.xml",
+            "/srv/proj/.idea/workspace.xml",
+            ".idea/workspace.xml",
+            "project",
+            art.home,
+        )
+        self.assertFalse(p.wants(ws))
+        # A collector before 1.12.0 records the file as `project`; the
+        # bundled project catalog names it `cody`.
+        self.assertEqual(self.cat.project_agent_for(".idea/cody_history.xml"), "cody")
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    CODY_LEGACY_UPDATED,
+                    "chat: %s | account=%s | messages=3 (legacy JetBrains history)"
+                    % (CODY_LEGACY_ID, CODY_LEGACY_ACCOUNT),
+                ),
+                ("user", CODY_LEGACY_UPDATED, "hi\nthere"),
+                ("system", CODY_LEGACY_UPDATED, "model: " + CODY_MODEL),
+                ("assistant", CODY_LEGACY_UPDATED, "hello"),
+                ("user", CODY_LEGACY_UPDATED, "unpaired question"),
+                (
+                    "system",
+                    "2024-02-01T09:00:00.000001",
+                    "chat: 1f8b7034-9fa8-488a-a13e-09c52677008b | account=%s"
+                    " | messages=1 (legacy JetBrains history)" % CODY_LEGACY_ACCOUNT,
+                ),
+                ("user", "2024-02-01T09:00:00.000001", "second chat"),
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, "2024-01-31T01:06:18.524Z")
+        self.assertEqual((rows[3].model, rows[1].model), (CODY_MODEL, ""))
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        self.assertEqual({(r.agent, r.source_line) for r in rows}, {("cody", 0)})
+
+    def test_legacy_history_dedups_against_migrated_chat(self):
+        # The migration copied complete pairs into the agent store with
+        # updatedAt as the chat id; only the unpaired message is recovered.
+        from fixtures import CODY_LEGACY_UPDATED
+
+        art = self.legacy_artifact()
+        migrated = {
+            "https://sourcegraph.com/-alice": {
+                "chat": {
+                    CODY_LEGACY_UPDATED: {
+                        "id": CODY_LEGACY_UPDATED,
+                        "lastInteractionTimestamp": CODY_LEGACY_UPDATED,
+                        "interactions": [
+                            {
+                                "humanMessage": {
+                                    "speaker": "human",
+                                    "text": "hi\nthere",
+                                    "model": CODY_MODEL,
+                                },
+                                "assistantMessage": {
+                                    "speaker": "assistant",
+                                    "text": "hello",
+                                    "model": CODY_MODEL,
+                                },
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        (self.home / CODY_JB_REL).write_text(json.dumps(migrated), encoding="utf-8")
+        primary = self.rows_for(CodyParser(), CODY_JB_REL)
+        legacy = list(CodyParser().parse(art, Options()))
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in legacy])
+        recovered = [r.text for r in kept[len(primary) :] if r.turn_type != "system"]
+        self.assertEqual(recovered, ["unpaired question", "second chat"])
+        self.assertEqual(dropped["cody"], 3)
+
+    def test_legacy_history_cut_keeps_earlier_chats(self):
+        from fixtures import CODY_LEGACY_XML
+
+        cut = CODY_LEGACY_XML.index(
+            '<speaker value="HUMAN" />\n                      <text value="second'
+        )
+        rows = list(CodyParser().parse(self.legacy_artifact(CODY_LEGACY_XML[:cut]), Options()))
+        texts = [r.text for r in rows]
+        self.assertIn("hello", texts)
+        self.assertIn("unpaired question", texts)
+        self.assertNotIn("second chat", texts)
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertTrue(
+            rows[-1].text.startswith("parser: cody_history.xml did not parse; read 1 chat(s) (")
+        )
+        self.assertEqual((rows[-1].project_path, rows[-1].timestamp_utc), ("/srv/proj", ""))
+        # A file that is not XML at all is one row, not an exception.
+        rows = list(CodyParser().parse(self.legacy_artifact("not xml"), Options()))
+        self.assertEqual(len(rows), 1)
+        self.assertIn("read 0 chat(s)", rows[0].text)
+
 
 class TwinnyTests(ParserBase):
     def test_rows(self):
@@ -11649,10 +17551,212 @@ class TwinnyTests(ParserBase):
             )
         )
 
+    # ---- 4.3.15 records beside the conversations (#154, #199, #215) --------
+
+    def _415(self):
+        home = self.tmp / "twinny-415"
+        build_twinny_415(home)
+        col = open_input(home, self.cat, host="h1")
+        return home, {a.rel: a for a in col.artifacts}
+
+    def test_standing_grants_team_policy_and_changes(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_REL]
+        rows = list(TwinnyParser().parse(art, Options()))
+        src = " (from state.vscdb rjmacarthy.twinny, file mtime)"
+        reply = "reply=" + TWINNY_415_CHANGE
+        policy = "permission setting: twinny.teamPolicy."
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "conversation: Fix the tests | messages=2",
+                "fix the failing tests",
+                "model: qwen2.5-coder:7b",
+                "Fixed both.",
+                "file changed: modified src/a.ts +3 -1 " + reply,
+                "file changed: created logo.png +0 -0 %s noUndo=true" % reply,
+                "permission mode: agentMode=true" + src,
+                "permission setting: autoRunCommands=false" + src,
+                "permission setting: alwaysRunCommands=npm test" + src,
+                "permission setting: alwaysRunCommands=git status" + src,
+                "permission setting: alwaysRunMcpTools=github/list_issues" + src,
+                policy + "url=https://gateway.example.invalid" + src,
+                policy + "policy.teamOnly=true" + src,
+                policy + "policy.agent.commands=ask" + src,
+                policy + "policy.agent.blockedPaths=secrets/" + src,
+                policy + "policy.agent.blockedPaths=.env" + src,
+                policy + "providerIds=team-0a1b-chat" + src,
+                policy + "fetchedAt=2026-10-03T09:00:00.000Z" + src,
+            ],
+        )
+        for r in rows[4:6]:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc, r.project_path),
+                ("system", TWINNY_415_CONVERSATION, "2026-10-03T12:05:00.000Z", ""),
+            )
+        for r in rows[6:]:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc, r.project_path),
+                ("system", "", "2026-10-03T12:10:00.000Z", ""),
+            )
+        # The ChatGPT plan profile and the selected model are never emitted.
+        text = "\n".join(r.text for r in rows)
+        self.assertNotIn(TWINNY_415_EMAIL, text)
+        self.assertNotIn("selectedModel", text)
+        self.assertFalse(TwinnyParser().secondary(art))
+
+    def test_agent_changes_record_is_secondary(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_CHANGES_REL]
+        self.assertEqual(art.agent, "twinny")
+        self.assertTrue(TwinnyParser().wants(art))
+        self.assertTrue(TwinnyParser().secondary(art))
+        self.assertTrue(TwinnyParser.has_secondary)
+        rows = list(TwinnyParser().parse(art, Options()))
+        reply = "reply=" + TWINNY_415_CHANGE
+        when = "2026-10-03T12:04:58.000Z"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "/srv/proj",
+                    when,
+                    "file changed: modified src/a.ts +3 -1 %s undone=true" % reply,
+                ),
+                (
+                    "system",
+                    "",
+                    "/srv/proj",
+                    when,
+                    "file changed: created logo.png +0 -0 %s noUndo=true" % reply,
+                ),
+            ],
+        )
+        # The text before the reply is never emitted.
+        self.assertNotIn("export const a", "\n".join(r.text for r in rows))
+
+    def test_agent_changes_record_cut_is_reported(self):
+        home, arts = self._415()
+        path = home / TWINNY_415_CHANGES_REL
+        path.write_text(path.read_text(encoding="utf-8")[:40], encoding="utf-8")
+        rows = list(TwinnyParser().parse(arts[TWINNY_415_CHANGES_REL], Options()))
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertTrue(
+            rows[0].text.startswith("parser: agent-changes record is not valid JSON ("),
+            rows[0].text,
+        )
+
+    def test_log_channel_rows(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_LOG_REL]
+        self.assertTrue(TwinnyParser().secondary(art))
+        rows = list(TwinnyParser().parse(art, Options()))
+        src = " (from Twinny.log, log line time, host-local)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.source_line, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:01.250Z",
+                    1,
+                    "log info: Chat → qwen2.5-coder:7b (Ollama) · 2 messages, 41 chars" + src,
+                ),
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:01.251Z",
+                    2,
+                    "log debug: Chat messages"
+                    + src
+                    + "\n[user]\nwhich tests fail?\n\n[assistant]\nTwo tests fail.",
+                ),
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:06.400Z",
+                    8,
+                    "log info: Chat ← 5.1s · 15 chars" + src,
+                ),
+            ],
+        )
+        old = list(TwinnyParser().parse(arts[TWINNY_415_LOG_OLD_REL], Options()))
+        self.assertEqual(
+            [r.text for r in old],
+            [
+                "log warning: Chat failed: connection refused"
+                " (from Twinny.log_1, log line time, host-local)"
+            ],
+        )
+
+    def test_log_truncated_line_is_reported_not_fatal(self):
+        home, arts = self._415()
+        log = home / TWINNY_415_LOG_REL
+        write_bad_line(log)
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write("\n    orphan continuation\n2026-10-03 14:00:07.000 [info] after the cut\n")
+        rows = list(TwinnyParser().parse(arts[TWINNY_415_LOG_REL], Options()))
+        self.assertEqual(
+            [r.text.split(" (from ")[0] for r in rows[:4]],
+            [
+                "log info: Chat → qwen2.5-coder:7b (Ollama) · 2 messages, 41 chars",
+                "log debug: Chat messages",
+                "log info: Chat ← 5.1s · 15 chars",
+                "log info: after the cut",
+            ],
+        )
+        self.assertEqual(
+            [(r.text, r.source_line, r.session_id, r.timestamp_utc) for r in rows[4:]],
+            [
+                ("parser: unparseable line (no log line header): " + BAD_LINE, 9, "", ""),
+                # An indented line after a bad line has no entry to join.
+                (
+                    "parser: unparseable line (no log line header):     orphan continuation",
+                    10,
+                    "",
+                    "",
+                ),
+            ],
+        )
+
+    def test_workspace_review_repository(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_WS_DB_REL]
+        self.assertEqual(art.agent, "vscode")
+        rows = list(TwinnyParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T12:10:00.000Z",
+                    "source host repository: https://github.com/acme/widgets type=review"
+                    " (from workspaceStorage state.vscdb rjmacarthy.twinny, file mtime)",
+                )
+            ],
+        )
+        self.assertFalse(TwinnyParser().secondary(art))
+
+    def test_not_wanted_415(self):
+        _, arts = self._415()
+        exthost = TWINNY_415_LOG_DIR.rsplit("/", 1)[0] + "/exthost.log"
+        for rel in (TWINNY_415_WS + "/workspace.json", exthost):
+            self.assertFalse(TwinnyParser().wants(arts[rel]), rel)
+
+
+from fixtures import PEARAI_LOG_REL, pearai_log_completion, pearai_log_settings
+
 
 class PearAiTests(ParserBase):
     SESSION = ".pearai/sessions/%s.json" % PEARAI_SESSION
     API = PEARAI_ROO + "tasks/%s/api_conversation_history.json" % PEARAI_TASK
+    UI_API = PEARAI_ROO + "tasks/%s/api_conversation_history.json" % PEARAI_UI_TASK
+    STATE = PEARAI_GS + "state.vscdb"
+    DEV_CHAT = ".pearai/dev_data/chat.jsonl"
+    TOKENS = ".pearai/dev_data/tokens_generated.jsonl"
 
     def test_rows(self):
         rows = self.rows_for(PearAiParser(), self.SESSION)
@@ -11705,7 +17809,7 @@ class PearAiTests(ParserBase):
         self.assertIn("integration=perplexity", rows[0].text)
 
     def test_task_xml_tool_calls(self):
-        rows = self.rows_for(PearAiParser(), self.API)
+        rows = self.rows_for(PearAiParser(), self.API)[:6]
         self.assertEqual(
             [r.turn_type for r in rows],
             ["user", "system", "assistant", "tool_use", "tool_result", "tool_use"],
@@ -11733,6 +17837,215 @@ class PearAiTests(ParserBase):
             ("attempt_completion", "4", "All 12 tests pass."),
         )
 
+    def test_permission_decisions(self):
+        # Roo 3.15.3 result texts: each decision follows its tool_result on
+        # the call's tool_use_id (the assistant message's position).
+        rows = self.rows_for(PearAiParser(), self.API)[6:]
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id, r.text.split("\n")[0]) for r in rows],
+            [
+                ("tool_use", "write_to_file", "5", "build/out.txt | x"),
+                (
+                    "tool_result",
+                    "write_to_file",
+                    "5",
+                    "The user denied this operation and provided the following feedback:",
+                ),
+                ("system", "write_to_file", "5", "permission decision: denied with feedback"),
+                ("tool_use", "execute_command", "7", "rm -rf build"),
+                ("tool_result", "execute_command", "7", "The user denied this operation."),
+                ("system", "execute_command", "7", "permission decision: denied"),
+                ("tool_use", "execute_command", "9", "make all"),
+                (
+                    "tool_result",
+                    "execute_command",
+                    "9",
+                    "The user approved this operation and provided the following context:",
+                ),
+                ("system", "execute_command", "9", "permission decision: approved with feedback"),
+                ("tool_result", "execute_command", "9", "built"),
+            ],
+        )
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-03T14:00:22.000Z")
+        self.assertEqual({r.session_id for r in rows}, {PEARAI_TASK})
+
+    def test_permission_decisions_beside_ui_messages(self):
+        # ui_messages.json holds the transcript; the API history still gives
+        # the decisions, joined to the ts of the ui ask before each.
+        rows = self.rows_for(PearAiParser(), self.UI_API)
+        u0 = int(PEARAI_UI_TASK) + 20000
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id, r.text, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "write_to_file",
+                    str(u0 + 1000),
+                    "permission decision: denied with feedback",
+                    6,
+                ),
+                ("system", "execute_command", str(u0 + 4000), "permission decision: denied", 8),
+                (
+                    "system",
+                    "execute_command",
+                    str(u0 + 7000),
+                    "permission decision: approved with feedback",
+                    10,
+                ),
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-03T15:00:22.000Z")
+        ui = self.rows_for(
+            PearAiParser(), PEARAI_ROO + "tasks/%s/ui_messages.json" % PEARAI_UI_TASK
+        )
+        self.assertIn(str(u0 + 4000), {r.tool_use_id for r in ui if r.turn_type == "tool_use"})
+
+    def test_state_task_history_and_settings(self):
+        rows = self.rows_for(PearAiParser(), self.STATE)
+        tasks = [r for r in rows if r.text.startswith("task: ")]
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.source_line) for r in tasks],
+            [
+                (PEARAI_TASK, "/srv/proj", "2026-10-03T14:00:10.000Z", 1),
+                ("1791037000000", "/srv/proj", "2026-10-03T14:16:40.000Z", 2),
+            ],
+        )
+        self.assertEqual(
+            tasks[1].text,
+            "task: make a todo app | tokensIn=300 tokensOut=20 totalCost=0.001 number=2"
+            " | creator mode: newProjectType=webapp newProjectPath=/srv/proj",
+        )
+        settings = [r for r in rows if r.text.startswith("permission setting:")]
+        self.assertEqual(
+            [r.text for r in settings],
+            [
+                "permission setting: autoApprovalEnabled=true "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                "permission setting: alwaysAllowReadOnly=true "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                "permission setting: alwaysAllowExecute=false "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                'permission setting: allowedCommands=["npm test","npm run lint"] '
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+            ],
+        )
+        self.assertEqual({(r.session_id, r.turn_type) for r in settings}, {("", "system")})
+        self.assertTrue(all(r.timestamp_utc for r in settings))
+        self.assertEqual(len(rows), len(tasks) + len(settings))
+
+    def test_state_without_the_extension_row(self):
+        other = ".config/PearAI/User/globalStorage/state.vscdb"
+        (self.home / other).unlink()
+        _vscdb(self.home / other, {"some.other-extension": {"x": 1}})
+        self.assertEqual(self.rows_for(PearAiParser(), other), [])
+
+    def test_output_log_secondary(self):
+        p = PearAiParser()
+        art = self.artifact(PEARAI_LOG_REL)
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        rows = self.rows_for(p, PEARAI_LOG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in rows],
+            [
+                (3, "system", "model: pearai_model_2", "pearai_model_2"),
+                (3, "user", "add the target", "pearai_model_2"),
+                (24, "assistant", "Added `all:` to the Makefile.", "pearai_model_2"),
+                (30, "user", "delete the old logs", "pearai_model_2"),
+                (42, "assistant", "Removed logs/.", "pearai_model_2"),
+                (48, "system", "model: pearai_model_2 -> starcoder2:3b", "starcoder2:3b"),
+                (48, "system", "model request: def add(a, b):\n<FIM>", "starcoder2:3b"),
+                (59, "system", "model completion: return a + b", "starcoder2:3b"),
+            ],
+        )
+        self.assertEqual(
+            {(r.timestamp_utc, r.session_id, r.project_path) for r in rows}, {("", "", "")}
+        )
+
+    def test_output_log_pairs_with_the_session(self):
+        # The logged turn of the fixture session is dropped against the
+        # session's rows; the turn whose session is gone is kept, recovered.
+        p = PearAiParser()
+        primary = self.rows_for(p, self.SESSION)
+        secondary = [(r, 2.0) for r in self.rows_for(p, PEARAI_LOG_REL)]
+        kept, dropped = deduplicate(primary, secondary)
+        texts = [(r.turn_type, r.text, r.recovered) for r in kept if r.turn_type != "system"]
+        self.assertIn(("user", "delete the old logs", "yes"), texts)
+        self.assertIn(("assistant", "Removed logs/.", "yes"), texts)
+        self.assertEqual(
+            [t for t in texts if t[1] == "add the target"], [("user", "add the target", "")]
+        )
+        self.assertEqual(dropped["pearai"], 2)
+
+    def test_dev_data_chat_secondary(self):
+        p = PearAiParser()
+        self.assertTrue(p.secondary(self.artifact(self.DEV_CHAT)))
+        rows = self.rows_for(p, self.DEV_CHAT)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model, r.session_id) for r in rows],
+            [
+                (1, "user", "add the target", "pearai_model_2", PEARAI_SESSION),
+                (1, "assistant", "Added `all:` to the Makefile.", "pearai_model_2", PEARAI_SESSION),
+                (
+                    1,
+                    "system",
+                    "user feedback: true (from dev_data/chat.jsonl)",
+                    "pearai_model_2",
+                    PEARAI_SESSION,
+                ),
+                (
+                    2,
+                    "user",
+                    "what broke the deploy",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+                (
+                    2,
+                    "assistant",
+                    "The DNS record.",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+                (
+                    2,
+                    "system",
+                    "user feedback: false (from dev_data/chat.jsonl)",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+            ],
+        )
+        # the session's project from sessions.json; no time of its own
+        self.assertEqual([r.project_path for r in rows], ["/srv/proj"] * 3 + [""] * 3)
+        self.assertEqual({r.timestamp_utc for r in rows}, {""})
+
+    def test_tokens_generated(self):
+        p = PearAiParser()
+        self.assertFalse(p.secondary(self.artifact(self.TOKENS)))
+        rows = self.rows_for(p, self.TOKENS)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in rows],
+            [
+                (
+                    1,
+                    "system",
+                    "tokens generated: model=pearai_model provider=pearai_server "
+                    "promptTokens=120 generatedTokens=9",
+                    "pearai_model",
+                ),
+                (
+                    2,
+                    "system",
+                    "tokens generated: model=pearai_model_2 provider=pearai_server "
+                    "promptTokens=180 generatedTokens=11",
+                    "pearai_model_2",
+                ),
+            ],
+        )
+        self.assertEqual({(r.timestamp_utc, r.session_id) for r in rows}, {("", "")})
+
     def test_thinking_opt_in(self):
         self.assertNotIn("thinking", [r.turn_type for r in self.rows_for(PearAiParser(), self.API)])
         rows = self.rows_for(PearAiParser(), self.API, include_thinking=True)
@@ -11740,7 +18053,14 @@ class PearAiTests(ParserBase):
 
     def test_ui_messages_preferred(self):
         task = PEARAI_ROO + "tasks/%s/" % PEARAI_UI_TASK
-        self.assertEqual(self.rows_for(PearAiParser(), task + "api_conversation_history.json"), [])
+        # only the permission decisions come from the API history then
+        self.assertEqual(
+            {
+                r.text.split(":")[0]
+                for r in self.rows_for(PearAiParser(), task + "api_conversation_history.json")
+            },
+            {"permission decision"},
+        )
         rows = self.rows_for(PearAiParser(), task + "ui_messages.json")
         self.assertEqual(rows[0].turn_type, "user")
         self.assertEqual({r.session_id for r in rows}, {PEARAI_UI_TASK})
@@ -11749,7 +18069,8 @@ class PearAiTests(ParserBase):
     def test_not_wanted(self):
         for rel in (
             ".pearai/config.json",
-            PEARAI_GS + "state.vscdb",
+            ".pearai/dev_data/autocomplete.jsonl",
+            PEARAI_LOG_REL.replace("1-PearAI.log", "2-Git.log"),
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertEqual(art.agent, "pearai")
@@ -11767,9 +18088,63 @@ class PearAiTests(ParserBase):
         self.assertIn("parser:", rows[-1].text)
         write_bad_line(self.home / self.API)
         rows = self.rows_for(PearAiParser(), self.API)
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 17)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+        # beside ui_messages.json the API history is read for decisions only,
+        # and still reports what it lost
+        write_bad_line(self.home / self.UI_API)
+        rows = self.rows_for(PearAiParser(), self.UI_API)
+        self.assertEqual(len(rows), 4)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable data after"), rows[-1].text)
+
+    def _jsonl_with_bad_line(self, rel):
+        path = self.home / rel
+        lines = path.read_text(encoding="utf-8").splitlines()
+        path.write_text("%s\n%s\n%s\n" % (lines[0], BAD_LINE, lines[1]), encoding="utf-8")
+
+    def test_truncated_dev_data_lines(self):
+        for rel, per_line in ((self.DEV_CHAT, 3), (self.TOKENS, 1)):
+            self._jsonl_with_bad_line(rel)
+            rows = self.rows_for(PearAiParser(), rel)
+            self.assertEqual(len(rows), 2 * per_line + 1, rel)
+            bad = rows[-1]
+            self.assertEqual((bad.turn_type, bad.text), ("system", bad_line_text()))
+            self.assertTrue(any(r.source_line == 3 for r in rows[:-1]), rel)
+
+    def test_damaged_output_log_record(self):
+        # a write that is neither header, between two good ones, and a
+        # Settings write cut off before its rule at the end of the file
+        path = self.home / PEARAI_LOG_REL
+        path.write_text(
+            pearai_log_settings("m1", "<user>\nfirst\n\n")
+            + ("=" * 74 + "\n") * 2
+            + "garbage line\n"
+            + pearai_log_completion("second")
+            + ("=" * 74 + "\n") * 2
+            + "Settings:\ncontextLength: 8192\nmod",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(PearAiParser(), PEARAI_LOG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (3, "system", "model: m1"),
+                (3, "user", "first"),
+                (18, "assistant", "second"),
+                (
+                    15,
+                    "system",
+                    "parser: unparseable record (not a Settings: or Completion: write): "
+                    "garbage line",
+                ),
+                (
+                    24,
+                    "system",
+                    "parser: unparseable record (no prompt rule): Settings:\ncontextLength: 8192\nmod",
+                ),
+            ],
+        )
 
     def test_index_cut_mid_write_is_reported(self):
         # #170, through the Continue parser's index reader: the entry before
@@ -12206,6 +18581,7 @@ class MuseCodeTests(ParserBase):
 from doubleagent.parsers.ollama import OllamaParser, call_text
 from fixtures import (
     OLLAMA_ATTACHMENT,
+    OLLAMA_CD_PROFILE_REL,
     OLLAMA_CHAT,
     OLLAMA_DB_REL,
     OLLAMA_MANIFEST_REL,
@@ -12217,6 +18593,7 @@ from fixtures import (
 
 class OllamaTests(ParserBase):
     HISTORY_REL = ".ollama/history"
+    CONFIG_REL = ".ollama/config.json"
     CALL_ID = OLLAMA_CHAT + ":1"
 
     def run_timeline(self, name, *extra):
@@ -12423,13 +18800,12 @@ class OllamaTests(ParserBase):
 
     def test_other_files_not_wanted(self):
         p = OllamaParser()
-        wanted = {OLLAMA_DB_REL, OLLAMA_WIN_DB_REL, self.HISTORY_REL}
+        wanted = {OLLAMA_DB_REL, OLLAMA_WIN_DB_REL, self.HISTORY_REL, self.CONFIG_REL}
         rels = {a.rel for a in self.col.artifacts if a.agent == "ollama"}
         for rel in (
             OLLAMA_MANIFEST_REL,
             OLLAMA_DB_REL + "-wal",
             OLLAMA_WIN_DB_REL + "-shm",
-            ".ollama/config.json",
             ".ollama/backup/config.json.1772355600",
             ".ollama/onboarding-v1.completed",
             ".ollama/id_ed25519",
@@ -12439,7 +18815,23 @@ class OllamaTests(ParserBase):
         for a in self.col.artifacts:
             if a.agent == "ollama":
                 self.assertEqual(p.wants(a), a.rel in wanted, a.rel)
-        self.assertEqual(wanted, {a.rel for a in self.col.artifacts if p.wants(a)})
+        # Of the claude-desktop files, only the profile Ollama writes.
+        profile = self.artifact(OLLAMA_CD_PROFILE_REL)
+        self.assertEqual(profile.agent, "claude-desktop")
+        meta = self.artifact(str(Path(OLLAMA_CD_PROFILE_REL).parent / "_meta.json"))
+        self.assertFalse(p.wants(meta))
+        self.assertFalse(ClaudeDesktopParser().wants(profile))
+        self.assertEqual(
+            wanted | {OLLAMA_CD_PROFILE_REL},
+            {a.rel for a in self.col.artifacts if p.wants(a)},
+        )
+        self.assertIn("claude-desktop", p.reads_agents)
+        for root in ("AppData/Local/Claude-3p/", "AppData/Roaming/Claude-3p/"):
+            rel = root + "configLibrary/00000000-0000-4000-8000-000000000114.json"
+            self.assertEqual(p.wants(rel_only(rel)), root.startswith("AppData/Local"), rel)
+        self.assertFalse(
+            p.wants(rel_only("Library/Application Support/Claude-3p/configLibrary/other.json"))
+        )
 
     def test_not_a_database_is_one_system_row(self):
         db = self.home / OLLAMA_DB_REL
@@ -12515,6 +18907,72 @@ class OllamaTests(ParserBase):
                 (r.timestamp_utc, r.session_id, r.project_path, r.agent), ("", "", "", "ollama")
             )
         self.assertFalse([r for r in rows if r.turn_type == "user" and "\ufffd" in r.text])
+
+    def test_auto_mode_permission_settings(self):
+        # Issue 188: the launcher's automode key and the autoModeEnabled key
+        # it writes into Claude Desktop's profile, at each file's mtime.
+        rows = self.rows_for(OllamaParser(), self.CONFIG_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: integrations.claude-desktop.automode=true"
+                    " (from .ollama/config.json, file mtime)",
+                )
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, file_mtime(self.artifact(self.CONFIG_REL)))
+        rows = self.rows_for(OllamaParser(), OLLAMA_CD_PROFILE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: autoModeEnabled=true (set by Ollama's Claude Desktop"
+                    " launcher, from %s, file mtime)" % OLLAMA_CD_PROFILE_REL,
+                )
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, file_mtime(self.artifact(OLLAMA_CD_PROFILE_REL)))
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path, r.model), ("ollama", "", "", "")
+            )
+            self.assertTrue(r.source_file.endswith(OLLAMA_CD_PROFILE_REL))
+        # The profile, catalogued under claude-desktop, reaches the parser.
+        out = self.run_timeline("perm")
+        texts = [r["text"] for r in read_jsonl(out / "timeline.jsonl")]
+        self.assertIn(
+            "permission setting: autoModeEnabled=true (set by Ollama's Claude Desktop"
+            " launcher, from %s, file mtime)" % OLLAMA_CD_PROFILE_REL,
+            texts,
+        )
+        # The inference gateway's literal key is not a row.
+        self.assertFalse([t for t in texts if "inferenceGatewayApiKey" in t])
+
+    def test_auto_mode_absent_gives_no_row(self):
+        # An unset automode key (the launcher's default, true) and a profile
+        # that --restore stripped of autoModeEnabled give no row.
+        (self.home / self.CONFIG_REL).write_text(
+            '{"integrations":{"claude-desktop":{"models":["gemma4:e4b"]}}}', encoding="utf-8"
+        )
+        (self.home / OLLAMA_CD_PROFILE_REL).write_text(
+            '{"disableDeploymentModeChooser":false}', encoding="utf-8"
+        )
+        self.assertEqual(self.rows_for(OllamaParser(), self.CONFIG_REL), [])
+        self.assertEqual(self.rows_for(OllamaParser(), OLLAMA_CD_PROFILE_REL), [])
+
+    def test_config_and_profile_not_json_are_one_parser_row(self):
+        for rel, body in (
+            (self.CONFIG_REL, '{"integrations":{"claude-desktop":{"automode":tr'),
+            (OLLAMA_CD_PROFILE_REL, "[true]"),
+        ):
+            (self.home / rel).write_text(body, encoding="utf-8")
+            rows = self.rows_for(OllamaParser(), rel)
+            self.assertEqual(len(rows), 1, rel)
+            self.assertEqual(rows[0].turn_type, "system")
+            self.assertTrue(rows[0].text.startswith("parser: %s is not " % rel), rows[0].text)
 
 
 from doubleagent.parsers.claude_desktop import ClaudeDesktopParser
@@ -14365,10 +20823,24 @@ class HasSecondaryTests(ParserBase):
 
     def test_has_secondary_matches_fixture(self):
         from doubleagent.parsers import ALL
+        from fixtures import CODY_LEGACY_REL, CODY_LEGACY_XML, build_kilo_state, build_twinny_415
 
+        # Secondary fixtures that build_home does not write: Kilo's terminal
+        # UI prompt history, Twinny 4.3.15's agent-changes records and log,
+        # and the Cody JetBrains plugin's project-local history.
+        build_kilo_state(self.home)
+        build_twinny_415(self.tmp / "home" / "bob")  # a home of its own
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        proj = self.tmp / "srv" / "proj"
+        (proj / CODY_LEGACY_REL).parent.mkdir(parents=True, exist_ok=True)
+        (proj / CODY_LEGACY_REL).write_text(CODY_LEGACY_XML, encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        legacy = Artifact(
+            proj / CODY_LEGACY_REL, "/srv/proj/" + CODY_LEGACY_REL, CODY_LEGACY_REL, "cody", home
+        )
         parsers = by_agent()
         seen = set()
-        for a in self.col.artifacts:
+        for a in [*self.col.artifacts, legacy]:
             for p in cli.parsers_for(a, parsers):
                 if p.wants(a) and p.secondary(a):
                     seen.add(type(p).__name__)

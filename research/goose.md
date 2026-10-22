@@ -5,7 +5,8 @@ that share the same Rust config and data directories and keep their sessions in 
 database, with a gateway (a chat-platform front end) and roaming (peer-to-peer remote control)
 beside them. Researched together with Zed ([zed.md](zed.md)); the two share nothing but Rust and
 SQLite. Parsed: the goose parser reads `sessions.db`, the legacy JSONL sessions, the
-`llm_request` logs and both `history.txt` files. Paths cited are relative to the clone.
+`llm_request` logs, both `history.txt` files, `permission.yaml`, `roaming_trust.json` and
+`schedule.json`. Paths cited are relative to the clone.
 
 ## Source and evidence
 
@@ -32,6 +33,13 @@ or
 
 ### Source reviews
 
+- 2026-10-21: [aaif-goose/goose](https://github.com/aaif-goose/goose) at
+  [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)
+  (committed 2026-10-19): it added the file formats of [Permission files](#permission-files)
+  and [Scheduler and project files](#scheduler-and-project-files), the chunk assembly of
+  [Request logs](#request-logs) and the review of [Source host rows](#source-host-rows), and
+  the parser plan's permission, scheduled-task and request-log rows now describe what the parser
+  writes.
 - 2026-10-19: [aaif-goose/goose](https://github.com/aaif-goose/goose) at
   [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)
   (committed 2026-10-19), against
@@ -343,9 +351,10 @@ working directory under `.config/goose/gateway/` is never removed by either. No 
 chat messages on the platform (no `deleteMessage` call in `crates/goose/src/gateway/`), so the chat
 copy on Telegram outlives every local delete.
 
-The analyzer reads `history.txt` and the `llm_request` logs on every run; see [Past use and
-secondary sources](#past-use-rows-and-secondary-sources) and [Secondary
-sources](../analyzer/docs/output.md#secondary-sources).
+The analyzer reads `history.txt` and the `llm_request` logs on every run, both as secondary
+sources, so a removed, cleared or rewound session's prompts and latest replies are kept where the
+database lost them; see [Past use and secondary sources](#past-use-rows-and-secondary-sources)
+and [Secondary sources](../analyzer/docs/output.md#secondary-sources).
 
 ### Record schema
 
@@ -544,6 +553,34 @@ gateway_pairings:
     paired_at: 1792224000
 ```
 
+#### Request logs
+
+Request logs to `sessions.db`, on text and tool call id (at
+[`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)). Each provider call
+writes a log whose first line is `{model_config, input}`, `input` being the provider's own
+request body, then one `{data, usage}` line per message the provider yields and an `{error}`
+line on failure
+([`goose-provider-types/src/request_log.rs:66-133`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-provider-types/src/request_log.rs#L66-L133)).
+A streaming provider yields one partial message per chunk, built with `Message::assistant()`,
+so each line carries the message's `id`, `role` `assistant`, its own `created` and the chunk's
+content blocks
+([`goose-provider-types/src/formats/anthropic.rs:1144-1149`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-provider-types/src/formats/anthropic.rs#L1144-L1149);
+[`conversation/message.rs:1042-1049`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-provider-types/src/conversation/message.rs#L1042-L1049)).
+`Conversation::push` assembles consecutive messages with the same `id` into one: a one-block
+text chunk extends a last text block of the same audience, a one-block thinking chunk extends a
+last thinking block that is unsigned or has its signature, and anything else is appended; the
+message keeps its first chunk's `created`
+([`goose-provider-types/src/conversation.rs:75-119`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-provider-types/src/conversation.rs#L75-L119)).
+The message is stored with `created_timestamp` the later of its `created` and the newest
+`created_timestamp` already stored for its session
+([`session_manager.rs:2104-2118`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/session/session_manager.rs#L2104-L2118)),
+so the stored time is never earlier than the log's and can be later by as long as the tool calls
+before it ran. The log names no session and no working directory, so the join is the assembled
+text, or the tool call id, against any session of the same user. A provider call that yields no
+message id leaves every chunk its own line and its own time. The logs keep the last 10 calls
+([What survives a delete](#what-survives-a-delete)), so a removed, cleared or rewound session's
+latest requests and replies may survive there alone.
+
 ### Other stores
 
 The CLI history and the request logs are in the table of [Transcript stores](#transcript-stores) and
@@ -553,13 +590,24 @@ the gateway pairings under [Gateway pairings](#gateway-pairings).
 
 Standing grants at
 [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c),
-none read by the parser:
+read by the parser ([Permission rows](#permission-rows)) except `gateway_configs`:
 
 | File | Shape | Meaning |
 | --- | --- | --- |
 | `.config/goose/permission.yaml` (`AppData/Roaming/Block/goose/config/permission.yaml` on Windows), with a `permission.yaml.lock` beside it | a YAML map from category to `{always_allow: [], ask_before: [], never_allow: []}`, each a list of tool names; the categories are `user` (the user's choices) and `smart_approve` (tools the `smart_approve` mode caches as needing a question) ([`config/permission.rs:13`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L13), [`18-33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L18-L33), [`42-44`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L42-L44), [`169-195`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L169-L195)) | an `always_allow` answer adds the tool to `user.always_allow`, an `always_deny` answer to `user.never_allow` ([`ops_tool_approval.rs:57-70`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/agents/state_machine/ops_tool_approval.rs#L57-L70)); `goose configure` sets any level by hand ([`commands/configure.rs:1913`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/commands/configure.rs#L1913)). The file keeps no time and no session, so its modification time is the last change |
 | `.config/goose/roaming_trust.json` | JSON `{"allowed": [<peer key>], "revoked_keys": [<peer key>]}` ([`goose-roaming/src/trust.rs:19-26`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-roaming/src/trust.rs#L19-L26); [`commands/roam.rs:40-42`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/commands/roam.rs#L40-L42)) | the peer keys allowed to drive this host's agent over roaming (`goose roam`), each with "goose's full ACP surface" ([`trust.rs:1-12`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-roaming/src/trust.rs#L1-L12)) |
 | `gateway_configs[].allowed_user_ids` in `.config/goose/config.yaml` | list of chat user ids | the chat users allowed to pair with the gateway ([`gateway/handler.rs:64`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L64), [`832-835`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L832-L835)); `config.yaml` is a secret glob |
+
+`permission.yaml` is rewritten whole on every change by `serde_yaml` 0.9.34, the map
+serialised with `serde_yaml::to_string`
+([`config/permission.rs:260-262`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L260-L262);
+[`Cargo.lock:9357-9358`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/Cargo.lock#L9357-L9358)),
+so each category is a line `<category>:` at the left margin, each level an indented
+`<level>:` line, or `<level>: []` when its list is empty, and each tool a block list item
+`- <tool>` below its level, quoted only where YAML needs it. `roaming_trust.json` is
+pretty-printed JSON
+([`goose-roaming/src/trust.rs:78-82`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-roaming/src/trust.rs#L78-L82));
+its entries are public peer keys, not secrets.
 
 `.config/goose/permissions/tool_permissions.json`, the per-call store named in
 [Config directory](#config-directory) (records
@@ -575,14 +623,20 @@ the file exists only where an older release wrote it.
 
 #### Scheduler and project files
 
-Other files that record use and are not read: `<data>/schedule.json`, a JSON list of scheduled jobs
+Other files that record use: `<data>/schedule.json`, read by the parser
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)), a JSON list of
+scheduled jobs
 `{id, source, cron, last_run, currently_running, paused, current_session_id, process_start_time, parameters, recipe_base_dir}`,
+written pretty-printed with `last_run` and `process_start_time` as RFC 3339 times or `null`,
+`source` the job's recipe file and `parameters` a list of `[name, value]` pairs
+([`scheduler/full.rs:78-84`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/full.rs#L78-L84)),
 whose `current_session_id` and `sessions.schedule_id` join a job to its sessions
 ([`scheduler/common.rs:93-104`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L93-L104),
 [`167-187`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L167-L187);
 [`scheduler/full.rs:80-84`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/full.rs#L80-L84));
-and `<data>/projects/<slug>.md`, a Markdown file with YAML front matter (`name`, `description`, and
-a `workingDirs` list) that groups working directories under a project name, with no session content
+and `<data>/projects/<slug>.md`, not read, a Markdown file with YAML front matter (`name`,
+`description`, and a `workingDirs` list) that groups working directories under a project name,
+with no session content
 ([`sources.rs:69-75`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L69-L75),
 [`258-268`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L258-L268)).
 Neither repeats a transcript.
@@ -642,7 +696,8 @@ outputs) and responses
 headers and keys are not logged (`ModelConfig.request_headers` is `#[serde(skip)]`,
 [`model.rs:58-59`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/model.rs#L58-L59)).
 Credentials live in the keyring or `.config/goose/secrets.yaml` ([Credentials](#credentials)).
-`recipe_json` and `user_recipe_values_json` can carry user-entered parameters.
+`recipe_json` and `user_recipe_values_json` can carry user-entered parameters, as can
+`schedule.json` `parameters` ([Scheduler and project files](#scheduler-and-project-files)).
 
 The gateway keeps its platform configuration, the Telegram bot token included, as the secret
 `gateway_platform_config_<type>` (keyring or `secrets.yaml`) and only
@@ -683,29 +738,35 @@ Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
 - `permission mode: <goose_mode>` after each session's start row; `goose_mode` is one value per
   session row (default `auto`), so there is no change row.
 
-The answer to a tool confirmation is recorded (already so at
-[`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d)):
-an `actionRequired` block of `actionType` `toolConfirmationResponse`
-([Record schema](#record-schema)). The parser does not yet turn it into a `permission decision:`
-row; it writes the generic `action required: <compact JSON>` row with no `tool_use_id`, and the
-request keeps its `confirmation requested:` row (older `toolConfirmationRequest` blocks) or the
-same generic row (`actionType` `toolConfirmation`). Not yet written:
+Written ([issue 209](https://github.com/seanthegeek/doubleagent/issues/209)), source-derived; not
+observed on any real install. Per call, from `sessions.db`
+([Tool confirmations and permission mode](#tool-confirmations-and-permission-mode)):
 
-- Per call: a `system` row `permission decision: <permission> (toolConfirmationResponse)` for each
-  `actionRequired` block of `actionType` `toolConfirmationResponse`, at the message's
-  `created_timestamp`, `tool_use_id` the block's `id` and `tool_name` looked up from the
-  `toolRequest` with that id; a `permission request: <toolName> <prompt> <arguments>` row for
-  `actionType` `toolConfirmation` with the same join; and, for a `toolRequest` whose `_meta` holds
-  `goose.executable` `false` with no answer in the session,
-  `permission decision: not executable (goose.executable=false)` beside its `tool_use` row. Primary
-  store.
-- Standing ([Permission files](#permission-files)): one
-  `permission setting: <category>.<level>=<tool> (from permission.yaml, file mtime)` row per entry
-  of `permission.yaml` and `permission setting: roaming_trust.<allowed or revoked_keys>=<key> (from
-  roaming_trust.json, file mtime)` per peer key, with an empty `session_id`. `permission.yaml` is
-  plain YAML of lists of strings, which a small reader handles without a YAML dependency;
-  `gateway_configs[].allowed_user_ids` stays unread with the rest of `config.yaml` (secret glob,
-  nested YAML).
+- `permission request: <toolName> | <prompt> | <arguments>` for each `actionRequired` block of
+  `actionType` `toolConfirmation`, an empty prompt left out, at the message's
+  `created_timestamp`, with `tool_name` the block's `toolName` and `tool_use_id` its `id`.
+- `permission decision: <permission> (toolConfirmationResponse)` for each `actionRequired`
+  block of `actionType` `toolConfirmationResponse`, `tool_use_id` the block's `id` and
+  `tool_name` looked up from the `toolRequest` with that id.
+- `permission decision: not executable (goose.executable=false)` after the `tool_use` row of a
+  `toolRequest` whose `_meta` holds `goose.executable` `false` and that no
+  `toolConfirmationResponse` of the same session answers (a pre-scan of the session's messages
+  finds the answers), with the call's `tool_name` and `tool_use_id`. Only `sessions.db` is
+  checked; the legacy JSONL sessions and the request logs never carry the key.
+- An `elicitation` or `elicitationResponse` block keeps the generic
+  `action required: <compact JSON>` row, and an older `toolConfirmationRequest` block its
+  `confirmation requested:` row.
+
+Standing ([Permission files](#permission-files)), at the file's modification time with an empty
+`session_id`, `<file>` the path relative to the home:
+
+- `permission setting: <category>.<level>=<tool> (from <file>, file mtime)` per tool in
+  `permission.yaml`, read without a YAML dependency for the one nesting level `serde_yaml`
+  writes; any other line is a bad line ([Bad-line rows](#bad-line-rows)).
+- `permission setting: roaming_trust.<allowed or revoked_keys>=<key> (from <file>, file
+  mtime)` per peer key in `roaming_trust.json`.
+- `gateway_configs[].allowed_user_ids` stays unread with the rest of `config.yaml` (secret
+  glob, nested YAML).
 
 #### Model rows
 
@@ -724,17 +785,29 @@ Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
 #### Past-use rows and secondary sources
 
 Sources ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)): `sessions.db` is the
-primary store, and the legacy JSONL sessions and the `llm_request` logs are read as primary records.
+primary store, and the legacy JSONL sessions are read as primary records. The `llm_request` logs
+are a secondary source ([issue 126](https://github.com/seanthegeek/doubleagent/issues/126);
+source-derived; not observed on any real install): their response messages repeat the
+database's assistant messages, so `secondary()` is True for them and `secondary_tolerance()`
+is 600 seconds, because the database stamps a message up to the tool calls' run time later
+than the log ([Request logs](#request-logs)). The parser assembles a streamed reply's chunks
+by message id before it makes rows, so the assembled text matches the database row, and a tool
+call matches on its id; the `llm request` row, which no database row repeats, is always kept.
 Both `history.txt` files are secondary sources: one `user` row per entry, with an empty
 `timestamp_utc`, `session_id` and `project_path`, which `dedup.deduplicate` drops when a database
 `user` row of the same user has the same text and keeps otherwise (a removed session's prompt, a
 slash command). See [CLI history](#cli-history).
 
-Not yet written: `schedule.json` ([Scheduler and project files](#scheduler-and-project-files))
-would add one `system` row per job,
-`scheduled job: <id> cron <cron> source <source> paused=<paused> last_run=<last_run>` at the file's
-modification time, joined to its session by `current_session_id` (a configuration record, neither
-primary nor secondary); `projects/<slug>.md` holds no session content and needs no row.
+Written ([issue 209](https://github.com/seanthegeek/doubleagent/issues/209)), source-derived;
+not observed on any real install: one `system` row per `schedule.json` job
+([Scheduler and project files](#scheduler-and-project-files)), a configuration record, neither
+primary nor secondary, at the file's modification time with an empty `session_id`:
+`scheduled task: <id> <cron> paused=<true|false> running=<true|false> source=<source>
+last_run=<last_run> current_session=<current_session_id> recipe_base_dir=<recipe_base_dir>
+(from <file>, file mtime)`, with ` parameters=<compact JSON>` before `(from` when the job has
+parameters and `-` for an absent value. The job's sessions name it in their start row's
+`schedule=` and ran in mode `auto`. `projects/<slug>.md` holds no session content and needs no
+row.
 
 #### Sync, relay and origin rows
 
@@ -838,7 +911,13 @@ session start row (`archived=`).
 #### Bad-line rows
 
 The legacy JSONL and request logs are covered by `iter_jsonl` and `error_rows`;
-`history.txt` cannot fail to decode (each line is a row). In `sessions.db`
+`history.txt` cannot fail to decode (each line is a row). A `permission.yaml` line that is not a
+category, a level or a list item is one row,
+`parser: unparseable line (not a category, level or list item): <line>`, and the entries before
+and after it are still yielded; a `roaming_trust.json` or `schedule.json` that cannot be read,
+is not JSON or is not the type Goose writes (an object, a list) is one `parser: <message>` row,
+and a `schedule.json` job that is not an object is
+`parser: unparseable record <N> (not a JSON object): <record>`. In `sessions.db`
 ([issue 183](https://github.com/seanthegeek/doubleagent/issues/183)) a `content_json`,
 `metadata_json` or `model_config_json` that does not decode, or decodes to another type than Goose
 writes (an array for `content_json`
@@ -886,12 +965,82 @@ Legacy `20260301_090000.jsonl`:
 {"data":{"role":"assistant","created":1772355601,"content":[{"type":"text","text":"hi"}]},"usage":{"input_tokens":5,"output_tokens":1}}
 ```
 
+A tool confirmation, as the parser's fixture holds it (the answer is a `user` message visible
+to neither side; the refused call's `_meta` keeps `false`):
+
+```jsonl
+[{"type":"toolRequest","id":"call_p1","toolCall":{"status":"success","value":{"name":"developer__shell","arguments":{"command":"rm -rf build"}}},"_meta":{"goose.executable":true}}]
+[{"type":"actionRequired","data":{"actionType":"toolConfirmation","id":"call_p1","toolName":"developer__shell","arguments":{"command":"rm -rf build"},"prompt":null}}]
+[{"type":"actionRequired","data":{"actionType":"toolConfirmationResponse","id":"call_p1","permission":"allow_once"}}]
+[{"type":"toolRequest","id":"call_p2","toolCall":{"status":"success","value":{"name":"developer__text_editor","arguments":{"path":"/etc/hosts"}}},"_meta":{"goose.executable":false}}]
+```
+
+`permission.yaml`:
+
+```yaml
+user:
+  always_allow:
+  - developer__shell
+  ask_before: []
+  never_allow:
+  - developer__text_editor
+smart_approve:
+  always_allow: []
+  ask_before:
+  - 'computercontroller__automation_script'
+  never_allow: []
+```
+
+`roaming_trust.json` is `{"allowed": ["<peer key>"], "revoked_keys": ["<peer key>"]}`, and a
+`schedule.json` job:
+
+```json
+{"id": "nightly-report", "source": "/home/alice/.local/share/goose/scheduled_recipes/nightly-report.yaml",
+ "cron": "0 0 2 * * *", "last_run": "2026-10-21T02:00:00.123456Z", "currently_running": false,
+ "paused": false, "current_session_id": null, "process_start_time": null, "parameters": [],
+ "recipe_base_dir": "/srv/proj/recipes"}
+```
+
+A streamed reply in a request log, two text chunks of one message:
+
+```jsonl
+{"data":{"id":"msg_s1","role":"assistant","created":1772355605,"content":[{"type":"text","text":"All 3 "}]},"usage":null}
+{"data":{"id":"msg_s1","role":"assistant","created":1772355606,"content":[{"type":"text","text":"tests pass."}]},"usage":null}
+```
+
+#### Source host rows
+
+The agent records no source-host integration. At
+[`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c) the only
+GitHub features are the recipe repository and the Copilot provider. `goose recipe` with
+`GOOSE_RECIPE_GITHUB_REPO` set (an `owner/repo` value in `config.yaml`) shells out to `gh auth
+status`, `gh auth login`, `gh api` and `gh repo clone`, so the GitHub account and its token are
+the GitHub CLI's, in its own configuration outside every Goose directory, and the clone lands in
+the OS temp directory ([Scratch directories](#scratch-directories))
+([`goose-cli/src/recipes/github_recipe.rs:32`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/recipes/github_recipe.rs#L32),
+[`104-126`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/recipes/github_recipe.rs#L104-L126),
+[`281-286`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/recipes/github_recipe.rs#L281-L286);
+[`commands/configure.rs:1928-1945`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/commands/configure.rs#L1928-L1945)).
+The GitHub Copilot provider signs in to a GitHub account by the device flow to buy model
+inference, not repository access, and caches its token in `githubcopilot/info.json`
+([Credentials](#credentials);
+[`providers/githubcopilot.rs:126-133`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/providers/githubcopilot.rs#L126-L133)).
+An MCP server's OAuth grant (a GitHub MCP server's included) is a secret `oauth_creds_<name>` in
+the keyring or `secrets.yaml`
+([`oauth/persist.rs:14-50`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/oauth/persist.rs#L14-L50)).
+No repository list is cached and no conversation is bound to a repository (grepped `crates/` and
+`ui/desktop/src` for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`,
+`pull request` and `clone`), so the parser writes no `source host:` row.
+
 ## Confidence
 
 - High: the Rust paths and their derivation, the Windows mapping, the credential files, the
   `sessions.db` DDL, the content and metadata field names, WAL, version handling.
 - Medium: Electron userData names (convention, no explicit `setPath`); the `Block/goose` legacy
   macOS dir (comment only).
+- Medium: that the stored assistant message is the one `Conversation::push` assembles from the
+  logged chunks; the state machine's path from the provider stream to `add_message` was not
+  traced, so the request-log join rests on the shared coalescing rule.
 - Not determined: whether Goose desktop writes millisecond timestamps (only the normaliser proves
   that some client does); `.gooseignore`; whether `.goose` at home is ever written rather than
   read.

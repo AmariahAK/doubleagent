@@ -5,8 +5,8 @@ open-source predecessor the Amazon Q Developer CLI, which it continues; and the 
 VS Code fork. Evidence levels below are L1 (source or shipped binary), L2
 (kiro.dev documentation), L3 (vendor issue tracker) and L4 (community source). Paths cited are
 relative to the clone; `C=` means `crates/chat-cli/src`. The agent is parsed for the CLI store
-only: the `kiro` parser reads the Amazon Q Developer CLI's `data.sqlite3` conversations and
-`/save` exports ([Parser plan](#parser-plan)).
+only: the `kiro` parser reads the Amazon Q Developer CLI's `data.sqlite3` conversations, `/save`
+exports, prompt history, agent configurations and delegate records ([Parser plan](#parser-plan)).
 
 ## Source and evidence
 
@@ -57,6 +57,14 @@ documentation, not from source, and their record shapes remain unverified.
 
 ### Source reviews
 
+- 2026-10-21: aws/amazon-q-developer-cli at
+  [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a)
+  (1.19.7), with kkawakam/rustyline at
+  [bc06b3e](https://github.com/kkawakam/rustyline/commit/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c)
+  (v15.0.0, the version `Cargo.lock` pins): added the prompt history's file format, the
+  interrupt text, the conversion of a deny-rule prompt into a cancelled tool use, and the
+  delegate record's defaults, and turned the permission, past-use and bad-line plans into what
+  the parser now reads ([Parser plan](#parser-plan)); the Kiro CLI forms are unchanged.
 - 2026-10-19: HEAD of aws/amazon-q-developer-cli is still
   [`15cc8f3`](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a),
   the commit cited here; the repository is frozen, so the open-source paths have not moved. Added
@@ -243,9 +251,11 @@ are adjacent evidence, not transcripts ([Other stores](#other-stores)).
 
 A save replaces the directory's row, so only the latest conversation in each directory survives
 (above), and the prompt history `.cli_bash_history` outlives `/clear`, the row replacement and a
-compaction ([Prompt history `.cli_bash_history`](#prompt-history-cli_bash_history)). The plan
-for these copies is in [Past use and secondary sources](#past-use-rows-and-secondary-sources) (see
-also [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+compaction ([Prompt history `.cli_bash_history`](#prompt-history-cli_bash_history)). The
+analyzer reads it as a secondary source, and reads the checkpoint snapshots and the tangent-mode
+main history below for the entries `history` no longer holds
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources); see also
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)); `transcript` is not read.
 
 Three fields of `ConversationState` repeat history the parser reads from
 `history`, and each outlives a change to it:
@@ -392,6 +402,13 @@ message. A call whose arguments match a deny rule of the agent's `toolsSettings`
 asking, and the conversation continues with a `Prompt` user message `Tool use with <tool> was
 rejected because the arguments supplied were forbidden`
 ([`:2392-2441`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/mod.rs#L2392-L2441)).
+Because the previous assistant message holds the rejected call, the conversation invariants turn
+such a `Prompt` into `CancelledToolUses` with the same `prompt` and a cancelled result per call
+([`C/cli/chat/conversation.rs:1190-1210`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/conversation.rs#L1190-L1210)),
+so the rejection text usually reaches the store as the prompt of a cancelled tool use. An
+interrupt (Ctrl+C) during tool execution writes `CancelledToolUses` with the prompt `The user
+interrupted the tool execution.`
+([`mod.rs:941-950`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/mod.rs#L941-L950)).
 `--trust-all-tools` and `/tools trust-all` set `trust_all_tools` on the same skipped field, so
 neither reaches the database.
 
@@ -445,6 +462,18 @@ slash commands included. Lines carry no time, session id or directory. It outliv
 per-directory row replacement and a compaction, so it is often the only record of an earlier
 conversation's prompts. Secondary: it joins the conversation on prompt text only.
 
+The file format is rustyline 15's `FileHistory`: a file it writes whole starts with the line `#V2`
+([`src/history.rs:465-467`](https://github.com/kkawakam/rustyline/blob/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c/src/history.rs#L465-L467)),
+then one entry per line, with a line feed inside an entry written `\n` and a backslash `\\`; an
+append adds lines without a header
+([`history.rs:488-523`](https://github.com/kkawakam/rustyline/blob/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c/src/history.rs#L488-L523)).
+On load, a first line other than `#V2` is a legacy file whose lines are taken as written, empty
+lines are skipped, and a line with any other escape or a trailing backslash is kept unchanged with
+a warning; a line that is not UTF-8 fails the whole load
+([`history.rs:525-584`](https://github.com/kkawakam/rustyline/blob/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c/src/history.rs#L525-L584)).
+A legacy file is rewritten with the header at the next save
+([`history.rs:706-764`](https://github.com/kkawakam/rustyline/blob/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c/src/history.rs#L706-L764)).
+
 #### Delegate records `.amazonq/.subagents`
 
 `.amazonq/.subagents/<agent>.json` in the working directory
@@ -453,7 +482,13 @@ conversation's prompts. Secondary: it joins the conversation on prompt text only
 records the last background task run with the `delegate` tool for each agent: `{agent, task, status
 (running|completed|failed), launched_at and completed_at (Unix seconds), pid, exit_code, output,
 user_notified, summary, cwd}`
-([`delegate.rs:248-291`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L248-L291)).
+([`delegate.rs:248-291`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L248-L291)),
+written pretty-printed; `completed_at` is `null` while the task runs, a missing `launched_at`
+reads as the Unix epoch, and a missing `cwd` as `Unknown`
+([`:275-278`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L275-L278),
+[`:289-295`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L289-L295)).
+The default agent is named `q_cli_default`
+([`C/cli/agent/mod.rs:74`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/agent/mod.rs#L74)).
 The task runs as `q chat --non-interactive --agent <agent> <task>`, with `--trust-all-tools` added
 for the default agent
 ([`:337-345`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L337-L345)),
@@ -532,21 +567,28 @@ The plan rests on the Amazon Q Developer CLI source; the Kiro CLI forms remain u
 
 #### Permission rows
 
-A `CancelledToolUses` result stays a `tool_result` prefixed
-`cancelled`. Kiro CLI's `settings/permissions.yaml`, `sandbox-state/` and
-`workspace-roots/<hash>/.trust-migration.json` (named in
-[Per-user storage](#per-user-storage)) have no
-recorded shape and are not read.
+Source-derived; not observed on any real install. A `CancelledToolUses` result stays a
+`tool_result` prefixed `cancelled` and is followed by a `system` row with the result's
+`tool_use_id` and `tool_name`, chosen by the message's `prompt`
+([Permission records](#permission-records)):
 
-A `permission decision: denied` `system` row beside each
-`CancelledToolUses` result, joined on `tool_use_id`, with
-`by=user-text` when the prompt is the user's own words and `by=n` for
-the fixed denial text; a `permission decision: denied by deny rule`
-row for a `Prompt` whose text is the fixed rejection message (it names
-the tool, not the id); one `system` row per `allowedTools` entry and
-per `toolsSettings` key of each `cli-agents/*.json` file, global or
-project, at the file's modification time and saying so. Approvals, `t`
-and `--trust-all-tools` leave nothing to read.
+| `prompt` | Row text |
+| --- | --- |
+| the fixed text of a bare `n` | `permission decision: denied by=n` |
+| `Tool use with <name> was rejected ...` | `permission decision: denied by=deny-rule tool=<name>` |
+| `The user interrupted the tool execution.` | `permission decision: cancelled by=interrupt` |
+| any other text | `permission decision: denied by=user-text` |
+| none | `permission decision: cancelled` |
+
+The rejection text in a `Prompt` message gives the deny-rule row after the user row, with
+`tool_name` and no `tool_use_id`, since it names the tool, not the call. Each `cli-agents/*.json`
+file, global or project, gives one row per `allowedTools` entry, `permission setting:
+allowedTools=<entry> (from <file>, file mtime)`, and one per key of each `toolsSettings` tool,
+`permission setting: toolsSettings.<tool>.<key>=<value> (from <file>, file mtime)`, at the file's
+modification time with no session; a project file's rows carry the project as `project_path`.
+Approvals, `t` and `--trust-all-tools` leave nothing to read. Kiro CLI's
+`settings/permissions.yaml`, `sandbox-state/` and `workspace-roots/<hash>/.trust-migration.json`
+(named in [Per-user storage](#per-user-storage)) have no recorded shape and are not read.
 
 #### Model rows
 
@@ -564,16 +606,26 @@ one `system` row each at the file's modification time.
 
 #### Past-use rows and secondary sources
 
-By role: `.aws/amazonq/.cli_bash_history` secondary, one
-`user`-text row per entry with an empty timestamp (the line format,
-any header line and the escaping of multi-line entries are the
-rustyline 15 crate's and were not read in this review; check them in
-that crate before writing the reader); `checkpoint_manager.checkpoints[].history_snapshot` and
-`tangent_state.main_history` secondary, parsed like `history` and
-deduplicated against it; `transcript` secondary with an empty
-timestamp; `.amazonq/.subagents/<agent>.json` primary, one `system`
-row for the delegated task at `launched_at` and one at `completed_at`
-with status, exit code and summary.
+Source-derived; not observed on any real install. By role:
+
+- `.aws/amazonq/.cli_bash_history`, secondary: one `user` row per entry, unescaped as the
+  [file format](#prompt-history-cli_bash_history) says, with no timestamp, session or project, so
+  it matches the conversation on text alone.
+- `checkpoint_manager.checkpoints[].history_snapshot` and `tangent_state.main_history`, secondary
+  copies inside the same blob: the parser pairs them itself, since the analyzer's deduplication
+  pairs only rows of different files. An entry equal to one the parser already yielded on its
+  user `content`, user `timestamp` and `assistant` message is skipped; the others are parsed like
+  `history` after its rows and marked `recovered` `yes`, behind one `system` row per copy that
+  contributes any: `checkpoint snapshot: tag=<tag>[ tool=<tool_name>] recovered=<n> entries[:
+  <description>]` at the checkpoint's `timestamp`, or `tangent mode: main conversation held
+  aside, recovered=<n> entries`, which has no time of its own and takes the previous row's.
+  Their model rows track their own sequence.
+- `.amazonq/.subagents/<agent>.json`, primary: `delegate task launched: agent=<agent> pid=<pid>[
+  trust_all_tools=true]: <task>` at `launched_at` (`trust_all_tools` for `q_cli_default`, which
+  the delegate tool runs with `--trust-all-tools`) and, once the task ended, `delegate task
+  <status>: agent=<agent> exit_code=<code>` with `summary:` and `output:` lines at
+  `completed_at`; `project_path` is `cwd`, or the project when it is `Unknown`.
+- `transcript`, secondary with no timestamp, is not read.
 
 #### Sync, relay and origin rows
 
@@ -599,9 +651,12 @@ row noting the mismatch is enough.
 
 #### Bad-line rows
 
-`.cli_bash_history` would be the first line-oriented file;
-read it through `line_text` and `error_rows` (a line that is not valid
-UTF-8 is the likely bad line).
+Source-derived; not observed on any real install. `.cli_bash_history` is the one line-oriented
+file: a line that is not UTF-8 becomes `parser: unparseable line (not valid UTF-8): <line>`
+through `error_rows`, after the entries around it. A line with an escape rustyline does not write
+is kept as written, as rustyline keeps it. An agent configuration or delegate record that is not a
+JSON object is one row, `parser: agent configuration is not a JSON object` or `parser: delegate
+record is not a JSON object`.
 
 #### Fixtures
 
@@ -613,6 +668,55 @@ INSERT INTO conversations (key, value) VALUES ('/home/alice/proj', '{"conversati
 CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT);
 INSERT INTO auth_kv VALUES ('codewhisperer:odic:token', '{"access_token":"REDACT-ME"}');
 ```
+
+A `CancelledToolUses` user message after a bare `n`, from the constructor at
+[`C/cli/chat/message.rs:120-140`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/message.rs#L120-L140)
+(`env_context` shortened):
+
+```json
+{"additional_context":"","env_context":{},"content":{"CancelledToolUses":{"prompt":"I deny this tool request. Ask a follow up question clarifying the expected action","tool_use_results":[{"tool_use_id":"tooluse_d1","content":[{"Text":"Tool use was cancelled by the user"}],"status":"Error"}]}},"timestamp":"2026-04-25T09:00:05-07:00","images":null}
+```
+
+A checkpoint, from
+[`C/cli/chat/checkpoint.rs:74-82`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/checkpoint.rs#L74-L82)
+(`history_snapshot` holds `HistoryEntry` objects):
+
+```json
+{"tag":"1","timestamp":"2026-04-25T08:59:30-07:00","description":"fix the build","history_snapshot":[],"is_turn":true,"tool_name":null}
+```
+
+A global agent configuration `.aws/amazonq/cli-agents/dev.json`:
+
+```json
+{"name":"dev","allowedTools":["fs_read","@git"],"toolsSettings":{"execute_bash":{"allowedCommands":["git status"],"deniedCommands":["rm -rf .*"],"autoAllowReadonly":true},"fs_write":{"deniedPaths":["/etc"]}},"model":"claude-sonnet-4"}
+```
+
+A delegate record `.amazonq/.subagents/q_cli_default.json`:
+
+```json
+{"agent":"q_cli_default","task":"run the tests","status":"completed","launched_at":1777132900,"completed_at":1777132960,"pid":4711,"exit_code":0,"output":"12 passed","user_notified":true,"summary":"All tests pass.","cwd":"/srv/proj"}
+```
+
+A `.cli_bash_history` in the `#V2` format, an entry with a line feed on its fourth line:
+
+```text
+#V2
+list the files here
+/clear
+fix the\nbuild
+```
+
+#### Source host rows
+
+The agent records no source-host integration. `crates/chat-cli/src` and `crates/agent/src` at
+[15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a),
+grepped for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`,
+`pull request` and `clone`, name GitHub only in the new-issue URL of the CLI's own repository that
+`q issue` builds
+([`C/cli/chat/util/issue.rs:74`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/util/issue.rs#L74)),
+in release notes and in an MCP test; the OAuth flows are the Builder ID and IAM
+Identity Center sign-in ([Secrets](#secrets)). Kiro CLI and the Kiro IDE are closed source and
+not reviewed for it.
 
 ## Confidence
 

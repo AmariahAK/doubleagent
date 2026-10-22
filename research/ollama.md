@@ -8,7 +8,8 @@ local server) and, on macOS and Windows only, a desktop chat app. Versions `v0.3
 transcripts, in one SQLite database. The REPL keeps a prompt history without times. The server
 keeps nothing, and keeps no copy of what a launched agent sends or receives
 ([Overlap with launched agents](#overlap-with-launched-agents)). The agent is parsed: the
-`ollama` parser reads the desktop app's database and the REPL history.
+`ollama` parser reads the desktop app's database, the REPL history and the auto-mode setting
+the launcher keeps for Claude Desktop ([Permission rows](#permission-rows)).
 
 ## Source and evidence
 
@@ -50,6 +51,13 @@ All claims below are evidence level **A** (source, file:line) unless marked **D*
 
 ### Source reviews
 
+- 2026-10-21: ollama/ollama at
+  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
+  (`main` after `v0.40.6`): the macOS app's Claude Desktop setting, the macOS-only launch and
+  the restore that removes the key went into
+  [Claude Desktop third-party mode](#claude-desktop-third-party-mode); the parser now reads
+  `.ollama/config.json` and the Claude Desktop profile for the auto-mode setting
+  ([Permission rows](#permission-rows)), and [Source host rows](#source-host-rows) was added.
 - 2026-10-19: HEAD
   [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
   of `main` (the latest release tag was `v0.40.6`, 2026-10-16; no release `v0.36` to `v0.39` was
@@ -334,7 +342,24 @@ both telemetry switches off, and `autoModeEnabled`
 so a Claude Desktop launched through Ollama runs with auto mode on
 unless the user turned it off. Writing `autoModeEnabled` into the
 profile is new since `v0.35.1` (`autoModeEnabled` does not occur in
-`cmd/launch/claude_desktop.go` at that tag). The catalog collects the
+`cmd/launch/claude_desktop.go` at that tag). The macOS desktop app's
+Claude Desktop settings toggle saves the `automode` key with
+`SaveIntegrationAutoMode` and, when Claude Desktop already uses the
+Ollama profile, rewrites the profile with the new value
+([`app/cmd/app/app_darwin.go:1497-1522`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/app/cmd/app/app_darwin.go#L1497-L1522);
+[`cmd/config/config.go:217-235`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/config/config.go#L217-L235)).
+The profile is written on macOS only: `claudeDesktopSupported` refuses
+every other OS
+([`cmd/launch/claude_desktop.go:425-430`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L425-L430)),
+while `ollama launch claude-desktop --restore` runs on macOS and Windows
+([432-437](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L432-L437))
+and deletes `autoModeEnabled` with the other gateway keys from the
+profile
+([796-815](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L796-L815)).
+Each write goes through `WriteWithBackup`
+([955-965](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L955-L965)),
+so the profile's modification time is the last time the launcher changed
+it. The catalog collects the
 `Claude-3p` bases; `AppData/Local/Claude Nest-3p` is not a catalog
 line.
 
@@ -797,8 +822,12 @@ That is account state, not sync state; the parser does not read it (above).
 
 Globs (relative to the home): `Library/Application Support/Ollama/db.sqlite`,
 `AppData/Local/Ollama/db.sqlite` (with their `-wal`; open through
-`sqlite_util.py`), and `.ollama/history`. Do not read `.ollama/logs/*`,
-`.ollama/config.json`, `.ollama/backup/**`, `.ollama/launch/**`,
+`sqlite_util.py`), `.ollama/history`, `.ollama/config.json`, and
+`configLibrary/00000000-0000-4000-8000-000000000114.json` under
+`Library/Application Support/Claude-3p` and `AppData/Local/Claude-3p`, the Claude Desktop
+profile, which the catalog attributes to `claude-desktop` and the parser reads through
+`reads_agents` ([Permission rows](#permission-rows)). Do not read `.ollama/logs/*`,
+`.ollama/backup/**`, `.ollama/launch/**`,
 `.ollama/chatgpt-ollama/**` or `.ollama/onboarding-v*.completed` for rows.
 
 `db.sqlite`: join `messages` to `chats` on `chat_id`, order by `chat_id`,
@@ -826,18 +855,30 @@ yields no row. A chat with `title` yields nothing extra; the title is not a turn
 
 #### Permission rows
 
-The parser yields no permission rows. The desktop app asks before no tool call and the REPL has no
-tools, so there is no per-call decision. Standing: `.ollama/config.json`
+The desktop app asks before no tool call and the REPL has no tools, so there is no per-call
+decision and no per-call row. The standing setting is `.ollama/config.json`
 `integrations.<name>.automode`, a boolean
 ([`cmd/config/config.go:19-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/config/config.go#L19-L24)).
 For `claude-desktop` it becomes `autoModeEnabled` in the Claude Desktop profile Ollama writes, true
 when the key is unset
 ([`cmd/launch/claude_desktop.go:320-345`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345),
-[741-759](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759)).
-Proposed, not yet written:
-`permission setting: integrations.<name>.automode=<value> (from .ollama/config.json, file mtime)`
-for each integration that has the key. The row says what Ollama configured for the other agent; that
-agent's own parser reads what it did with it.
+[741-759](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759));
+who writes each is under [Claude Desktop third-party mode](#claude-desktop-third-party-mode).
+The parser yields, source-derived; not observed on any real install, one `system` row per key,
+at the file's modification time, with empty `session_id`:
+
+- `.ollama/config.json`, for each `integrations.<name>` object that holds `automode`:
+  `permission setting: integrations.<name>.automode=<true|false> (from .ollama/config.json, file mtime)`.
+  An absent key, which the launcher reads as true, gives no row.
+- The Claude Desktop profile, when it holds `autoModeEnabled`:
+  `permission setting: autoModeEnabled=<true|false> (set by Ollama's Claude Desktop launcher, from <path relative to the home>, file mtime)`.
+  A profile that `--restore` stripped gives no row.
+
+A file of either kind that is not a JSON object becomes one `system` row
+`parser: <path relative to the home> is not a JSON object` (or `is not readable JSON (<error>)`).
+The rows say what Ollama configured for the other agent; that agent's own parser reads what it
+did with it. The profile's other keys (`coworkEgressAllowedHosts`, the telemetry switches) are not
+read for rows.
 
 #### Model rows
 
@@ -966,19 +1007,60 @@ and the BLOB appear nowhere in the output. Truncation case: a
 fixture with the `settings` table at schema version 16 (without the three
 newer columns) must give the same rows.
 
-Fixture `.ollama/history`, with noise beside it that the parser must not want:
-`.ollama/config.json` holding the JSON below, `.ollama/backup/config.json.1772355600` and an
-empty `.ollama/onboarding-v1.completed`:
+Fixture `.ollama/config.json`, whose `claude-desktop` integration holds `automode` and whose
+`claude` integration does not:
 
 ```json
-{"integrations":{"claude":{"models":["gemma4:e4b"]}},"last_model":"gemma4:e4b","last_selection":"claude"}
+{"integrations":{"claude":{"models":["gemma4:e4b"]},"claude-desktop":{"models":["gemma4:e4b"],"automode":true}},"last_model":"gemma4:e4b","last_selection":"claude"}
 ```
+
+Expected: one row,
+`permission setting: integrations.claude-desktop.automode=true (from .ollama/config.json, file mtime)`.
+
+Fixture
+`Library/Application Support/Claude-3p/configLibrary/00000000-0000-4000-8000-000000000114.json`,
+the keys `writeClaudeDesktopGatewayProfile` sets, as `json.MarshalIndent` writes them, with a
+`_meta.json` beside it that the parser must not want:
+
+```json
+{
+  "autoModeEnabled": true,
+  "chatTabEnabled": true,
+  "coworkEgressAllowedHosts": [
+    "*"
+  ],
+  "deploymentDisplayName": "Ollama",
+  "disableDeploymentModeChooser": true,
+  "disableEssentialTelemetry": true,
+  "disableNonessentialTelemetry": true,
+  "inferenceGatewayApiKey": "ollama",
+  "inferenceGatewayAuthScheme": "bearer",
+  "inferenceGatewayBaseUrl": "http://127.0.0.1:11435",
+  "inferenceProvider": "gateway"
+}
+```
+
+Expected: one row, `permission setting: autoModeEnabled=true (set by Ollama's Claude Desktop
+launcher, from <that path>, file mtime)`. With the key removed from either file, no row.
+
+Fixture `.ollama/history`, with noise beside it that the parser must not want:
+`.ollama/backup/config.json.1772355600` and an
+empty `.ollama/onboarding-v1.completed`:
 
 ```text
 why is the sky blue
 /set nohistory
 /bye
 ```
+
+#### Source host rows
+
+The agent records no source-host integration. ollama/ollama at
+[`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
+was searched for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`,
+`pull request` and `clone` in `app/`, `cmd/` and `server/`: the only sign-in is the ollama.com
+device-key binding of [Secrets](#secrets) (`ollama://connect`), and the GitHub names are the
+launch registry's links and the Copilot integrations' configuration, not an account Ollama holds.
 
 ## Confidence
 
@@ -997,6 +1079,9 @@ why is the sky blue
   macOS app also writes `db.sqlite` into `~/.ollama` on non-standard installs (code says no); what
   fills `chats.browser_state` in detail; whether a Windows build of the app writes `server.log`
   with the same gin lines (the path differs, [Desktop app, Windows](#desktop-app-windows)).
+- Not determined: whether Claude Desktop itself rewrites `autoModeEnabled` in the profile Ollama
+  wrote (its own settings window edits `configLibrary` entries), so the profile row's "set by
+  Ollama's Claude Desktop launcher" rests on Ollama's source alone.
 - Not determined: the size of `~/.ollama/launch/*` and `repl` artifacts of other `ollama launch`
   integrations; what a pre-release build may have left in
   `.ollama/chatgpt-ollama/electron-data`.

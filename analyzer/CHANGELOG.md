@@ -13,6 +13,234 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Source-derived rows for the open-source agents, from the 2026-10-19
+  review's issues; each agent's research document marks them
+  source-derived until its real-install round. The lines below list them
+  per agent.
+- The `agent-zero` parser writes `permission decision:` rows for tools a
+  policy blocked, provider MCP approvals denied automatically and
+  Infection Check verdicts, and `permission setting:` rows from the
+  `_tool_access` and `_orchestrator` `config.json` files and the
+  Infection Check and Orchestrator plugin switches ([#204]).
+- The `agent-zero` parser writes an editor (ACP) session's mode, model
+  and container working directory (`permission mode:`, `model:
+  requested`, `scratch directory:`), takes the workspace `acp_cwd` as the
+  project path, and writes the per-chat model override without its API
+  key ([#204]).
+- The `agent-zero` parser reads `usr/scheduler/tasks.json` and the
+  Telegram `state.json` as secondary sources; a mapped Telegram chat that
+  is gone gives a `session deleted:` row ([#204]).
+- The `agent-zero` parser writes a `session origin: remote` row from the
+  A0 CLI connector's last chat, so `origin` reads `remote` or `local` for
+  Agent Zero sessions ([#204]).
+- The `aider` parser writes `model: <name>` and `model: <old> -> <new>`
+  rows from the startup and `/model` announcement lines, with ` (editor
+  model)` and ` (weak model)` for those roles, and fills the `model`
+  column on them ([#203]).
+- The `aider` parser writes a `permission decision:` row for each
+  confirmation answer in the chat history; a yes or no notes that it may
+  have come from `--yes-always` ([#203]).
+- The `cline` parser reads the SDK hook audit log
+  `~/.cline/data/logs/hooks.jsonl` as a secondary source, recovering the
+  prompts, tool calls, results and final replies of sessions whose
+  transcripts are gone, plus `hook audit:` rows for run starts, aborts,
+  errors and stale-session shutdowns ([#190]).
+- The `cline` parser writes `permission decision: rejected` or `blocked`
+  beside SDK tool results the user rejected or the policy blocked, and
+  `permission setting:` rows for `autoApprovalSettings` and `mode` in
+  `globalState.json`, the tool settings in
+  `settings/global-settings.json`, and each MCP server's `autoApprove` and
+  `disabled` ([#190]).
+- The `cline` parser writes `session origin: remote` and `session
+  synced:` rows for the Cline Cloud sessions in `globalState.json`
+  `cloudSessionStatuses` and `cloud-pending-starts/*.json`, and a `cloud
+  task target:` row for the last cloud task target; a session imported
+  from Claude Code, Codex or OpenCode names its source agent, session and
+  path on its start row ([#190]).
+- The `codex-cli` and `open-interpreter` parsers write `permission
+  setting:` rows for the standing grants in `config.toml` and
+  `rules/*.rules`, a `thread goal:` row per `thread_goal_updated` event
+  and a `memory summary:` row per `memories/rollout_summaries` file, and
+  read `db-backups/*/state_5.sqlite`, a copy Codex set aside as corrupt,
+  as a secondary source ([#200]).
+- The `codex-cli` parser writes `permission decision:` rows for
+  `apply_patch` approvals in `logs_<N>.sqlite` and for failed automatic
+  reviews in `state_5.sqlite` `guardian_review_feedback` ([#200]).
+- The `cody` parser writes `permission setting:` rows for the Cody keys
+  of the editor's `User/settings.json` (Deep Cody shell allow and block
+  lists, agentic context switches, MCP server and tool toggles) and
+  `model setting:` rows from `cody-model-preferences`, in the VS Code
+  state row and the JetBrains global-state file ([#197]).
+- The `cody` parser reads a JetBrains project's legacy
+  `.idea/cody_history.xml` as a secondary source, recovering chats and
+  unpaired messages the agent store no longer holds ([#197]).
+- The `continue` parser writes a `permission setting:` row for each rule
+  in the CLI's `permissions.yaml`, `permission decision: allow always`
+  for the `cn.log` "Added policy rule" line, the reason a call was denied
+  (`canceled reason=user`, `canceled reason=policy`, `errored
+  reason=policy` for a Security Policy Violation), and a `permission
+  mode:` row for a session's mode ([#198]).
+- The `continue` parser reads the CLI's `input_history.json` and the
+  `chatFeedback` events as secondary sources, parses the `editInteraction`
+  and `editOutcome` events (`permission decision: edit ...`), and lists a
+  `cn review` worktree as a scratch directory ([#198]).
+- The `crush` parser writes a `permission decision:` row after a tool
+  call the user denied or a `PreToolUse` hook allowed, denied or halted,
+  and `permission setting:` rows from every `crush.json`, the `crushrc`
+  `permissions allow|deny` lines and the per-project MCP server overrides
+  ([#195]).
+- The `crush` parser writes `session relayed:` rows for sessions driven
+  by an MCP channel, a `session deleted:` row for the missing parent of
+  an orphaned sub-agent session, and `file version:` and `file read:`
+  rows from the `files` and `read_files` tables ([#195]).
+- The `gemini-cli` parser writes `permission setting:` rows from
+  `settings.json` (permission, sandbox and MCP lists, in the home and the
+  project), the policy files under `.gemini/policies/` (Python 3.11 or
+  later; 3.10 gives one `parser:` row), `trusted_hooks.json` and
+  `acknowledgments/agents.json`, and `session retention:` rows naming a
+  `general.sessionRetention` setting, so an expired session can be told
+  from a deleted one ([#186]).
+- The `gemini-cli` parser reads `shell_history` and the `/chat save`
+  checkpoints as secondary sources ([#186]) and the `/bug` history exports
+  `bug-report-history-<ms>.json` too ([#155]).
+- The `goose` parser writes `permission setting:` rows for
+  `permission.yaml` and `roaming_trust.json` entries at the file's
+  modification time, and one `scheduled task:` row per `schedule.json`
+  job ([#209]).
+- The `hermes` parser writes `session relayed:` rows for messaging-gateway
+  sessions, `relay peer:`, Bot Mode room and desktop `remote backend:`
+  rows, and `scratch directory:` rows for the git worktrees the agent
+  created ([#208]).
+- The `hermes` parser writes terminal approval outcomes as `permission
+  decision:` rows and `/yolo`, `command_allowlist` and pairing approvals
+  as `permission setting:` rows; `state_meta` deletion fences give
+  `session deleted:` rows, and start rows mark archived and imported
+  sessions ([#208]).
+- The `hermes` parser reads `.hermes_history`, the cron run files,
+  `response_store.db` and the trajectory files as secondary sources
+  ([#208]).
+- The `kilo-code` parser reads the config `permission` grants, the
+  sandbox policy and preference files, `retention/state.json` and the
+  `remote control:` lines of its logs ([#192], [#221]).
+- The `kiro` parser writes a `permission decision:` row after each
+  cancelled Amazon Q Developer CLI tool call (a bare `n`, a deny rule, an
+  interrupt or the user's own words), and one `permission setting:` row
+  per `allowedTools` entry and `toolsSettings` key of each global or
+  project `cli-agents/*.json` file ([#212]).
+- The `kiro` parser reads the prompt history `.aws/amazonq/.cli_bash_history`
+  as a secondary source, recovers turns only a conversation's checkpoint
+  snapshots or tangent-mode main history still hold, and turns the
+  delegate tool's `.amazonq/.subagents/<agent>.json` records into launch
+  and completion rows ([#212]).
+- The `letta` parser writes `permission setting:` rows from the four
+  settings files, `session relayed:` rows from the channel routes, and
+  parses the scheduled tasks (`crons.json`), their run logs
+  (`runs/*.jsonl`) and interrupted listener turns with their approval
+  decisions and tool results ([#202]).
+- The `little-coder` parser reads the v0.0.x `~/.little-coder` layout:
+  saved sessions, `history.json`, `session_latest.json`,
+  `input_history.txt` and checkpoint snapshots, and from its
+  `config.json` `session synced: gist`, `session relayed: telegram chat`
+  and `permission setting: permission_mode` rows, never reading its
+  tokens ([#157]).
+- The `little-coder` parser writes `permission decision: denied
+  (<reason>)` after a call its permission gate refused ([#201]).
+- The `nanobot` parser writes `session relayed:` rows for sessions keyed
+  to or routed through a messaging channel, `permission setting:` and
+  `permission mode:` rows from `config.json`, `pairing.json` and the
+  WebUI workspace scope, and `model: <old> -> <new> (preset)
+  requested=... resolved=...` rows for `/model` switches ([#207]).
+- The `nanobot` parser reads the cron and trigger run records and the
+  WebUI sidebar cache as secondary sources, recovering the scheduled
+  turns of deleted sessions ([#207]).
+- The `ollama` parser writes a `permission setting:` row for each
+  launcher integration's `automode` key in `.ollama/config.json`, and for
+  the `autoModeEnabled` key it writes into Claude Desktop's third-party
+  profile, at each file's modification time ([#188]).
+- The `openclaw` parser writes `session relayed:` rows for sessions
+  carried through a chat platform or started by a Gmail hook, `permission
+  decision:` rows for Gateway approvals, and `permission setting:` rows
+  for the exec approvals policy, standing cron grants, allowed channel
+  senders and per-session settings ([#206]).
+- The `openclaw` parser writes a `model:` row for a session's model
+  override, `channel delivery:` and `channel ingress:` rows, `session
+  deleted:`, `session archived:` and `session forgotten from memory:`
+  rows, and `source host: github account <login>` rows for the pushes and
+  pull requests the Gateway made; it recovers prompts that never reached
+  the transcript and entries only the full-text index still holds
+  ([#206]).
+- The `opencode` and `kilo-code` parsers write `permission decision:`
+  rows for refused tool calls, `permission setting:` rows for saved
+  grants and session rule lists, `session archived` rows and `scratch
+  directory:` rows for the agent's own worktrees ([#194], [#192]).
+- The `opencode` and `kilo-code` parsers read the terminal UI's
+  `prompt-history.jsonl` as a secondary source and `prompt-stash.jsonl`
+  as `prompt stashed (unsent):` rows; `opencode` also reads the pinned
+  sessions in `session.json` ([#194], [#192]).
+- The `openhands` parser writes a `permission decision: analyzed
+  risk=<risk> analyzer=<analyzer> policy=<policy>` row for a security
+  analyzer's verdict, joined to the call, and `permission setting:` rows
+  from each conversation's `base_state.json` ([#205]).
+- The `openhands` parser reads the CLI's `prompt_history.json` as a
+  secondary source, and writes a `scratch directory:` row for a
+  conversation in the Agent Server's default worktree root,
+  `/tmp/conversation-worktrees` ([#205]).
+- The `pearai` parser writes `permission decision:` rows for the
+  agent surface's denial and approval texts, one row per `taskHistory`
+  entry and per standing auto-approval setting in the editor's
+  `state.vscdb`, and one `tokens generated:` row per model request from
+  `dev_data/tokens_generated.jsonl` ([#193]).
+- The `pearai` parser reads the `PearAI` output channel log and
+  `dev_data/chat.jsonl` as secondary sources ([#193]).
+- The `pi` parser writes a `permission setting:` row for
+  `defaultProjectTrust`, reads `.pi/agent/pi-debug.log` as a secondary
+  source, and writes one `crash:` row per `.pi/agent/crashes.json` record
+  ([#201]).
+- The `qwen-code` parser writes `permission decision: <decision>
+  (tool_call ui_telemetry)` rows joined on the call id (the event named
+  `qwen-code.tool_call` or `tool_call`), `model:` and `permission mode:`
+  rows from `executionContext` and `session_approval_mode` records, and
+  `permission setting:` rows from `.qwen/settings.json` ([#187]).
+- The `qwen-code` parser reads `~/.qwen/usage_record.jsonl` as a
+  secondary source, one `session usage:` row per session summary ([#187]).
+- The `roo-code` parser writes `permission decision:` rows for approved
+  tool asks and for the denial and approval results in the API history,
+  `permission mode:` for each task, and `permission setting:` rows from
+  the global state, `.roo/cli-settings.json` and the MCP `alwaysAllow`
+  lists ([#191]).
+- The `roo-code` parser writes `sync setting:` rows from the Roo Code
+  Cloud settings cache and `cloud upload queued:` rows from the cloud
+  retry queue of releases up to 3.53.0 ([#159]).
+- The `shellgpt` parser writes `permission setting:` rows for three
+  `.sgptrc` keys, a `model: ... (configured default, ...)` row for
+  `DEFAULT_MODEL` and one row per function-store file, and reads no
+  other `.sgptrc` key; it reads the response cache as a secondary source
+  ([#189]).
+- The `tabby` parser reads the server's AI-written pages as `page:<id>`
+  sessions, `model configured:` rows from `.tabby/config.toml` (Python
+  3.11 or later), the IntelliJ and VS Code inline-edit command histories
+  as secondary sources, and `source host:` and `source host repository:`
+  rows from the GitHub and GitLab integrations ([#211]).
+- The `twinny` parser writes `permission mode:` and `permission setting:`
+  rows for Twinny's standing grants and the accepted team gateway policy
+  ([#154]), a `file changed:` row per file each reply changed, reads the
+  `agent-changes/` records and the Twinny log as secondary sources, and
+  writes a `source host repository:` row for the repository the review
+  tab last listed ([#199]).
+- The `vscode` parser writes `permission level:` rows, the model's options
+  on `model:` rows, `permission setting:` rows for the standing tool
+  approvals and the auto-approve and default-permission settings, a
+  `model setting:` row for `chat.defaultModel`, and `source host:` and
+  `source host repository:` rows; it reads the chat editing state
+  `chatEditingSessions/<id>/state.json` as a secondary source (`edit
+  state:` rows) ([#210]).
+- The `zed` parser writes standing `permission setting:` rows from
+  `settings.json`, `global_settings.json` and the `trusted_worktrees`
+  table, `permission decision: denied` and `auto_denied` rows,
+  `scratch directory:` rows for the macOS sandboxed-terminal temp
+  directory and Zed-created worktrees, and `unsent draft:`, `archived
+  worktree:`, `sidebar terminal:` and `sidebar thread:` rows ([#196]).
+
 - The `cursor` parser reads Cursor cloud agents, which run on Cursor's
   servers and keep no conversation records in the editor's database.
   Each entry of the `cloudAgentRepository.agents.<account>` list in
@@ -92,6 +320,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   state.vscdb aiSettings.modelLastUsedAt, written late by the app)`: the
   editor writes that blob some time after the change, so neither time is
   the time of the change ([#237]).
+- `inventory.json` lists an agent's own worktree inside a project
+  (`<project>/.claude/worktrees/<name>`, and the same under `.kilo`,
+  `.gemini`, `.qwen` and `.codex`) under `scratch_directories` instead of
+  as a project: a path under a directory that one agent's project catalog
+  entry names is a scratch directory, in loose mode too ([#227]).
+- `sessions.jsonl` `relayed` now reads `yes` or `no` for `crush`,
+  `hermes`, `letta`, `little-coder`, `nanobot` and `openclaw` sessions,
+  `synced` for `little-coder` sessions and `origin` for `cline` and
+  `agent-zero` sessions, instead of `""`; every little-coder session
+  reads `no`, since its rows name no session ([#195], [#208], [#202],
+  [#157], [#207], [#206], [#190], [#204]).
+- `sessions.jsonl` `recovered` now reads `no`, `partial` or `yes`
+  instead of `""` for the agents whose parsers read a secondary source
+  since this release: `agent-zero`, `cody`, `continue`, `kilo-code`,
+  `kiro`, `little-coder`, `openhands`, `pearai`, `pi`, `shellgpt`,
+  `twinny` and `vscode` ([#204], [#197], [#198], [#192], [#212], [#157],
+  [#205], [#193], [#201], [#189], [#199], [#210]).
+- The `goose` parser writes tool confirmations as `permission request:`
+  and `permission decision: <permission> (toolConfirmationResponse)`
+  rows joined to the call, in place of the generic `action required:`
+  row, and a `permission decision: not executable
+  (goose.executable=false)` row for a call the permission check refused
+  or held without an answer ([#209]).
+- The `goose` parser reads the `llm_request` logs as a secondary source
+  matched within 600 seconds, assembling streamed chunks first, so
+  replies the database holds appear once and a removed or rewound
+  session's replies are marked recovered ([#126]).
+- The `letta` parser reads `sessions.jsonl` as exit lines only, and a
+  transcript line takes its project from the agent's next exit line
+  ([#158]).
+- The bundled catalog copy follows the collector's tables: the `.crewai`
+  project entry, the CLAI 2.0 state directory, Cody's JetBrains files,
+  nanobot's workspace cron and trigger files, the OpenCode desktop app,
+  the Kilo sandbox files, the Twinny workspace storage and the Agent Zero
+  connector temp directory are attributed; the Gemini CLI and Qwen Code
+  worktrees, the CLAI clones, OpenClaw's Gateway clones and OpenHands'
+  `workspaces` are excluded; Hermes' `state-snapshots` is no longer
+  excluded; and the secret globs change as in collector 1.18.0 ([#223],
+  [#224], [#225], [#214], [#220], [#213], [#221], [#215], [#217], [#216],
+  [#219], [#218], [#123], [#231], [#230], [#159]).
 
 ### Fixed
 
@@ -112,6 +380,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   None, additionalData.status rejected)` beside its `[rejected] ` result,
   and the calls queued after it (`cancelled`) yield their `tool_use` row
   and no permission row ([#236]).
+- An OpenClaw database that is only a PostgreSQL engine anchor yields a
+  `parser:` row naming the store instead of nothing ([#206]).
+- A Tabby server root collected from a Docker or Podman volume is parsed;
+  before, it was detected but not parsed ([#124]).
 
 ## [0.20.0] - 2026-10-20
 
@@ -1633,7 +1905,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 [#237]: https://github.com/seanthegeek/doubleagent/issues/237
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
+[#231]: https://github.com/seanthegeek/doubleagent/issues/231
+[#230]: https://github.com/seanthegeek/doubleagent/issues/230
 [#228]: https://github.com/seanthegeek/doubleagent/issues/228
+[#227]: https://github.com/seanthegeek/doubleagent/issues/227
+[#225]: https://github.com/seanthegeek/doubleagent/issues/225
+[#224]: https://github.com/seanthegeek/doubleagent/issues/224
+[#223]: https://github.com/seanthegeek/doubleagent/issues/223
+[#221]: https://github.com/seanthegeek/doubleagent/issues/221
+[#220]: https://github.com/seanthegeek/doubleagent/issues/220
+[#219]: https://github.com/seanthegeek/doubleagent/issues/219
+[#218]: https://github.com/seanthegeek/doubleagent/issues/218
+[#217]: https://github.com/seanthegeek/doubleagent/issues/217
+[#216]: https://github.com/seanthegeek/doubleagent/issues/216
+[#215]: https://github.com/seanthegeek/doubleagent/issues/215
+[#214]: https://github.com/seanthegeek/doubleagent/issues/214
+[#213]: https://github.com/seanthegeek/doubleagent/issues/213
+[#212]: https://github.com/seanthegeek/doubleagent/issues/212
+[#211]: https://github.com/seanthegeek/doubleagent/issues/211
+[#210]: https://github.com/seanthegeek/doubleagent/issues/210
+[#209]: https://github.com/seanthegeek/doubleagent/issues/209
+[#208]: https://github.com/seanthegeek/doubleagent/issues/208
+[#207]: https://github.com/seanthegeek/doubleagent/issues/207
+[#206]: https://github.com/seanthegeek/doubleagent/issues/206
+[#205]: https://github.com/seanthegeek/doubleagent/issues/205
+[#204]: https://github.com/seanthegeek/doubleagent/issues/204
+[#203]: https://github.com/seanthegeek/doubleagent/issues/203
+[#202]: https://github.com/seanthegeek/doubleagent/issues/202
+[#201]: https://github.com/seanthegeek/doubleagent/issues/201
+[#200]: https://github.com/seanthegeek/doubleagent/issues/200
+[#199]: https://github.com/seanthegeek/doubleagent/issues/199
+[#198]: https://github.com/seanthegeek/doubleagent/issues/198
+[#197]: https://github.com/seanthegeek/doubleagent/issues/197
+[#196]: https://github.com/seanthegeek/doubleagent/issues/196
+[#195]: https://github.com/seanthegeek/doubleagent/issues/195
+[#194]: https://github.com/seanthegeek/doubleagent/issues/194
+[#193]: https://github.com/seanthegeek/doubleagent/issues/193
+[#192]: https://github.com/seanthegeek/doubleagent/issues/192
+[#191]: https://github.com/seanthegeek/doubleagent/issues/191
+[#190]: https://github.com/seanthegeek/doubleagent/issues/190
+[#189]: https://github.com/seanthegeek/doubleagent/issues/189
+[#188]: https://github.com/seanthegeek/doubleagent/issues/188
+[#187]: https://github.com/seanthegeek/doubleagent/issues/187
+[#186]: https://github.com/seanthegeek/doubleagent/issues/186
 [#185]: https://github.com/seanthegeek/doubleagent/issues/185
 [#184]: https://github.com/seanthegeek/doubleagent/issues/184
 [#183]: https://github.com/seanthegeek/doubleagent/issues/183
@@ -1656,6 +1970,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#166]: https://github.com/seanthegeek/doubleagent/issues/166
 [#165]: https://github.com/seanthegeek/doubleagent/issues/165
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
+[#159]: https://github.com/seanthegeek/doubleagent/issues/159
+[#158]: https://github.com/seanthegeek/doubleagent/issues/158
+[#157]: https://github.com/seanthegeek/doubleagent/issues/157
+[#155]: https://github.com/seanthegeek/doubleagent/issues/155
+[#154]: https://github.com/seanthegeek/doubleagent/issues/154
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#149]: https://github.com/seanthegeek/doubleagent/issues/149
@@ -1667,7 +1986,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#135]: https://github.com/seanthegeek/doubleagent/issues/135
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
 [#133]: https://github.com/seanthegeek/doubleagent/issues/133
+[#126]: https://github.com/seanthegeek/doubleagent/issues/126
 [#125]: https://github.com/seanthegeek/doubleagent/issues/125
+[#124]: https://github.com/seanthegeek/doubleagent/issues/124
+[#123]: https://github.com/seanthegeek/doubleagent/issues/123
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119
