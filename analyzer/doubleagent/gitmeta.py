@@ -20,7 +20,9 @@ lines, collector 1.19.0, issue 253). This module reads two of them:
   header after it. A pair may follow its header on the same line
   (`[remote "origin"] url = ...`), as git allows. A line that is not a
   section header or a `key = value` pair, and the keys after an
-  unterminated section header, are skipped;
+  unterminated section header, are skipped, and a quoted value the file
+  ends inside is dropped and reported, since git rejects the line and a
+  config cut mid-URL must not yield a partial destination;
   the rest of the file is still read. A remote may have several `url` and
   `pushurl` lines (git fetches from the first `url` and pushes to every
   `pushurl`, or to every `url` when there is none), so every value of each
@@ -89,7 +91,7 @@ def _physical_lines(text: str) -> list[str]:
     return [ln[:-1] if ln.endswith("\r") else ln for ln in lines]
 
 
-def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
+def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, bool]:
     """The value that starts with `text` on line `i` of `lines`, with quotes
     and escapes resolved, a trailing comment removed and only the bare
     whitespace around it trimmed, and the index of the last line it used: a backslash at the end of the line, outside a
@@ -128,15 +130,20 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
             out.pop(0)
         while out and out[-1][0] in _ASCII_SPACE and not out[-1][1]:
             out.pop()
-        return "".join(c for c, _ in out), i
+        # A quote still open at the end is a value the file ends inside: git
+        # rejects the line, and the text so far is not the destination.
+        return "".join(c for c, _ in out), i, not quoted
 
 
-def _entries(text: str) -> Iterable[tuple[str, str | None]]:
+def _entries(text: str, errors: list[str]) -> Iterable[tuple[str, str | None]]:
     """The config's entries in order: `("[", header)` for a section header
     and `(key, value)` for a pair, the key lower-cased and the value
     resolved by `_parse_value`. A pair may follow its header on the same
     line (`[remote "origin"] url = ...`), as git allows. Comment, blank and
-    unparseable lines are skipped; only a value continues across lines."""
+    unparseable lines are skipped; only a value continues across lines. A
+    pair whose quoted value the file ends inside is dropped and described
+    in `errors` (`line <n>: unterminated quoted value`), since git rejects
+    the line and its text is not a complete value."""
     lines = _physical_lines(text)
     i = 0
     while i < len(lines):
@@ -163,20 +170,26 @@ def _entries(text: str) -> Iterable[tuple[str, str | None]]:
             yield m.group(1).lower(), None
             i += 1
             continue
-        value, i = _parse_value(lines, i, m.group(2))
-        yield m.group(1).lower(), value
+        start = i + 1
+        value, i, closed = _parse_value(lines, i, m.group(2))
+        if closed:
+            yield m.group(1).lower(), value
+        else:
+            errors.append("line %d: unterminated quoted value" % start)
         i += 1
 
 
-def parse_remotes(text: str) -> list[dict]:
+def parse_remotes(text: str, errors: list[str] | None = None) -> list[dict]:
     """The remotes of a `.git/config` text: one `{"name", "urls",
     "pushurls"}` per `[remote "<name>"]` section that sets a non-empty `url`
     or `pushurl`, sorted by name. `urls` and `pushurls` hold every value of
     the key in file order, `[]` when the section sets none: `pushurls` is
-    what the file says, not git's fallback to `urls`."""
+    what the file says, not git's fallback to `urls`. A value the file ends
+    inside (an unterminated quote) is left out and, when `errors` is given,
+    described in it as `_entries` does."""
     remotes: dict[str, dict] = {}
     current: str | None = None
-    for key, value in _entries(text):
+    for key, value in _entries(text, [] if errors is None else errors):
         if key == "[":
             m = _HEADER_RX.match(value or "")
             current = None
@@ -244,7 +257,15 @@ def project_git(
             if problems is not None and line not in problems:
                 problems.append(line)
             continue
-        entry[field] = parse_remotes(text) if field == "remotes" else parse_head(text)
+        if field == "head":
+            entry[field] = parse_head(text)
+            continue
+        errors: list[str] = []
+        entry[field] = parse_remotes(text, errors)
+        for e in errors:
+            line = "%s: %s" % (a.original, e)
+            if problems is not None and line not in problems:
+                problems.append(line)
     return {
         path: {"remotes": e["remotes"] or [], "head": e["head"] or ""} for path, e in out.items()
     }

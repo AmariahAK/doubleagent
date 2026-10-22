@@ -109,6 +109,33 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_unterminated_quote_is_dropped_and_reported(self):
+        # A config cut inside a quoted value: git rejects the line, so the
+        # partial text is not a destination; the pair is left out, the valid
+        # remotes stay, and the line is reported (pull request 254 review).
+        text = (
+            '[remote "origin"]\n'
+            "\turl = https://h/origin.git\n"
+            '[remote "cut"]\n'
+            "\tpushurl = https://h/cut-push.git\n"
+            '\turl = "https://example.com/team/part'
+        )
+        errors: list[str] = []
+        self.assertEqual(
+            gitmeta.parse_remotes(text, errors),
+            [
+                {"name": "cut", "urls": [], "pushurls": ["https://h/cut-push.git"]},
+                {"name": "origin", "urls": ["https://h/origin.git"], "pushurls": []},
+            ],
+        )
+        self.assertEqual(errors, ["line 5: unterminated quoted value"])
+        # A quote closed on a continued line is fine.
+        self.assertEqual(
+            gitmeta.parse_remotes('[remote "a"]\n\turl = "https://h/\\\na.git"\n', errors),
+            [{"name": "a", "urls": ["https://h/a.git"], "pushurls": []}],
+        )
+        self.assertEqual(len(errors), 1)
+
     def test_bom_crlf_and_unicode_line_separators(self):
         # git accepts a UTF-8 byte-order mark at the start of a config and
         # ends a line at LF or CRLF only; a U+2028 or U+0085 inside a quoted
@@ -237,6 +264,20 @@ class ProjectGitTests(unittest.TestCase):
         self.assertEqual(
             gitmeta.project_git(arts),
             {"/srv/proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"}},
+        )
+
+    def test_unterminated_quote_is_a_problem(self):
+        proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
+        config = self.artifact(proj, ".git/config", PROJ_GIT_CONFIG + '[remote "cut"]\n\turl = "x')
+        problems: list[str] = []
+        got = gitmeta.project_git([config], problems)
+        self.assertEqual(got["/srv/proj"]["remotes"], PROJ_GIT_REMOTES)
+        self.assertEqual(
+            problems,
+            [
+                "/srv/proj/.git/config: line %d: unterminated quoted value"
+                % (PROJ_GIT_CONFIG.count("\n") + 2)
+            ],
         )
 
     def test_windows_project_matches_without_regard_to_case(self):
