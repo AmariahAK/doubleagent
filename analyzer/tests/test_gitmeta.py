@@ -205,6 +205,23 @@ class ProjectGitTests(unittest.TestCase):
             {"/srv/proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"}},
         )
 
+    def test_windows_project_matches_without_regard_to_case(self):
+        # The PowerShell collector matches the catalog case-insensitively and
+        # keeps the on-disk spelling, so a Windows repository's .GIT/CONFIG
+        # and .git/head are the files (pull request 254 review); on a Unix
+        # path the match stays exact, .git/head is another file there.
+        win = Home(self.tmp / "c/proj", "C:\\proj", "alice", project=True)
+        unix = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
+        arts = [
+            self.artifact(win, ".GIT/CONFIG", PROJ_GIT_CONFIG),
+            self.artifact(win, ".git/head", PROJ_GIT_HEAD),
+            self.artifact(unix, ".git/head", PROJ_GIT_HEAD),
+            self.artifact(unix, ".GIT/config", PROJ_GIT_CONFIG),
+        ]
+        self.assertEqual(
+            gitmeta.project_git(arts), {"C:\\proj": {"remotes": PROJ_GIT_REMOTES, "head": "main"}}
+        )
+
     def test_missing_unreadable_and_symlinked_files(self):
         proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
         # A collected row whose file is gone reads as empty.

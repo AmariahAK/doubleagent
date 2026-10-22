@@ -45,6 +45,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .inputs import PROJECT_AGENT, Artifact
+from .model import is_windows_path
 
 CONFIG_REL = ".git/config"
 HEAD_REL = ".git/HEAD"
@@ -196,14 +197,24 @@ def project_git(
     `.git/HEAD` files with agent `project`. A project without them is
     absent; the first file met wins when a path has two copies. A file that
     cannot be read counts as absent and is appended to `problems`, when
-    given, as `<original path>: <reason>` (once per path)."""
+    given, as `<original path>: <reason>` (once per path). Under a Windows
+    project path the file names are matched without regard to case, since
+    the PowerShell collector matches the catalog that way and keeps the
+    on-disk spelling (`.GIT/CONFIG`); elsewhere the match is exact."""
     out: dict[str, dict] = {}
     for a in artifacts:
-        if not a.home.project or a.agent != PROJECT_AGENT or a.rel not in (CONFIG_REL, HEAD_REL):
+        if not a.home.project or a.agent != PROJECT_AGENT:
             continue
         path = a.home.original or str(a.home.disk_path)
+        windows = is_windows_path(path)
+        rel = a.rel.lower() if windows else a.rel
+        if rel == CONFIG_REL:
+            field = "remotes"
+        elif rel == (HEAD_REL.lower() if windows else HEAD_REL):
+            field = "head"
+        else:
+            continue
         entry = out.setdefault(path, {"remotes": None, "head": None})
-        field = "remotes" if a.rel == CONFIG_REL else "head"
         if entry[field] is not None:
             continue
         text, error = read_text(a.disk_path)
