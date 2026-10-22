@@ -759,7 +759,13 @@ document is trusted, and a difference means a new round, not a note.
 
 **4. Evidence hierarchy for closed-source tools.** In order: the shipped npm
 tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
-literal path strings), official docs, vendor forums and issue trackers, then
+literal path strings), the vendor's official public repository when it has
+one (even without the engine's code it holds the changelog, example plugins
+and hooks, built-in extensions and the plugin API's type declarations,
+versioned, so each fact is cited at a commit like source, as
+`anthropics/claude-code` is for the `AGENTS.md` instruction files; its
+licence or terms are read first and it is not used where they expressly
+forbid the use), official docs, vendor forums and issue trackers, then
 published DFIR or reverse-engineering write-ups. The report must say which
 level each claim came from, and the index table in
 [`research/README.md`](research/README.md) records it. The hierarchy ranks
