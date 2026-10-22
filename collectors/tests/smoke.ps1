@@ -1861,11 +1861,11 @@ Check '#222 Codex worktree cwd not a project' { -not (@($sum.projects) | Where-O
 Check '#222 Open Interpreter worktree cwd not a project' { -not (@($sum.projects) | Where-Object { $_ -match '\.openinterpreter[\\/]worktrees' }) -and -not ($script:Rows | Where-Object { $_.path -match 'worktrees[\\/]c3d4[\\/]repo[\\/]AGENTS\.md' }) }
 
 # 2026-10-21 Cody JetBrains plugin files (#214)
-Check '#214 Cody JetBrains options files collected' { (Is113 "$o214/cody.xml" 'cody' $false) -and (Is113 "$o214/cody_application_settings.xml" 'cody' $false) }
+Check '#214 Cody JetBrains options files collected' { (Is113 "$o214/cody.xml" 'cody' $true) -and (Is113 "$o214/cody_application_settings.xml" 'cody' $false) }
 Check '#214 Cody cody_accounts.xml flagged secret' { Is113 "$o214/cody_accounts.xml" 'cody' $true }
 Check '#214 Cody cody_accounts_settings.xml not flagged' { Is113 "$o214/cody_accounts_settings.xml" 'cody' $false }
-Check '#214 Cody home .sourcegraph collected' { Is113 'Users/alice/.sourcegraph/cody_settings.json' 'cody' $false }
-Check '#214 Cody project .idea files collected' { (Is113 'proj/.idea/cody_history.xml' 'cody' $false) -and (Is113 'proj/.idea/.sourcegraph/cody_settings.json' 'cody' $false) }
+Check '#214 Cody home .sourcegraph collected' { Is113 'Users/alice/.sourcegraph/cody_settings.json' 'cody' $true }
+Check '#214 Cody project .idea files collected' { (Is113 'proj/.idea/cody_history.xml' 'cody' $false) -and (Is113 'proj/.idea/.sourcegraph/cody_settings.json' 'cody' $true) }
 
 # 2026-10-21 agent worktrees inside a project (#216)
 Check '#216 Gemini CLI and Qwen Code project worktrees excluded' { (StatusOf 'gem/.gemini/worktrees') -eq 'skipped_excluded' -and (StatusOf 'gem/.qwen/worktrees') -eq 'skipped_excluded' -and $null -eq (Row 'gem/.gemini/worktrees/w1/f') -and $null -eq (Row 'gem/.qwen/worktrees/w1/f') }
@@ -2124,6 +2124,8 @@ Check '#217 Agent Zero WhatsApp session skipped without secrets' { (StatusOf "Us
 
 # 2026-10-21 Cody JetBrains plugin files (#214)
 Check '#214 Cody cody_accounts.xml skipped without secrets' { (StatusOf "$o214/cody_accounts.xml") -eq 'skipped_secret' }
+Check '#214 Cody cody.xml skipped without secrets' { (StatusOf "$o214/cody.xml") -eq 'skipped_secret' }
+Check '#214 Cody cody_settings.json skipped without secrets' { ((StatusOf 'Users/alice/.sourcegraph/cody_settings.json') -eq 'skipped_secret') -and ((StatusOf 'proj/.idea/.sourcegraph/cody_settings.json') -eq 'skipped_secret') }
 
 # 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
 Check '#123 Hermes quick snapshot credentials skipped without secrets' { (StatusOf "$q123/.env") -eq 'skipped_secret' -and (StatusOf "$q123/auth.json") -eq 'skipped_secret' -and (StatusOf "$q123/state.db") -eq 'collected' }

@@ -32,7 +32,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in each JetBrains IDE, `~/.sourcegraph`, and a project's
   `.idea/cody_history.xml` and `.idea/.sourcegraph`; the account list
   `options/cody_accounts.xml` is flagged secret, since its
-  `customRequestHeaders` can carry proxy credentials ([#214]).
+  `customRequestHeaders` can carry proxy credentials, and so are
+  `options/cody.xml`, `~/.sourcegraph/cody_settings.json` and a project's
+  `.idea/.sourcegraph/cody_settings.json`, whose `cody.mcpServers` entries
+  carry MCP server `headers` and `env` ([#214]).
 - The Agent Zero WhatsApp bridge's login state `tmp/whatsapp/session/` is
   flagged secret, in home, Desktop and volume forms; the A0 CLI
   connector's computer-use screen captures in

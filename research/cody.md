@@ -221,6 +221,10 @@ The project-level files are in [Project-local files](#project-local-files).
   files and `cody.xml`) take `headers` for an SSE (server-sent events, the HTTP transport) server
   and `env` for a stdio one, where MCP (Model Context Protocol) servers usually receive their tokens
   ([`vscode/src/chat/chat-view/tools/MCPManager.ts:31-43`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/MCPManager.ts#L31-L43)).
+  The JetBrains `options/cody.xml`, `~/.sourcegraph/cody_settings.json` and a project's
+  `.idea/.sourcegraph/cody_settings.json` are therefore secret globs, like `cody_accounts.xml`;
+  the editor's `settings.json` is shared with the editor's own state and stays a key-level
+  redaction entry.
 
 ### Exclusions
 

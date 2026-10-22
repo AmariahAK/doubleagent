@@ -1546,6 +1546,11 @@ AppData/Roaming/Zed/global_settings.json
 .config/JetBrains/*/options/cody_accounts.xml
 Library/Application Support/JetBrains/*/options/cody_accounts.xml
 AppData/Roaming/JetBrains/*/options/cody_accounts.xml
+.config/JetBrains/*/options/cody.xml
+Library/Application Support/JetBrains/*/options/cody.xml
+AppData/Roaming/JetBrains/*/options/cody.xml
+.sourcegraph/cody_settings.json
+.idea/.sourcegraph/cody_settings.json
 */User/globalStorage/rjmacarthy.twinny/twinny-providers.json
 .twinny/node/identity.json
 .twinny/server/license

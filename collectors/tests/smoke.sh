@@ -1798,11 +1798,11 @@ check "#222 Codex worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" 
 check "#222 Open Interpreter worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.openinterpreter/worktrees' && ! grep -qF 'worktrees/c3d4/repo/AGENTS.md' \"\$M\""
 
 # 2026-10-21 Cody JetBrains plugin files (#214)
-check "#214 Cody JetBrains options files collected" "row \"$O214/cody.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":false,\"status\":\"collected\"' && row \"$O214/cody_application_settings.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+check "#214 Cody JetBrains options files collected" "row \"$O214/cody.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"' && row \"$O214/cody_application_settings.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
 check "#214 Cody cody_accounts.xml flagged secret" "row \"$O214/cody_accounts.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
 check "#214 Cody cody_accounts_settings.xml not flagged" "row \"$O214/cody_accounts_settings.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":false,\"status\":\"collected\"'"
-check "#214 Cody home .sourcegraph collected" "row \"$H/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
-check "#214 Cody project .idea files collected" "row \"$ROOT/srv/proj/.idea/cody_history.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"' && row \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+check "#214 Cody home .sourcegraph collected" "row \"$H/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
+check "#214 Cody project .idea files collected" "row \"$ROOT/srv/proj/.idea/cody_history.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"' && row \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
 
 # 2026-10-21 agent worktrees inside a project (#216)
 check "#216 Gemini CLI and Qwen Code project worktrees excluded" "[ \"\$(status_of \"$G216/.gemini/worktrees\")\" = skipped_excluded ] && [ \"\$(status_of \"$G216/.qwen/worktrees\")\" = skipped_excluded ] && ! grep -qF 'gem/.gemini/worktrees/w1' \"\$M\" && ! grep -qF 'gem/.qwen/worktrees/w1' \"\$M\""
@@ -1880,6 +1880,8 @@ check "#217 Agent Zero WhatsApp session skipped without secrets" "[ \"\$(status_
 
 # 2026-10-21 Cody JetBrains plugin files (#214)
 check "#214 Cody cody_accounts.xml skipped without secrets" "[ \"\$(status_of \"$O214/cody_accounts.xml\")\" = skipped_secret ]"
+check "#214 Cody cody.xml skipped without secrets" "[ \"\$(status_of \"$O214/cody.xml\")\" = skipped_secret ]"
+check "#214 Cody cody_settings.json skipped without secrets" "[ \"\$(status_of \"$H/.sourcegraph/cody_settings.json\")\" = skipped_secret ] && [ \"\$(status_of \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\")\" = skipped_secret ]"
 
 # 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
 check "#123 Hermes quick snapshot credentials skipped without secrets" "[ \"\$(status_of \"$Q123/.env\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/auth.json\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/state.db\")\" = collected ]"
