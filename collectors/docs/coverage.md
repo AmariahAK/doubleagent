@@ -591,7 +591,7 @@ branches moved:
 | `.git/FETCH_HEAD` | The branches the last fetch or pull brought in and the URL they came from. |
 | `.git/refs/`, `.git/packed-refs` | The local branches, the remote-tracking branches (`refs/remotes/<remote>/`) and the tags, each with the commit it names. |
 | `.git/logs/` | The reflog: one line per checkout, commit, merge, pull, reset and remote-tracking update, with the time, the name and email git recorded, and the old and new commit. |
-| `.git/worktrees/` | One directory per linked worktree (a second checkout of the same repository): its `HEAD`, its `gitdir` file naming where that checkout is, and its own reflog under `logs/`. Each worktree's `index`, a binary copy of its staging area, and its `modules/`, the submodule repositories checked out in that worktree, are excluded (`.git/worktrees/*/index`, `.git/worktrees/*/modules`) and get a `skipped_excluded` row each. |
+| `.git/worktrees/` | One directory per linked worktree (a second checkout of the same repository): its `HEAD`, its `gitdir` file naming where that checkout is, and its own reflog under `logs/`. Each worktree's staging area (`index`, the `sharedindex.<hash>` files of split-index mode, and an `index.lock` left by an interrupted update) and its `modules/`, the submodule repositories checked out in that worktree, are excluded (`.git/worktrees/*/index`, `.git/worktrees/*/index.lock`, `.git/worktrees/*/sharedindex.*`, `.git/worktrees/*/modules`) and get a `skipped_excluded` row each. |
 
 Nothing else under `.git/` is collected: the object store (`objects/`),
 the index, `hooks/`, LFS objects (`lfs/`, Git Large File Storage) and

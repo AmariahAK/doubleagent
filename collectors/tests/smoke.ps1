@@ -1321,6 +1321,8 @@ Mk "$g253/logs/refs/remotes/origin/main" "$zero253 $oid253 A <a@example.com> 175
 Mk "$g253/worktrees/wt1/HEAD" "ref: refs/heads/wt1`n"
 Mk "$g253/worktrees/wt1/gitdir" "C:/proj-wt1/.git`n"
 Mk "$g253/worktrees/wt1/index" "DIRC`n"
+Mk "$g253/worktrees/wt1/index.lock" "DIRC`n"
+Mk "$g253/worktrees/wt1/sharedindex.3333333333333333333333333333333333333333" "DIRC`n"
 Mk "$g253/worktrees/wt1/modules/sub/HEAD" "ref: refs/heads/main`n"
 Mk "$g253/worktrees/wt1/modules/sub/objects/ab/cdef" "object`n"
 Mk "$g253/objects/ab/cdef" "object`n"
@@ -1977,6 +1979,7 @@ Check '#253 project git refs and logs collected as project' { Is253 @('refs/head
 Check '#253 project git worktrees collected as project' { Is253 @('worktrees/wt1/HEAD', 'worktrees/wt1/gitdir') }
 Check '#253 project git linked worktree index excluded' { $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/worktrees/wt1/index") } | Select-Object -First 1; $r -and $r.status -eq 'skipped_excluded' }
 Check '#253 project git linked worktree submodules excluded' { $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/worktrees/wt1/modules") } | Select-Object -First 1; $r -and $r.status -eq 'skipped_excluded' -and (NoRow253 @('worktrees/wt1/modules/sub')) }
+Check '#253 project git linked worktree index.lock and sharedindex excluded' { $l = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/worktrees/wt1/index.lock") } | Select-Object -First 1; $s = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/worktrees/wt1/sharedindex.3333333333333333333333333333333333333333") } | Select-Object -First 1; $l -and $l.status -eq 'skipped_excluded' -and $s -and $s.status -eq 'skipped_excluded' }
 Check '#253 project git objects, index, hooks, lfs and modules have no row' { NoRow253 @('objects', 'index', 'hooks', 'lfs', 'modules') }
 Check '#253 project git config not flagged secret' { $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/config") } | Select-Object -First 1; $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
 

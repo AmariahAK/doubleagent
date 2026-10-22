@@ -1234,6 +1234,8 @@ Library/Caches/ollama
 Library/Caches/com.electron.ollama
 .git/worktrees/*/index
 .git/worktrees/*/modules
+.git/worktrees/*/index.lock
+.git/worktrees/*/sharedindex.*
 .time_travel
 usr/.time_travel
 workdir/*/.venv
