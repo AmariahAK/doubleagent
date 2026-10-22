@@ -508,6 +508,13 @@ project|AGENTS.md
 project|AGENTS.override.md
 project|AGENT.md
 project|.agents
+project|.git/HEAD
+project|.git/config
+project|.git/FETCH_HEAD
+project|.git/packed-refs
+project|.git/refs
+project|.git/logs
+project|.git/worktrees
 gemini-cli|GEMINI.md
 gemini-cli|.gemini
 gemini-cli|.geminiignore
