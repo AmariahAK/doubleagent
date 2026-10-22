@@ -1392,6 +1392,51 @@ printf '{"folder":"file:///srv/twinproj"}\n' >"$T215/workspace.json"
 mkdir -p "$H/.twinny/server/plugins/github"
 printf '{"version":1,"repos":[],"tokens":[]}\n' >"$H/.twinny/server/plugins/github/repos.json"
 
+# 2026-10-21 project git metadata (#253)
+# Every discovered project's .git/HEAD, config, FETCH_HEAD, packed-refs,
+# refs/, logs/ and worktrees/ are collected under agent project: the
+# remotes with their fetch and push URLs, the checked-out branch, the last
+# fetch, the branches and tags, the reflog and the linked worktrees. The
+# object store, the index, hooks, LFS objects and submodule repositories
+# match no PROJECT_CATALOG line and get no row. Checks follow the default
+# run below; the same files are in smoke.ps1 under the project proj.
+G253="$ROOT/srv/proj/.git"
+mkdir -p "$G253/refs/heads" "$G253/refs/remotes/origin" "$G253/logs/refs/remotes/origin" \
+  "$G253/worktrees/wt1" "$G253/objects/ab" "$G253/hooks" "$G253/lfs/objects" "$G253/modules/sub"
+printf 'ref: refs/heads/main\n' >"$G253/HEAD"
+printf '%s\n' '[core]' '	repositoryformatversion = 0' '	bare = false' \
+  '[remote "origin"]' '	url = https://git.example.com/acme/proj.git' \
+  '	pushurl = git@git.example.com:acme/proj.git' \
+  '	fetch = +refs/heads/*:refs/remotes/origin/*' \
+  '[remote "upstream"]' '	url = https://git.example.org/upstream/proj.git' \
+  '	fetch = +refs/heads/*:refs/remotes/upstream/*' \
+  '[branch "main"]' '	remote = origin' '	merge = refs/heads/main' >"$G253/config"
+printf '%s\t\t%s\n' 1111111111111111111111111111111111111111 \
+  "branch 'main' of https://git.example.com/acme/proj" >"$G253/FETCH_HEAD"
+printf '# pack-refs with: peeled fully-peeled sorted\n%s refs/tags/v1\n' \
+  2222222222222222222222222222222222222222 >"$G253/packed-refs"
+printf '1111111111111111111111111111111111111111\n' >"$G253/refs/heads/main"
+printf '1111111111111111111111111111111111111111\n' >"$G253/refs/remotes/origin/main"
+printf '%s %s A <a@example.com> 1759449600 +0000\tclone: from %s\n' \
+  0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 \
+  https://git.example.com/acme/proj.git >"$G253/logs/HEAD"
+printf '%s %s A <a@example.com> 1759449600 +0000\tfetch: fast-forward\n' \
+  0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 \
+  >"$G253/logs/refs/remotes/origin/main"
+printf 'ref: refs/heads/wt1\n' >"$G253/worktrees/wt1/HEAD"
+printf '/srv/proj-wt1/.git\n' >"$G253/worktrees/wt1/gitdir"
+printf 'DIRC\n' >"$G253/worktrees/wt1/index"
+printf 'DIRC\n' >"$G253/worktrees/wt1/index.lock"
+printf 'DIRC\n' >"$G253/worktrees/wt1/sharedindex.3333333333333333333333333333333333333333"
+mkdir -p "$G253/worktrees/wt1/modules/sub/objects/ab"
+printf 'ref: refs/heads/main\n' >"$G253/worktrees/wt1/modules/sub/HEAD"
+printf 'object\n' >"$G253/worktrees/wt1/modules/sub/objects/ab/cdef"
+printf 'object\n' >"$G253/objects/ab/cdef"
+printf 'DIRC\n' >"$G253/index"
+printf '#!/bin/sh\n' >"$G253/hooks/pre-commit.sample"
+printf 'lfs\n' >"$G253/lfs/objects/x"
+printf 'ref: refs/heads/main\n' >"$G253/modules/sub/HEAD"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1844,6 +1889,31 @@ check "#159 roo cli-credentials.json flagged secret" "row \"$H/.roo/cli-credenti
 check "#215 twinny workspaceStorage agent-changes attributed to twinny" "row \"$T215/rjmacarthy.twinny/agent-changes/c1.json\" | grep -q '\"agent\":\"twinny\".*\"status\":\"collected\"'"
 check "#215 twinny workspaceStorage neighbour stays vscode" "row \"$T215/workspace.json\" | grep -q '\"agent\":\"vscode\".*\"status\":\"collected\"'"
 check "#215 twinny-server forge repos.json flagged secret" "row \"$H/.twinny/server/plugins/github/repos.json\" | grep -q '\"agent\":\"twinny\".*\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 project git metadata (#253)
+# is253 FILE...: each file under the project's .git has a collected row
+# with agent project and the project as its home. norow253 PREFIX...: no
+# manifest row names a path under the project's .git that starts with it.
+# shellcheck disable=SC2317,SC2329 # called from the eval'd check strings
+is253() {
+  for _g in "$@"; do
+    row "$G253/$_g" | grep -q "\"home\":\"$ROOT/srv/proj\",\"agent\":\"project\".*\"status\":\"collected\"" || return 1
+  done
+}
+# shellcheck disable=SC2317,SC2329
+norow253() {
+  for _g in "$@"; do
+    if grep -qF "\"path\":\"$G253/$_g" "$M"; then return 1; fi
+  done
+}
+check "#253 project git HEAD, config, FETCH_HEAD and packed-refs collected as project" "is253 HEAD config FETCH_HEAD packed-refs"
+check "#253 project git refs and logs collected as project" "is253 refs/heads/main refs/remotes/origin/main logs/HEAD logs/refs/remotes/origin/main"
+check "#253 project git worktrees collected as project" "is253 worktrees/wt1/HEAD worktrees/wt1/gitdir"
+check "#253 project git linked worktree index excluded" "[ \"\$(status_of \"$G253/worktrees/wt1/index\")\" = skipped_excluded ]"
+check "#253 project git linked worktree submodules excluded" "[ \"\$(status_of \"$G253/worktrees/wt1/modules\")\" = skipped_excluded ] && norow253 worktrees/wt1/modules/sub"
+check "#253 project git linked worktree index.lock and sharedindex excluded" "[ \"\$(status_of \"$G253/worktrees/wt1/index.lock\")\" = skipped_excluded ] && [ \"\$(status_of \"$G253/worktrees/wt1/sharedindex.3333333333333333333333333333333333333333\")\" = skipped_excluded ]"
+check "#253 project git objects, index, hooks, lfs and modules have no row" "norow253 objects index hooks lfs modules"
+check "#253 project git config not flagged secret" "row \"$G253/config\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

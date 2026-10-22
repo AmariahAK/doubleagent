@@ -16,15 +16,19 @@ without a rollout is a rollout removed outside Codex. Citations are in
   (the thread id, which is the rollout's `session_meta.id` and so the
   rollout rows' `session_id`), `rollout_path`, `created_at` (epoch
   seconds) and `created_at_ms` (epoch ms, from migration 0025), `cwd`,
-  `title`, `name` (a rename, 0041), `git_branch`, `model`, `archived`,
-  `source` and `thread_source` (0030), `first_user_message` (0007), each
-  read when the table has it. Per thread, in creation order:
+  `title`, `name` (a rename, 0041), `git_branch`, `git_origin_url`,
+  `model`, `archived`, `source` and `thread_source` (0030),
+  `first_user_message` (0007), each read when the table has it. Per
+  thread, in creation order:
   - a `system` row `thread record: <id> title=<title> rollout=<path>`,
     then ` name=<name>`, ` branch=<branch>`, ` model=<model>` and
     ` archived` when set (`model` is the thread's last turn's), at the
     thread's creation time, with `session_id` the thread id,
     `project_path` the `cwd` and `git_branch`; `model` stays empty on
     every row of both files, which record no model per event;
+  - a `system` row `git remote: <git_origin_url>` at the same time when
+    the column is set (issue 253), as the rollout's `session_meta`
+    `git.repository_url` gives it;
   - the first prompt, `first_user_message`, as a `user` row with **no
     timestamp**: the column records the prompt's text but not its time
     (`created_at` is the thread's creation, before the prompt was typed;
@@ -250,7 +254,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..inputs import Artifact, error_reason
-from ..model import SCRATCH_PREFIX, Row, compact
+from ..model import GIT_REMOTE_PREFIX, SCRATCH_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import epoch_ms, to_utc
 from .base import Options, error_rows, file_mtime, setting_value
@@ -271,6 +275,7 @@ THREAD_COLUMNS = (
     "title",
     "name",
     "git_branch",
+    "git_origin_url",
     "model",
     "archived",
     "source",
@@ -528,6 +533,14 @@ def _thread_rows(parser: RolloutParser, artifact: Artifact, threads: list[dict])
         row.timestamp_utc = to_utc(_created(thread))
         row.text = compact(_thread_text(thread))
         yield row
+        origin = compact(thread.get("git_origin_url"))
+        if origin:
+            remote = _stamp(parser, artifact, thread, sid)
+            remote.source_line = row.source_line
+            remote.turn_type = "system"
+            remote.timestamp_utc = row.timestamp_utc
+            remote.text = GIT_REMOTE_PREFIX + origin
+            yield remote
         first = compact(thread.get("first_user_message"))
         if not first:
             continue

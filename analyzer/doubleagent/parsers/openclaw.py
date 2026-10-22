@@ -194,6 +194,11 @@ below rests on source alone. The state directory is `.openclaw`, a profile's
     request <pull_request_url> (from state/openclaw.sqlite <table>,
     created_at_ms)`, `session_id` the session. The OAuth token
     (`secret_store_entries`, name `github-oauth-<32 hex>`) is never read.
+  - `projects(repo_root, origin_url, created_at_ms)` (lines 1901-1909),
+    one row per repository registered with or cloned by the Gateway: a
+    `git remote: <origin_url>` row at `created_at_ms` for a row whose
+    `origin_url` is set, `project_path` the `repo_root`, no `session_id`
+    (issue 253).
   Its other tables are not read. Fixture only.
 * `agents/<agentId>/sessions/<sessionId>.jsonl` (and `sessions/` at the
   state root, the older single-agent layout): legacy transcripts not yet
@@ -301,7 +306,7 @@ import sqlite3
 from collections.abc import Iterator
 
 from ..inputs import Artifact
-from ..model import Row, compact
+from ..model import GIT_REMOTE_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, error_rows, line_text, text_of
@@ -392,6 +397,11 @@ STATE_QUERIES = (
             " from %s order by created_at_ms, rowid" % table,
         )
         for table in GITHUB_PUBLICATION_TABLES
+    ),
+    (
+        "projects",
+        "select rowid as _rowid, repo_root, origin_url, created_at_ms"
+        " from projects order by created_at_ms, rowid",
     ),
 )
 
@@ -1356,8 +1366,9 @@ class OpenClawParser(Parser):
         """Rows from `state/openclaw.sqlite`: `backup uploaded:` from
         `backup_runs`, the permission rows of `operator_approvals`,
         `exec_approvals_config`, `operator_approval_standing_grants` and
-        `channel_pairing_allow_entries`, and `channel ingress:` from
-        `channel_ingress_events`."""
+        `channel_pairing_allow_entries`, `channel ingress:` from
+        `channel_ingress_events`, `source host:` from the GitHub
+        publication tables, and `git remote:` from `projects`."""
         if not is_sqlite(artifact.disk_path):
             yield from error_rows(
                 self, artifact, [(0, "state/openclaw.sqlite is not a SQLite database", "")]
@@ -1418,6 +1429,14 @@ class OpenClawParser(Parser):
                     _publication_text(table, r),
                     str(r["session_id"] or ""),
                 )
+        for r in data.get("projects", []):
+            origin = compact(r["origin_url"])
+            if origin:
+                row = self._state_row(
+                    artifact, r["_rowid"], to_utc(r["created_at_ms"]), GIT_REMOTE_PREFIX + origin
+                )
+                row.project_path = str(r["repo_root"] or "")
+                yield row
         yield from error_rows(self, artifact, errors)
 
     def _state_row(

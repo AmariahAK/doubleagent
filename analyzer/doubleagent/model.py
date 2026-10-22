@@ -60,6 +60,11 @@ ORIGIN_PREFIX = "session origin: remote"
 # (issue 149); inventory.json lists the row's `project_path` under
 # `scratch_directories` instead of `projects`.
 SCRATCH_PREFIX = "scratch directory:"
+# The text that starts a parser's row naming a git remote URL the agent
+# recorded for the session's repository (issue 253); the URL follows the
+# prefix as recorded, and inventory.json lists it under the project's
+# `recorded_remotes`.
+GIT_REMOTE_PREFIX = "git remote: "
 
 
 @dataclass

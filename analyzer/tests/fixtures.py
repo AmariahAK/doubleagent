@@ -29,6 +29,36 @@ CLAUDE_296_SESSION = "11111111-2222-4333-8444-999999999999"
 CLAUDE_SETTINGS_MTIME = 1790845200
 CLAUDE_REGISTRY_KEY = "4242." + "ab" * 32 + ".key"
 CODEX_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+# The `/srv/proj` repository's remotes (issue 253): `origin`, which the
+# Codex rollout, the Codex state database, the Zed thread blob and the
+# OpenClaw projects table record, with a push URL that embeds a token, and
+# `upstream`. `origin` has a second `url`, a mirror every push also goes
+# to. HEAD names the branch `main`.
+PROJ_REMOTE = "git@github.com:alice/proj.git"
+PROJ_MIRROR = "https://mirror.example.com/alice/proj.git"
+PROJ_PUSH_URL = "https://alice:FIXTURE-TOKEN@github.com/alice/proj.git"
+PROJ_UPSTREAM = "https://github.com/upstream/proj.git"
+PROJ_GIT_CONFIG = (
+    "[core]\n"
+    "\trepositoryformatversion = 0\n"
+    "\tbare = false\n"
+    '[remote "origin"]\n'
+    "\turl = %s\n"
+    "\turl = %s\n"
+    "\tpushurl = %s ; the push goes through HTTPS\n"
+    "\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
+    '[remote "upstream"]\n'
+    '\turl = "%s"\n'
+    "\tfetch = +refs/heads/*:refs/remotes/upstream/*\n"
+    '[branch "main"]\n'
+    "\tremote = origin\n"
+    "\tmerge = refs/heads/main\n"
+) % (PROJ_REMOTE, PROJ_MIRROR, PROJ_PUSH_URL, PROJ_UPSTREAM)
+PROJ_GIT_HEAD = "ref: refs/heads/main\n"
+PROJ_GIT_REMOTES = [
+    {"name": "origin", "urls": [PROJ_REMOTE, PROJ_MIRROR], "pushurls": [PROJ_PUSH_URL]},
+    {"name": "upstream", "urls": [PROJ_UPSTREAM], "pushurls": []},
+]
 CODEX_SUBAGENT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000002"
 CODEX_FORK = "aaaaaaaa-bbbb-4ccc-8ddd-000000000003"
 CODEX_LEGACY = "aaaaaaaa-bbbb-4ccc-8ddd-000000000004"
@@ -756,7 +786,11 @@ def codex_rollout_records(cwd="/srv/proj"):
                 "thread_source": "user",
                 "model_provider": "openai",
                 "history_mode": "paginated",
-                "git": {"commit_hash": "0a1b2c3d", "branch": "feature/x"},
+                "git": {
+                    "commit_hash": "0a1b2c3d",
+                    "branch": "feature/x",
+                    "repository_url": PROJ_REMOTE,
+                },
                 "creator_account_id": CODEX_ACCOUNT,
                 "creator_user_id": CODEX_USER,
             },
@@ -1109,7 +1143,11 @@ def codex_thread_rows(rollout_dir="/home/alice/.codex/sessions"):
     ]
 
 
-def write_codex_state(path: Path, threads, cwd="/srv/proj") -> None:
+def write_codex_state(path: Path, threads, cwd="/srv/proj", origins=None) -> None:
+    """A `state_5.sqlite` with one `threads` row per entry of `threads`;
+    `origins` maps a thread id to its `git_origin_url` (by default the
+    fixture session's is `PROJ_REMOTE`)."""
+    origins = {CODEX_SESSION: PROJ_REMOTE} if origins is None else origins
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path))
     con.executescript(CODEX_STATE_SCHEMA)
@@ -1118,9 +1156,9 @@ def write_codex_state(path: Path, threads, cwd="/srv/proj") -> None:
             "insert into threads (id, rollout_path, created_at, updated_at, source,"
             " model_provider, cwd, title, sandbox_policy, approval_mode, archived,"
             " git_branch, first_user_message, created_at_ms, updated_at_ms, model,"
-            " thread_source, preview, name)"
+            " thread_source, preview, name, git_origin_url)"
             " values (?, ?, ?, ?, 'cli', 'openai', ?, ?, '{}', 'on-request', ?, ?, ?, ?, ?,"
-            " ?, ?, ?, ?)",
+            " ?, ?, ?, ?, ?)",
             (
                 tid,
                 rollout,
@@ -1137,6 +1175,7 @@ def write_codex_state(path: Path, threads, cwd="/srv/proj") -> None:
                 source,
                 first,
                 name,
+                origins.get(tid),
             ),
         )
     con.commit()
@@ -2371,8 +2410,21 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     return home
 
 
+def build_git_repo(proj: Path) -> None:
+    """The repository files of a project: `.git/config` (`PROJ_GIT_CONFIG`)
+    and `.git/HEAD` (`PROJ_GIT_HEAD`), which `gitmeta` reads, and an
+    object, which no catalog line collects."""
+    repo = proj / ".git"
+    (repo / "objects/ab").mkdir(parents=True, exist_ok=True)
+    (repo / "config").write_text(PROJ_GIT_CONFIG, encoding="utf-8")
+    (repo / "HEAD").write_text(PROJ_GIT_HEAD, encoding="utf-8")
+    (repo / "objects/ab/cdef").write_bytes(b"x")
+
+
 def build_image(root: Path) -> Path:
-    """A fake disk image: two Linux users and a Windows profile tree."""
+    """A fake disk image: two Linux users and a Windows profile tree, and
+    the `/srv/proj` repository the agents' state names."""
+    build_git_repo(root / "srv/proj")
     build_home(root / "home/alice")
     build_home(root / "home/bob", with_noise=False)
     win = root / "Users/carol"
@@ -12127,6 +12179,10 @@ CREATE TABLE github_publication_requests (request_id TEXT NOT NULL PRIMARY KEY,
   identity_source TEXT NOT NULL, identity_profile_id TEXT, identity_account_id INTEGER NOT NULL,
   identity_login TEXT NOT NULL, status TEXT NOT NULL, repository TEXT, branch TEXT NOT NULL,
   pull_request_url TEXT, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
+CREATE TABLE projects (id TEXT NOT NULL PRIMARY KEY, display_name TEXT NOT NULL,
+  repo_root TEXT NOT NULL, origin_url TEXT,
+  source TEXT NOT NULL CHECK (source IN ('registered', 'cloned')),
+  created_at_ms INT NOT NULL, updated_at_ms INT NOT NULL);
 """
 OPENCLAW_SOCKET_TOKEN = "FIXTURE-OPENCLAW-SOCKET-TOKEN-5c4b3a"
 OPENCLAW_FTS_ONLY = "prompt only the search index still holds"
@@ -12210,6 +12266,12 @@ def openclaw_state_inserts():
         "'system-configured','profile-1',4242,'octo-bot','published','octo/infra',"
         "'openclaw/disk-check','https://github.com/octo/infra/pull/7',1790845400000,"
         "1790845460000)" % (OPENCLAW_SESSION, OPENCLAW_KEY),
+        # src/state/openclaw-state-schema.sql:1901-1909 at 146284a: a
+        # registered repository with its origin, and one without.
+        "INSERT INTO projects VALUES ('p-1','proj','/srv/proj','%s','registered',"
+        "1790845100500,1790845100500)" % PROJ_REMOTE,
+        "INSERT INTO projects VALUES ('p-2','scratch','/srv/scratch',NULL,'registered',"
+        "1790845100600,1790845100600)",
     ]
 
 

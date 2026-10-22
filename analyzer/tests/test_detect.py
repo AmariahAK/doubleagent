@@ -9,7 +9,14 @@ from pathlib import Path
 
 from doubleagent import catalog, cli, model
 from doubleagent.inputs import open_input
-from fixtures import build_home, build_image
+from fixtures import (
+    PROJ_GIT_CONFIG,
+    PROJ_GIT_HEAD,
+    PROJ_GIT_REMOTES,
+    PROJ_REMOTE,
+    build_home,
+    build_image,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 COLLECTOR = REPO / "collectors" / "collect-agent-artifacts.sh"
@@ -313,6 +320,69 @@ class LooseDetectTests(unittest.TestCase):
         self.assertEqual(cli.main(["detect", str(self.tmp / "nope")]), 2)
 
 
+class GitDetectTests(unittest.TestCase):
+    """`remotes` and `head` of each project in `detect --json` (issue 253)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-gitdetect-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def collection(self) -> Path:
+        """An extracted collection with two collected projects: /srv/proj
+        with its repository files, /srv/plain with only AGENTS.md."""
+        root = self.tmp / "col"
+        files = [
+            ("/srv/proj", ".git/config", PROJ_GIT_CONFIG),
+            ("/srv/proj", ".git/HEAD", PROJ_GIT_HEAD),
+            ("/srv/plain", "AGENTS.md", "# x\n"),
+            ("/home/alice", ".codex/history.jsonl", ""),
+        ]
+        rows = []
+        for base, rel, text in files:
+            path = base + "/" + rel
+            disk = root / ("fs" + path)
+            disk.parent.mkdir(parents=True, exist_ok=True)
+            disk.write_text(text, encoding="utf-8")
+            agent = "project" if base.startswith("/srv/") else "codex-cli"
+            rows.append(
+                {
+                    "user": "alice",
+                    "home": base,
+                    "agent": agent,
+                    "path": path,
+                    "archive_path": "fs" + path,
+                    "type": "file",
+                    "status": "collected",
+                    "size": len(text),
+                }
+            )
+        (root / "manifest.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
+        )
+        summary = {"hostname": "h1", "projects": ["/srv/plain", "/srv/proj"]}
+        (root / "collection.json").write_text(json.dumps(summary), encoding="utf-8")
+        return root
+
+    def test_remotes_and_head(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cli.main(["detect", str(self.collection()), "--json"])
+        self.assertEqual(rc, 0, buf.getvalue())
+        projects = {p["path"]: p for p in json.loads(buf.getvalue())["projects"]}
+        self.assertEqual(sorted(projects), ["/srv/plain", "/srv/proj"])
+        for p in projects.values():
+            self.assertEqual(list(p)[-2:], ["remotes", "head"])
+        self.assertEqual(projects["/srv/proj"]["remotes"], PROJ_GIT_REMOTES)
+        self.assertEqual(projects["/srv/proj"]["head"], "main")
+        self.assertEqual(projects["/srv/plain"]["remotes"], [])
+        self.assertEqual(projects["/srv/plain"]["head"], "")
+
+
 class ArchiveTests(unittest.TestCase):
     """Round trip through the sh collector when a POSIX shell is available:
     collector archive in, attributed artifacts and timeline out."""
@@ -388,6 +458,15 @@ class ArchiveTests(unittest.TestCase):
         self.assertFalse((self.tmp / "tl" / "detect.json").exists())
         # host comes from collection.json, users from the manifest
         self.assertLessEqual({r["user"] for r in rows}, {"alice", "bob", "carol"})
+        # The collector gathers /srv/proj's repository files, and the
+        # agents' own records of its remote join them (issue 253).
+        inv = json.loads((self.tmp / "tl" / "inventory.json").read_text(encoding="utf-8"))
+        proj = inv["projects"]["/srv/proj"]
+        self.assertEqual(proj["status"], "collected")
+        self.assertEqual(
+            (proj["remotes"], proj["head"], proj["recorded_remotes"]),
+            (PROJ_GIT_REMOTES, "main", [PROJ_REMOTE]),
+        )
 
 
 if __name__ == "__main__":

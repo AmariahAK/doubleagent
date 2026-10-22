@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.18.0'
+$ToolVersion = '1.19.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -661,6 +661,13 @@ project|AGENTS.md
 project|AGENTS.override.md
 project|AGENT.md
 project|.agents
+project|.git/HEAD
+project|.git/config
+project|.git/FETCH_HEAD
+project|.git/packed-refs
+project|.git/refs
+project|.git/logs
+project|.git/worktrees
 gemini-cli|GEMINI.md
 gemini-cli|.gemini
 gemini-cli|.geminiignore
@@ -1265,6 +1272,10 @@ AppData/Local/langflow/langflow/Cache/profile_pictures
 AppData/Local/Ollama/updates
 Library/Caches/ollama
 Library/Caches/com.electron.ollama
+.git/worktrees/*/index
+.git/worktrees/*/modules
+.git/worktrees/*/index.lock
+.git/worktrees/*/sharedindex.*
 .time_travel
 usr/.time_travel
 workdir/*/.venv
