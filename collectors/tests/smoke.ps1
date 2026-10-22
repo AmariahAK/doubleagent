@@ -1289,6 +1289,43 @@ Mk "$t215/workspace.json" "{`"folder`":`"file:///c%3A/twinproj`"}`n"
 # plugins/<id>/repos.json, flagged secret.
 Mk 'Users/alice/.twinny/server/plugins/github/repos.json' "{`"version`":1,`"repos`":[],`"tokens`":[]}`n"
 
+# 2026-10-21 project git metadata (#253)
+# Every discovered project's .git/HEAD, config, FETCH_HEAD, packed-refs,
+# refs/, logs/ and worktrees/ are collected under agent project: the
+# remotes with their fetch and push URLs, the checked-out branch, the last
+# fetch, the branches and tags, the reflog and the linked worktrees. The
+# object store, the index, hooks, LFS objects and submodule repositories
+# match no PROJECT_CATALOG line and get no row. Checks follow the default
+# run below; the same files are in smoke.sh under the project /srv/proj.
+$g253 = 'proj/.git'
+$oid253 = '1111111111111111111111111111111111111111'
+$tag253 = '2222222222222222222222222222222222222222'
+$zero253 = '0000000000000000000000000000000000000000'
+$cfg253 = @(
+  '[core]', "`trepositoryformatversion = 0", "`tbare = false",
+  '[remote "origin"]', "`turl = https://git.example.com/acme/proj.git",
+  "`tpushurl = git@git.example.com:acme/proj.git",
+  "`tfetch = +refs/heads/*:refs/remotes/origin/*",
+  '[remote "upstream"]', "`turl = https://git.example.org/upstream/proj.git",
+  "`tfetch = +refs/heads/*:refs/remotes/upstream/*",
+  '[branch "main"]', "`tremote = origin", "`tmerge = refs/heads/main"
+)
+Mk "$g253/HEAD" "ref: refs/heads/main`n"
+Mk "$g253/config" (($cfg253 -join "`n") + "`n")
+Mk "$g253/FETCH_HEAD" "$oid253`t`tbranch 'main' of https://git.example.com/acme/proj`n"
+Mk "$g253/packed-refs" "# pack-refs with: peeled fully-peeled sorted`n$tag253 refs/tags/v1`n"
+Mk "$g253/refs/heads/main" "$oid253`n"
+Mk "$g253/refs/remotes/origin/main" "$oid253`n"
+Mk "$g253/logs/HEAD" "$zero253 $oid253 A <a@example.com> 1759449600 +0000`tclone: from https://git.example.com/acme/proj.git`n"
+Mk "$g253/logs/refs/remotes/origin/main" "$zero253 $oid253 A <a@example.com> 1759449600 +0000`tfetch: fast-forward`n"
+Mk "$g253/worktrees/wt1/HEAD" "ref: refs/heads/wt1`n"
+Mk "$g253/worktrees/wt1/gitdir" "C:/proj-wt1/.git`n"
+Mk "$g253/objects/ab/cdef" "object`n"
+Mk "$g253/index" "DIRC`n"
+Mk "$g253/hooks/pre-commit.sample" "#!/bin/sh`n"
+Mk "$g253/lfs/objects/x" "lfs`n"
+Mk "$g253/modules/sub/HEAD" "ref: refs/heads/main`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1909,6 +1946,29 @@ Check '#159 roo cli-credentials.json flagged secret' { $r159 -and $r159.agent -e
 Check '#215 twinny workspaceStorage agent-changes attributed to twinny' { $r = Row "$t215/rjmacarthy.twinny/agent-changes/c1.json"; $r -and $r.agent -eq 'twinny' -and $r.status -eq 'collected' }
 Check '#215 twinny workspaceStorage neighbour stays vscode' { $r = Row "$t215/workspace.json"; $r -and $r.agent -eq 'vscode' -and $r.status -eq 'collected' }
 Check '#215 twinny-server forge repos.json flagged secret' { $r = Row 'Users/alice/.twinny/server/plugins/github/repos.json'; $r -and $r.agent -eq 'twinny' -and $r.status -eq 'collected' -and $r.secret -eq $true }
+
+# 2026-10-21 project git metadata (#253)
+# Is253 FILE...: each file under the project's .git has a collected row with
+# agent project and the project as its home. NoRow253 PREFIX...: no manifest
+# row names a path under the project's .git that starts with it.
+function Is253([string[]]$files) {
+  foreach ($f in $files) {
+    $r = Row "$g253/$f"
+    if (-not ($r -and ($r.home -replace '\\', '/').EndsWith('/proj') -and $r.agent -eq 'project' -and $r.status -eq 'collected')) { return $false }
+  }
+  return $true
+}
+function NoRow253([string[]]$prefixes) {
+  foreach ($p in $prefixes) {
+    if (@($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like "*/$g253/$p*" }).Count -ne 0) { return $false }
+  }
+  return $true
+}
+Check '#253 project git HEAD, config, FETCH_HEAD and packed-refs collected as project' { Is253 @('HEAD', 'config', 'FETCH_HEAD', 'packed-refs') }
+Check '#253 project git refs and logs collected as project' { Is253 @('refs/heads/main', 'refs/remotes/origin/main', 'logs/HEAD', 'logs/refs/remotes/origin/main') }
+Check '#253 project git worktrees collected as project' { Is253 @('worktrees/wt1/HEAD', 'worktrees/wt1/gitdir') }
+Check '#253 project git objects, index, hooks, lfs and modules have no row' { NoRow253 @('objects', 'index', 'hooks', 'lfs', 'modules') }
+Check '#253 project git config not flagged secret' { $r = Row "$g253/config"; $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

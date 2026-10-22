@@ -81,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.18.0"
+VERSION="1.19.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
