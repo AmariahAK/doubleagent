@@ -15,8 +15,10 @@ lines, collector 1.19.0, issue 253). This module reads two of them:
   line after a backslash at the end of the line that is part of the value:
   a backslash that ends a comment, a header line or a blank line continues
   nothing, as in git, so a comment such as `# C:\\git\\` never swallows the
-  header after it. A line that is not a section header or a `key = value`
-  pair, and the keys after an unterminated section header, are skipped;
+  header after it. A pair may follow its header on the same line
+  (`[remote "origin"] url = ...`), as git allows. A line that is not a
+  section header or a `key = value` pair, and the keys after an
+  unterminated section header, are skipped;
   the rest of the file is still read. A remote may have several `url` and
   `pushurl` lines (git fetches from the first `url` and pushes to every
   `pushurl`, or to every `url` when there is none), so every value of each
@@ -101,19 +103,24 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int]:
 
 
 def _entries(text: str) -> Iterable[tuple[str, str | None]]:
-    """The config's entries in order: `("[", header line)` for a section
-    header and `(key, value)` for a pair, the key lower-cased and the value
-    resolved by `_parse_value`. Comment, blank and unparseable lines are
-    skipped; only a value continues across lines."""
+    """The config's entries in order: `("[", header)` for a section header
+    and `(key, value)` for a pair, the key lower-cased and the value
+    resolved by `_parse_value`. A pair may follow its header on the same
+    line (`[remote "origin"] url = ...`), as git allows. Comment, blank and
+    unparseable lines are skipped; only a value continues across lines."""
     lines = text.splitlines()
     i = 0
     while i < len(lines):
         line = lines[i].strip()
-        if not line or line[0] in "#;":
-            i += 1
-            continue
         if line.startswith("["):
-            yield "[", line
+            m = _HEADER_RX.match(line)
+            if m is None:
+                yield "[", line  # unterminated or malformed
+                i += 1
+                continue
+            yield "[", m.group(0)
+            line = line[m.end() :].strip()
+        if not line or line[0] in "#;":
             i += 1
             continue
         m = _KEY_RX.match(line)

@@ -4,6 +4,7 @@ either of its lists is empty (issue 85)."""
 import contextlib
 import io
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -1597,6 +1598,41 @@ class GitRemotesTests(unittest.TestCase):
         self.assertEqual((bare["remotes"], bare["head"], bare["recorded_remotes"]), ([], "", []))
         for key in REPO_KEYS:
             self.assertNotIn(key, inv["outside_projects"])
+
+    def test_unreadable_repository_file_is_a_problem(self):
+        # An unreadable .git/config is a problem: line on stdout, printed
+        # before the counts, and in inventory.json and detect --json, not
+        # a project without remotes (pull request 254 review).
+        if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() == 0:
+            self.skipTest("chmod does not deny access as root or on Windows")
+        col = self.build()
+        config = col / "fs/srv/proj/.git/config"
+        os.chmod(config, 0)
+        try:
+            out = self.tmp / "out"
+            rc, stdout = run_timeline(col, out)
+            rc2, detect = run_detect(col, "--json")
+        finally:
+            os.chmod(config, 0o600)
+        self.assertEqual((rc, rc2), (0, 0), stdout)
+        line = [
+            ln for ln in stdout.splitlines() if ln.startswith("problem:   /srv/proj/.git/config: ")
+        ]
+        self.assertEqual(len(line), 1, stdout)
+        self.assertLess(stdout.index("problem:   /srv/proj"), stdout.index("rows:"), stdout)
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            [p for p in inv["problems"] if p.startswith("/srv/proj/.git/config: ")],
+            [line[0][len("problem:   ") :]],
+        )
+        self.assertEqual(
+            (inv["projects"]["/srv/proj"]["remotes"], inv["projects"]["/srv/proj"]["head"]),
+            ([], "main"),
+        )
+        det = json.loads(detect)
+        self.assertEqual(
+            len([p for p in det["problems"] if "/.git/config: " in p]), 1, det["problems"]
+        )
 
     def test_recorded_remotes_follow_the_filters(self):
         out = self.tmp / "out"

@@ -85,6 +85,25 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_pair_on_the_header_line(self):
+        # git allows a variable after its section header on the same line
+        # (pull request 254 review); a comment there is still a comment.
+        text = (
+            '[remote "origin"] url = https://h/origin.git\n'
+            '[remote "note"] # just a comment\n'
+            "\turl = https://h/note.git\n"
+            '[remote "two"]\turl = https://h/\\\n'
+            "two.git ; pushurl = not-a-key\n"
+        )
+        self.assertEqual(
+            gitmeta.parse_remotes(text),
+            [
+                {"name": "note", "urls": ["https://h/note.git"], "pushurls": []},
+                {"name": "origin", "urls": ["https://h/origin.git"], "pushurls": []},
+                {"name": "two", "urls": ["https://h/two.git"], "pushurls": []},
+            ],
+        )
+
     def test_malformed_lines_are_skipped(self):
         text = (
             '[remote "origin"]\n'
@@ -184,8 +203,8 @@ class ProjectGitTests(unittest.TestCase):
     def test_unreadable_file_is_a_problem(self):
         # A permission or I/O error is reported, never read as "no remotes"
         # (pull request 254 review); the other project is still read.
-        if os.geteuid() == 0:
-            self.skipTest("root reads everything")
+        if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() == 0:
+            self.skipTest("chmod does not deny access as root or on Windows")
         proj = Home(self.tmp / "srv/proj", "/srv/proj", "alice", project=True)
         other = Home(self.tmp / "srv/other", "/srv/other", "alice", project=True)
         config = self.artifact(proj, ".git/config", PROJ_GIT_CONFIG)

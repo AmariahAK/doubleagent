@@ -965,6 +965,8 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     write_jsonl(timeline, rows)
     write_jsonl(sess, sessions)
     detect = detect_object(col)
+    # Before the problem: lines, since a repository file it cannot read is one.
+    files = project_files(col, problems)
     print("input:     %s (%s)" % (col.source, col.kind))
     print("host:      %s" % (col.host or "(unknown)"))
     for n in col.notes:
@@ -1013,9 +1015,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
-    groups = project_inventory(
-        rows, sessions, collected_projects(col), project_files(col, problems)
-    )
+    groups = project_inventory(rows, sessions, collected_projects(col), files)
     scratch = scratch_keys(col, rows)
     synced = sum(1 for s in sessions if s.synced == "yes")
     relayed = sum(1 for s in sessions if s.relayed == "yes")
