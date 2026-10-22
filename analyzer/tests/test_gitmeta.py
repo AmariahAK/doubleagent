@@ -208,6 +208,16 @@ class ParseRemotesTests(unittest.TestCase):
             ],
         )
 
+    def test_padded_value_is_trimmed_in_one_pass(self):
+        # A value padded with many spaces, as untrusted evidence may be, is
+        # trimmed without a pop(0) per space (pull request 254 review).
+        pad = " " * 200_000
+        text = '[remote "p"]\n\turl =%s"https://h/p.git "%s\n' % (pad, pad)
+        self.assertEqual(
+            gitmeta.parse_remotes(text),
+            [{"name": "p", "urls": ["https://h/p.git "], "pushurls": []}],
+        )
+
     def test_pair_on_the_header_line(self):
         # git allows a variable after its section header on the same line
         # (pull request 254 review); a comment there is still a comment.

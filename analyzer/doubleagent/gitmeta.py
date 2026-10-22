@@ -134,13 +134,17 @@ def _parse_value(lines: list[str], i: int, text: str) -> tuple[str, int, str]:
             i += 1
             text = lines[i]
             continue
-        while out and out[0][0] in _ASCII_SPACE and not out[0][1]:
-            out.pop(0)
-        while out and out[-1][0] in _ASCII_SPACE and not out[-1][1]:
-            out.pop()
+        # One pass from each end, since the file is untrusted and a value
+        # padded with kilobytes of spaces must not cost a pop(0) per space.
+        first, last = 0, len(out)
+        while first < last and out[first][0] in _ASCII_SPACE and not out[first][1]:
+            first += 1
+        while last > first and out[last - 1][0] in _ASCII_SPACE and not out[last - 1][1]:
+            last -= 1
+        value = "".join(c for c, _ in out[first:last])
         # A quote still open at the end is a value the file ends inside: git
         # rejects the line, and the text so far is not the destination.
-        return "".join(c for c, _ in out), i, "unterminated quoted value" if quoted else ""
+        return value, i, "unterminated quoted value" if quoted else ""
 
 
 def _entries(text: str, errors: list[str]) -> Iterable[tuple[str, str | None]]:
