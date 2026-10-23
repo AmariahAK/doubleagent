@@ -1185,7 +1185,7 @@ The round, in order:
    redaction function, so a UUID, a hex id, a path or a URL prints as its
    class; a new printing path in the tool gets a test that feeds it those
    four forms, since the enum summary of [pull request 257](https://github.com/seanthegeek/doubleagent/pull/257) printed them
-   verbatim until review caught it. Copy it to the VM alone and run it
+   verbatim until the Copilot review flagged it. Copy it to the VM alone and run it
    with `python3 -I`. It is the only way to look inside an agent's files
    on a real install. Ad-hoc scripts that print values are not written,
    and nothing from a real install is pasted into the repository, an
@@ -1690,9 +1690,10 @@ the start of this section).
   what the host must provide and why, never one machine's chip, memory or
   disks, and a lab snapshot holds only what a developer's machine would
   have, never this repository's CI gates, since the round records what
-  the agent under test does with the tools it finds; review of
-  [`docs/lab-vms.md`](docs/lab-vms.md) made both corrections in
-  [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259).
+  the agent under test does with the tools it finds; the first draft of
+  [`docs/lab-vms.md`](docs/lab-vms.md) in [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259) described one
+  Mac's chip, memory and disks and put the CI linters in the snapshots,
+  and the user corrected both before it merged.
 - Every term a document takes from a vendor, a bundle or a product
   surface is explained at its first use in that document: what it stands
   for, what it denotes here, and where the name comes from. This covers
