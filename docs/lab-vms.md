@@ -30,6 +30,14 @@ runs: its linters (shellcheck, shfmt, PSScriptAnalyzer, ruff) are not
 installed. An agent that wants one installs it during the round, and the
 install is part of the record.
 
+Automatic updates and scheduled reboots are turned off in each clean
+snapshot: Windows Update's active hours and restart policy, macOS
+automatic updates, and the automatic reboot of Ubuntu's
+unattended-upgrades. An update in the middle of a round writes files the
+agent did not, and a reboot ends the agent's open session. A snapshot is
+also taken at each pause of a round, so an unplanned reboot costs the
+steps since that snapshot, not the round.
+
 ## The host
 
 Four things about the host decide what the VMs can do:

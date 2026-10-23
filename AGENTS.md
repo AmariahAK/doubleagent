@@ -337,7 +337,12 @@ rules are different from the collectors'.
 - **Attribution comes from the manifest when there is one.** Host, user, home
   and agent are read from `collection.json` and `manifest.jsonl`. Only loose
   input without a manifest infers them from paths, and the output says so.
-  Never silently guess when the manifest is present.
+  Never silently guess when the manifest is present. Attribution never
+  falls back to another record either: a row attributed to a project or a
+  session is read from that project's or session's own record, and when
+  that record lacks the value the row is omitted, never taken from a
+  sibling. The Zed parser of [pull request 254](https://github.com/seanthegeek/doubleagent/pull/254) took the remote URL from
+  the first snapshot that had one instead of the selected project's own.
 - **Parsers are validated like catalog entries.** Confirm the record shape
   against source or a real install, write the evidence into the Parsing
   part of `research/<agent>.md` (one document per catalog agent, see the
@@ -362,7 +367,16 @@ rules are different from the collectors'.
   for that file, an empty `timestamp_utc` (the line has none of its
   own) and `source_line` set to the line. This holds for every file a
   parser reads, not only the transcript: a history file, a secondary
-  source or an index that loses lines says so in its own rows.
+  source or an index that loses lines says so in its own rows. It also
+  holds for every file the analyzer reads outside a parser, in the
+  command itself (a repository's config and HEAD files, an index, a
+  settings file): a read or parse failure becomes a `problem:` line,
+  never an empty result that reads as "no metadata", and the problem
+  reaches stdout and the JSON outputs in the same run, in the order
+  [`analyzer/docs/output.md`](analyzer/docs/output.md) documents. The
+  repository reader of [pull request 254](https://github.com/seanthegeek/doubleagent/pull/254) returned an empty string on a
+  read error, then reported the problem to `inventory.json` after the
+  `problem:` lines had been printed.
   Mechanically: a reader appends `(line, message, raw)` to an `errors`
   list (`iter_jsonl` and `line_text` in `parsers/base.py` do this for
   JSONL), the parser ends the file with
@@ -400,11 +414,33 @@ rules are different from the collectors'.
   symlinks from an archive. The `text` field carries the full event text,
   line breaks included, and is never truncated; shortening it is the
   analyst's step afterwards, with jq or DuckDB.
+- **Readers follow the specification.** A reader for a format with a
+  specification (a repository config file, an INI dialect, a TOML or YAML
+  subset) is written from the specification, with one test per rule:
+  quoting, escapes, line continuation, comments, header forms, encoding
+  and case rules each come from the reference, not from the common case
+  in the fixtures. Three Python pitfalls recur. `str.splitlines()` also
+  breaks at U+2028, U+0085 and the other Unicode separators, so a line
+  ends at LF or CRLF only. `str.strip()` removes Unicode whitespace such
+  as U+00A0, so trims are ASCII only. An evidence file is untrusted, so it
+  is read whole with no size cap and in linear time; a quadratic trim over
+  a padded value stalls the analysis. The repository config reader of
+  [pull request 254](https://github.com/seanthegeek/doubleagent/pull/254) took eleven Copilot reviews, each one clause of the
+  config file's manual page.
 - **Lint and types.** ruff (lint and format) and pyright in standard mode
   must be clean; see "Quality gates". Fix a finding rather than suppress
   it, and give any `# noqa` or `# pyright: ignore` a reason.
 - **Tests.** `analyzer/tests/run.sh` must pass. Add a fixture and a test
   class for every parser, and a detection test for every new input shape.
+  Any join of two record kinds by proximity (a status record paired with
+  the nearest session record) is bounded by the next record of the same
+  kind and has a regression case with two pairs interleaved (A, A's
+  partner, B, B's partner), so a nearest match cannot borrow the other
+  pair's record; the Remote Control sync row of [pull request 257](https://github.com/seanthegeek/doubleagent/pull/257) gave the
+  second bridge the first bridge's status URL. A test that needs POSIX
+  permissions or an unprivileged user skips with the `CAN_DENY` guard of
+  `analyzer/tests/test_errors.py`, since `os.geteuid` does not exist on
+  Windows ([pull request 254](https://github.com/seanthegeek/doubleagent/pull/254)).
 
 ## Adding a parser
 
@@ -441,6 +477,12 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    A wrapper over another agent's format reuses that agent's reader rather
    than copying it: little-coder and Letta Code sessions go through the pi
    parser's reader, and Open Interpreter subclasses Codex's `RolloutParser`.
+   A helper two parsers need lives in `parsers/base.py` or a module of its
+   own, never in another parser's module; a parser imports another parser
+   module only for lineage (to subclass it or reuse its reader), and such
+   imports run one way. Two sweep branches of [pull request 245](https://github.com/seanthegeek/doubleagent/pull/245) each imported
+   a helper from the other's module, and the merge produced an import
+   cycle that stopped every parser module from importing.
 2. Register an instance in the `ALL` list in `parsers/__init__.py`. Nothing
    else discovers parsers.
 3. Row semantics the existing parsers share: `tool_use` rows carry
@@ -573,6 +615,8 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    every file the parser reads line by line, the history file and each
    secondary source as well as the transcript, and checks that the lines
    before and after the bad one are still yielded beside the `parser:` row.
+   A parser that pairs records by proximity also gets the interleaved case
+   of the Tests bullet under [Analyzer standards](#analyzer-standards).
 7. Fill the agent's row in the table of the [agents page](docs/agents.md):
    set its status to `parsed`, its "Validated against" cell to the
    evidence class and platforms in a few words, and keep its Notes cell's
@@ -591,7 +635,10 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
 
 Each parser is self-contained and fully specified by its research document
 and this list, so one parser per agent, run in parallel, is the natural way
-to delegate the backlog.
+to delegate the backlog. A subagent changes no assertion outside its own
+test class, and the step that merges the branches re-derives the shared
+counts rather than taking either branch's; the merge of [pull request 245](https://github.com/seanthegeek/doubleagent/pull/245)
+had to restore two assertions a branch had changed in other classes.
 
 ## Adding an agent to the catalog
 
@@ -631,7 +678,17 @@ same string.
    `Unreleased` in [`analyzer/CHANGELOG.md`](analyzer/CHANGELOG.md), because the analyzer's detection
    changes with the catalog copy.
 4. Add large or irrelevant subtrees to `EXCLUDES` and credential files to
-   `SECRET_GLOBS`. The test for an exclusion is whether the agent made the
+   `SECRET_GLOBS`. A secret glob covers the whole family of a credential
+   file: every copy the agent makes of a flagged file (a dated backup, a
+   `.corrupted` copy, a snapshot, a rotated log) is flagged by the same
+   glob, and a settings file that can hold MCP server `env` or `headers`
+   values is a credential file. Code scanning found Claude Code's backups
+   glob matching the dated copies and missing the
+   `.claude.json.corrupted.<ts>` copy its research document already named
+   ([pull request 257](https://github.com/seanthegeek/doubleagent/pull/257)), and the Cody JetBrains settings lines landed without
+   globs although the document said they hold MCP server headers and env
+   ([pull request 245](https://github.com/seanthegeek/doubleagent/pull/245)).
+   The test for an exclusion is whether the agent made the
    content or copied it: collect what it made, skip what it copied. A git
    worktree or clone, a plugin marketplace checkout, `node_modules`, a
    cache, an embedding index, model weights and a downloaded binary are
@@ -642,7 +699,14 @@ same string.
    the agent's own work, exists nowhere else and is the first thing a
    temp cleaner removes, so it is collected whole, capped by size; when a
    round shows a large copied subtree inside one, the exclusion names
-   that subtree, never the scratch directory. If the tool's README,
+   that subtree, never the scratch directory. A catalog line that collects
+   a directory whole is written against the directory's documented layout:
+   before the line lands, list the directory's children from the format's
+   own reference (the `gitrepository-layout` manual page for a `.git`
+   directory), mark each collected or excluded in the research document,
+   and add every exclusion in the same commit. The `.git/worktrees` line of
+   [pull request 254](https://github.com/seanthegeek/doubleagent/pull/254) took three reviews to exclude the index, the submodule
+   repositories, then `index.lock` and `sharedindex.*`. If the tool's README,
    compose file or installer creates a
    named Docker volume, add its name pattern to `DOCKER_VOLUMES` with the
    source cited in the comment above it, and add volume-relative forms of
@@ -671,7 +735,21 @@ same string.
    discovery source, plus one for anything unusual in the layout
    (symlinks, SQLite sidecars, spaces in paths, drive-letter or
    `file:///` project references), and keep the check names identical in
-   both files. Run the full shell matrix from "Validation and testing";
+   both files. A secret glob matches nothing until a catalog line collects
+   the file, so its check asserts the fixture file's manifest row with
+   `secret: true` (and `skipped_secret` under `--no-secrets`), which fails
+   when no catalog line reaches the file, and a secret glob under an entry
+   that names a directory's children needs a catalog line of its own: five
+   `.claude-*/` relocated-home secret globs matched nothing on
+   [pull request 257](https://github.com/seanthegeek/doubleagent/pull/257), because the relocated home is collected through lines
+   that name specific children. The fixture carries one file per
+   credential name the research document's Credentials section lists, not
+   one per glob, because a glob narrower than the family passes its own
+   check. A check names a row by its full path from the image root, never
+   by a path suffix, because other agents' fixtures hold same-named files:
+   the PowerShell test's suffix match on `proj/.git/HEAD` found the Copilot
+   Desktop fixture's clone ([pull request 254](https://github.com/seanthegeek/doubleagent/pull/254)).
+   Run the full shell matrix from "Validation and testing";
    every shell in it, including Windows PowerShell 5.1 through the WSL
    path, is available on the development host, so an untested shell is a
    gap to close, not a note to leave.
@@ -1088,10 +1166,26 @@ The round, in order:
    Observed bullet. The Copilot CLI round on Windows (2026-10-17) was the
    first to do this for every step; the rounds before it ran every
    action before the first listing and could map actions to files only
-   by modification time.
+   by modification time. Listing names sort in the order they were taken
+   (zero-padded step numbers; an unplanned event gets the next number,
+   never a letter inserted before a planned step), because the diff tool
+   pairs each listing with the one taken before it: the Claude Code round
+   on Windows (2026-10-22) diffed step 05 against 04c instead of 04b. The
+   survey script's roots are fixed before the baseline and include every
+   surface the round will touch (an editor's data directories when an
+   extension step is planned); a root added mid-round names its first
+   listing as its baseline. The survey also counts the agent's own
+   processes by name beside the files, since a daemon that outlives the
+   console changes what a delete leaves and what the collector finds
+   locked: six `claude.exe` processes after a reboot were the first sign
+   of Claude Code's session daemon.
 2. **Read shapes, never values.** `analyzer/tools/shape.py` prints key
-   names, value types and JSONL line types with UUIDs, hex ids and long
-   tokens redacted, and never a value; copy it to the VM alone and run it
+   names, value types, JSONL line types, byte totals and the enum tokens
+   of a fixed set of paths, and every value it prints passes through its
+   redaction function, so a UUID, a hex id, a path or a URL prints as its
+   class; a new printing path in the tool gets a test that feeds it those
+   four forms, since the enum summary of [pull request 257](https://github.com/seanthegeek/doubleagent/pull/257) printed them
+   verbatim until the Copilot review flagged it. Copy it to the VM alone and run it
    with `python3 -I`. It is the only way to look inside an agent's files
    on a real install. Ad-hoc scripts that print values are not written,
    and nothing from a real install is pasted into the repository, an
@@ -1135,6 +1229,24 @@ The round, in order:
    nothing locally is a finding (Claude Desktop's merged Chat/Cowork
    surface runs server-side and leaves one index file), and so is a
    feature the VM cannot run (nested virtualisation); say which it was.
+   A feature the product offers but this account or build does not (a
+   cloud session on a plan that lacks it) is a third outcome, recorded as
+   not exercised with the reason. Record the default permission mode of
+   a fresh install at the first tool call; when it auto-approves,
+   switching to the asking mode is its own step, with the mode names in
+   cycle order (Claude Code 2.1.309 started in auto mode). Leave a
+   session idle for a set period and take a listing, then reboot the VM
+   and take a listing after login, since timers, housekeeping and daemons
+   write while nothing is typed: the overnight pause of the Claude Code
+   round on Windows ([issue 256](https://github.com/seanthegeek/doubleagent/issues/256)) produced the daemon handover, the
+   pruned backups, a plugin directory download and the daily cleanup.
+   The brief carries the exact prompt per step, and a step whose prompt
+   misses its target (a tool call on a no-tool question, a background
+   task instead of a queued prompt, a count instead of the output) is
+   kept and repeated with a sharper prompt under the next name; the miss
+   is a finding about the agent. The person reports what the screen
+   showed for each step (the answer, the option wording as shown, an
+   accidental choice), since the transcript may not record it.
 4. **Run the collector in the VM** as the user and pull the manifest, the
    summary and the log; read the error rows, the `skipped_excluded`
    rows and the unflagged-key list from "Validation and testing". Then
@@ -1142,7 +1254,14 @@ The round, in order:
    observed session yields rows and that no `system` row reports an
    unreadable file. A parser update starts the same way: run the shape
    tool over the new version's transcripts and diff the line types and
-   key sets against the lists in the research document.
+   key sets against the lists in the research document. Run the collector
+   before the delete steps and again after them and diff the two
+   manifests; the second run of the Claude Code round on Windows showed
+   that a removed project leaves every trace in the home while discovery
+   lists nothing ([issue 258](https://github.com/seanthegeek/doubleagent/issues/258)). The step table of the brief pairs each
+   step with the research claim it tests, and the evidence row records
+   settled, contradicted or new. A change to the shape tool during a round
+   lands with its tests before the next listing.
 5. **Write it down the same day.** The Observed subsection
    of the research document gets a bullet per platform with the version, build,
    date, what was exercised and what each surface wrote; a layout the
@@ -1150,7 +1269,12 @@ The round, in order:
    on any real install, bundle-derived"; every statement about a product
    surface (a tab, a button, a mode) carries the build and date, because
    surfaces change between releases and training-era knowledge of the UI
-   is stale. What the delete step left and removed goes into the
+   is stale, and so does every claim about what an agent writes,
+   sanitises or removes, which names the build or commit it was verified
+   at: the analyzer documentation said Codex strips credentials from a
+   rollout's URL, which holds only since a commit of 2026-08-25 and not
+   for its forks ([pull request 254](https://github.com/seanthegeek/doubleagent/pull/254)).
+   What the delete step left and removed goes into the
    document's `#### What survives a delete` subsection (and its Parser
    plan's `#### Deletion rows`), and the Observed bullet links them, so the
    dated bullet records the round and the subsections stay the reader's
@@ -1174,7 +1298,17 @@ The round, in order:
    archive and the probe output are on the analyst machine, and the
    outputs it left in the VM are deleted; until then it says the VM is
    still needed, and it never leaves the person to infer it from a
-   finished write-up or a passing test.
+   finished write-up or a passing test. Automatic updates and reboots are
+   off in the clean snapshot, and the person takes a VM snapshot at every
+   pause with a session open and before any step that is hard to undo
+   (the delete steps, a retention sweep, a reboot), since a snapshot of a
+   running VM keeps its memory and an open session survives a revert; the
+   step-04 session of the Claude Code round on Windows died with an
+   overnight reboot of the VM. A revert to the snapshot taken after step
+   N discards every listing after N, the steps are retaken under new
+   names, and the evidence table says which snapshot was reverted to and
+   why. Mid-round snapshots are deleted when the main session releases
+   the VM; the clean snapshot is kept.
 
 Subagents do the integration from a brief that carries the evidence; they
 never run the collector live against the VM or read its user's data
@@ -1189,8 +1323,19 @@ research document and the agents page, each reporting every check it ran with
 the result line. The main session then re-runs the checks itself (the
 catalog drift check, the analyzer suite, markdownlint, the link check,
 the sh smoke test under `/bin/sh` and the PowerShell smoke test under
-Windows PowerShell 5.1 on the VM), reviews the diffs against the brief,
-and commits. A round of a new agent and a round of an agent already in
+Windows PowerShell 5.1 on the VM), runs the merged parser over the
+round's pulled archive and compares each new row form's count with the
+evidence table, reviews the diffs against the brief, and commits. The
+archive run is what catches fixtures that inherited the brief's wording:
+the review of the ChatGPT macOS round of 2026-10-18 found there, and only
+there, that the fixtures said `Decline` and `Accept` where the real
+records said `denied` and `approved`, and that a settings event compared
+against the turn's profile gave a transition row at every boundary. When
+the research subagent and the parser subagent run in parallel, the Parser
+plan's row forms are copied from the parser's docstring at review, since
+the two drift: the plan of the Claude Code round on Windows was corrected
+after the parser landed.
+A round of a new agent and a round of an agent already in
 the catalog follow the same path; the second usually ends in documents
 and a few catalog lines, the first in a parser as well.
 
@@ -1419,6 +1564,15 @@ the start of this section).
   said to merge; an agent never pushes to `main`, never merges a pull
   request the user has not asked it to merge, and never asks for a
   bypass of the ruleset.
+- Review findings (Copilot, code scanning, a person) are reproduced
+  before they are fixed or declined. A finding the change introduced is
+  fixed in the pull request with a test; a defect in code the change did
+  not touch is filed as an issue, and the reply says so and names the
+  fix commit or the issue. A third finding on the same function in three
+  reviews means the function is rewritten from its specification, not
+  patched again: [pull request 254](https://github.com/seanthegeek/doubleagent/pull/254) went through eleven reviews of its
+  repository config reader, and [issue 255](https://github.com/seanthegeek/doubleagent/issues/255) was filed from a symlink
+  finding in code that predated it.
 - Outstanding work is tracked as GitHub issues. File one when you find
   something out of scope rather than widening a change, and label it by
   what it is: `bug` for behaviour that is wrong, broken or contradicts the
@@ -1463,7 +1617,15 @@ the start of this section).
   the README must be able to say what each file in the output holds and
   which command produced it. A sentence that cannot be verified from the
   code is not written; "the analyzer reads X" is a claim about `cli.py`,
-  not about what would be sensible. Before a `VERSION` bump, re-derive the
+  not about what would be sensible. A command block the reader will paste
+  (an install or setup procedure) is run as written in a fresh shell on
+  the platform it describes before it is committed, and what a fresh
+  shell lacks (a PATH entry an installer prints but does not apply, a
+  keg-only formula's bin directory, an executable the same session just
+  installed) is written into the block: the first draft of
+  [`docs/lab-vms.md`](docs/lab-vms.md) in [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259) called `brew`
+  before its shellenv line was applied, left rustup's keg off the PATH
+  and invoked a just-installed `pwsh`. Before a `VERSION` bump, re-derive the
   option list, the output file list and the status or column list from the
   code and diff them against the README; the changelog entry then records
   what changed in those lists.
@@ -1523,7 +1685,15 @@ the start of this section).
   window") goes stale at the next addition; name the items or say
   "some". The pass of October 2026 that removed such sentences from
   twenty pages found three stale facts beside them, so maintainer prose
-  in a document is also a sign to check the facts around it.
+  in a document is also a sign to check the facts around it. A page about
+  an environment (the lab VMs, a CI runner, a developer machine) states
+  what the host must provide and why, never one machine's chip, memory or
+  disks, and a lab snapshot holds only what a developer's machine would
+  have, never this repository's CI gates, since the round records what
+  the agent under test does with the tools it finds; the first draft of
+  [`docs/lab-vms.md`](docs/lab-vms.md) in [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259) described one
+  Mac's chip, memory and disks and put the CI linters in the snapshots,
+  and the user corrected both before it merged.
 - Every term a document takes from a vendor, a bundle or a product
   surface is explained at its first use in that document: what it stands
   for, what it denotes here, and where the name comes from. This covers
