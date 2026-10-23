@@ -104,9 +104,10 @@ produced without installing agents on a workstation. See the
 ## Lab VMs
 
 The clean virtual machines that the real-install rounds start from: the
-toolchain their snapshots hold, the install commands that rebuild them on
-Windows, macOS and Ubuntu, what the host decides, and Docker's
-requirements in each. See [Lab VMs](development.md).
+development tools their snapshots hold so an agent's use of them can be
+recorded, the install commands that rebuild them on Windows, macOS and
+Ubuntu, what the host decides, and Docker's requirements in each. See
+[Lab VMs](development.md).
 
 ## Contributing
 

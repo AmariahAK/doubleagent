@@ -82,8 +82,8 @@ lab/                           Docker sandbox for running CLI agents against a s
 docs/index.md                  the documentation site's home page; the root README.md is
                                the GitHub overview and is not a site page
 docs/agents.md                 every catalog agent with its parse status, files and evidence
-docs/development.md            the lab VMs: the toolchain in their clean snapshots, the
-                               commands that rebuild them, Docker's requirements per VM
+docs/development.md            the lab VMs: the development tools in their clean snapshots,
+                               the commands that rebuild them, Docker's requirements per VM
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
 tools/check_research_structure.py  verifies every research document follows the
@@ -1052,8 +1052,8 @@ result with the research documents, the catalog and the parser. The
 Claude Desktop rounds of October 2026 (MSIX build, Linux deb,
 macOS) are the pattern; each found something the bundle research had not:
 an uncollected data directory, two unflagged keys, a feature that writes
-nothing locally. The VMs, the toolchain their clean snapshots hold, the
-commands that rebuild them and what the host lets a guest run are in
+nothing locally. The VMs, the development tools in their clean snapshots,
+the commands that rebuild them and what the host lets a guest run are in
 [`docs/development.md`](docs/development.md).
 
 A round is not an optional check: it is a required step in three cases,

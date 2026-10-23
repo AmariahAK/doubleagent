@@ -4,25 +4,25 @@ The clean virtual machines that the [real-install rounds](../AGENTS.md#real-inst
 start from, what is installed in their snapshots and why, and the install
 commands that rebuild them; for a contributor running a round.
 
-## Why the snapshot carries a toolchain
+## Why the VMs hold development tools
 
-A round installs one agent in a clean VM and takes a listing of the
-agent's directories after every step. The listing diff is the evidence of
-what that step wrote, so the fewer files the round itself adds, the less
-noise there is to tell apart from the agent's. Most agents are installed
-with `npm`, `pip`, `pipx`, `uv`, `cargo`, `go install` or `gem`, need
-`git` for their project discovery, and open or recommend VS Code, so a
-snapshot without those tools makes every round begin with the same
-installs, each adding its own files under the home before the agent's
-first step. The snapshot therefore holds the toolchain below, installed
-and never launched, and the round's first listing is taken from the
-snapshot before the agent is installed.
+A round records what an agent does on a host, and an agent given a bare
+VM can only show what it does without tools. The snapshot therefore holds
+what a developer's machine has: the languages and their package managers,
+the compilers, version control, an editor and, where the host allows, a
+container engine. With them the agent can build, test, install, clone,
+commit and run whatever it is asked to, and the round's listing diffs and
+the collector record that activity for analysis: the packages it
+installed, the repositories it cloned, the commits it made, the tools it
+ran and the files each of those left behind.
 
-Nothing in the snapshot is signed in: no GitHub account in `gh`, no
-editor opened, no package manager cache left behind. A tool that keeps a
-user directory on first use (`~/go`, `~/.cargo`, `~/.gem`, the pipx
-directories, uv's cache) is left to create it during the round, where the
-listing shows it.
+The tools are installed and never launched, nothing is signed in (no
+GitHub account in `gh`, no editor opened), the package managers' caches
+are cleaned, and the round's first listing is taken from the snapshot
+before the agent is installed. A directory a tool creates on first use
+(`~/go`, `~/.cargo`, `~/.gem`, the pipx directories, uv's cache) then
+appears in the diff of the step in which the agent first used that tool,
+which is itself evidence of what it did.
 
 ## The host
 
