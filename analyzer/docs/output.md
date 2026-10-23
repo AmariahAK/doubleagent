@@ -556,7 +556,7 @@ the test collection of the [`detect --json`](#detect---json) example:
         }
       },
       "shared_files": 1,
-      "synced": "",
+      "synced": "no",
       "relayed": "",
       "origin": "",
       "recovered": "no",
@@ -603,7 +603,7 @@ the test collection of the [`detect --json`](#detect---json) example:
         }
       }
     },
-    "synced": "",
+    "synced": "no",
     "relayed": "",
     "origin": "",
     "recovered": "no"
@@ -633,10 +633,13 @@ because none of the three `history.jsonl` prompts is one a transcript
 records, so every history line is kept, `collected_only` is `[]`
 because no agent of the input is one with nothing to parse, and every
 `synced_sessions`, `relayed_sessions` and `remote_sessions` is 0
-because the parsers of the agents with sessions here record no sync,
-relay or origin state (the `cursor` parser records origin, but `cursor`
-has no session), so every project's `synced`, `relayed` and `origin` is
-`""`.
+because no session here carries a `session synced:`, `session relayed:`
+or `session origin:` row. The `claude-code` parser records sync state
+since 0.21.0, so the `synced` of `/srv/proj` and of `outside_projects`,
+whose only sessions are its, is `no`; the other parsers with sessions
+here record no sync, relay or origin state (the `cursor` parser records
+origin, but `cursor` has no session), so every other project's `synced`
+and every `relayed` and `origin` is `""`.
 Every `recovered_sessions` is 0 because the session under `/srv/proj`
 and the one outside projects come from their transcripts alone (the
 history lines that survive carry no session), so the `recovered` of
@@ -651,7 +654,8 @@ lies under a home or project catalog entry, and none of its agents wrote
 a `scratch directory:` row. Each project's `remotes`, `head` and
 `recorded_remotes` are filled in by the 0.21.0 rules the same way: the
 collection holds no `.git/` files, and none of its parsers writes a `git
-remote:` row. Its keys, in order:
+remote:` row; so are the two `no` marks of `synced`, by the 0.21.0 rule
+that the `claude-code` parser records sync state. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
