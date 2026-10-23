@@ -16,7 +16,7 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   `metadata` object. Types:
   - `session_meta`: payload `id` (thread id), `session_id` (root thread),
     `timestamp`, `cwd`, `originator`, `cli_version`, `model_provider`,
-    optional `git` (`branch`), optional `creator_account_id` and
+    optional `git` (`branch`, `repository_url`), optional `creator_account_id` and
     `creator_user_id` (the ChatGPT account and user that created the
     thread, `protocol/src/protocol.rs:3117-3198`; seen filled in rollouts
     of Codex Desktop 0.162.0-alpha.17.2; appended to the `session start:`
@@ -25,7 +25,10 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     `thread_source`, `source.subagent.thread_spawn.parent_thread_id`,
     `agent_path`, `agent_role`, `agent_nickname`; `forked_from_id` on a fork.
     Only the file's first `session_meta` sets the session id, project and
-    branch. A subagent (a parent in `parent_thread_id`, else in
+    branch, and its `git.repository_url` (a remote URL of the repository,
+    `protocol/src/protocol.rs:3436-3452`, written only when `cwd` is in a
+    git repository) is a `system` row `git remote: <url>` at the
+    `session_meta` time, after the `session start:` row. A subagent (a parent in `parent_thread_id`, else in
     `source.subagent.thread_spawn`, else a `session_id` other than `id` on
     a thread that is not a fork) gets a `subagent <id> of <parent>` row, a
     fork a `forked from <id>` row. A later `session_meta` with another id is
@@ -260,7 +263,7 @@ from typing import cast
 import zstandard
 
 from ..inputs import Artifact, error_reason
-from ..model import Row, compact
+from ..model import GIT_REMOTE_PREFIX, Row, compact
 from ..timeutil import to_utc
 from .base import (
     Options,
@@ -1294,8 +1297,9 @@ class RolloutParser(Parser):
                 session_id = sid or session_id
                 cwd = str(payload.get("cwd") or cwd)
                 git = payload.get("git") or {}
-                if isinstance(git, dict):
-                    branch = str(git.get("branch") or branch)
+                if not isinstance(git, dict):
+                    git = {}
+                branch = str(git.get("branch") or branch)
                 start = "session start: %s %s provider=%s cwd=%s" % (
                     payload.get("originator") or "codex",
                     payload.get("cli_version") or "",
@@ -1306,6 +1310,12 @@ class RolloutParser(Parser):
                     if payload.get(key):
                         start += " %s=%s" % (label, payload.get(key))
                 yield self._fill(base(ts=payload.get("timestamp")), start, opts)
+                if isinstance(git.get("repository_url"), str) and git["repository_url"].strip():
+                    yield self._fill(
+                        base(ts=payload.get("timestamp")),
+                        GIT_REMOTE_PREFIX + git["repository_url"],
+                        opts,
+                    )
                 parent = _parent_of(payload)
                 if parent:
                     extra = " ".join(

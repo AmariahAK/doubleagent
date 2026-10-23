@@ -1115,6 +1115,16 @@ Each yields, source-derived; not observed on any real install,
 at `created_at_ms`, `session_id` the session. The App installation's repository list is not read,
 since the parser reads no `openclaw.json` (JSON5), so it gives no `source host repository:` rows.
 
+#### Git remote rows
+
+Each row of the `state/openclaw.sqlite` `projects` table
+([Where the project path is recorded](#where-the-project-path-is-recorded)) whose `origin_url` is
+set yields, source-derived; not observed on any real install, `git remote: <origin_url>`
+(`system`) at the row's `created_at_ms`, with `project_path` its `repo_root` and an empty
+`session_id`: the table names a repository the Gateway registered or cloned, not a session
+([issue 253](https://github.com/seanthegeek/doubleagent/issues/253)). Its other columns are not
+read.
+
 ## Confidence
 
 - High: state directory resolution, profiles, the legacy `.clawdbot` migration, database file

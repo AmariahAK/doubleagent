@@ -10,6 +10,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-10-21
+
+### Added
+
+- The git metadata of every discovered or `-p` project is collected as
+  `project`: `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`,
+  `.git/packed-refs`, `.git/refs`, `.git/logs` and `.git/worktrees`, which
+  name the checked-out branch, the remotes with their fetch and push URLs,
+  the last fetch, the branches and tags, the reflog and the linked
+  worktrees; the object store, index, hooks, LFS objects and submodule
+  repositories are not collected, each linked worktree's staging area and
+  `modules/` are excluded (`.git/worktrees/*/index`,
+  `.git/worktrees/*/index.lock`, `.git/worktrees/*/sharedindex.*`,
+  `.git/worktrees/*/modules`, a `skipped_excluded` row each), and
+  `.git/config` is not flagged `secret` although a remote URL can carry
+  a token ([#253]).
+
 ## [1.18.0] - 2026-10-21
 
 ### Added
@@ -1058,7 +1075,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.18.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.19.0...HEAD
+[1.19.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.18.0...collector-v1.19.0
 [1.18.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.17.0...collector-v1.18.0
 [1.17.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.16.0...collector-v1.17.0
 [1.16.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...collector-v1.16.0
@@ -1083,6 +1101,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#253]: https://github.com/seanthegeek/doubleagent/issues/253
 [#242]: https://github.com/seanthegeek/doubleagent/issues/242
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
 [#231]: https://github.com/seanthegeek/doubleagent/issues/231

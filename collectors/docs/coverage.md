@@ -489,7 +489,7 @@ it (access denied rather than a deleted profile), it also gets an
 
 Project-level artifacts (`CLAUDE.md`, `.claude/`, `.mcp.json`, `AGENTS.md`,
 `.cursorrules`, `.aider.chat.history.md`, Crush's per-project
-`.crush/crush.db`, ...) are collected from every directory referenced in
+`.crush/crush.db`, the repository's [git metadata](#git-metadata), ...) are collected from every directory referenced in
 agent state that can be read with grep, and from every `-p` directory.
 
 ### Sources read
@@ -552,7 +552,8 @@ for `.pi/approved-plan.md` inside pi's `.pi/`), or `project` for a file
 several agents read (`AGENTS.md`, `AGENTS.override.md`, `AGENT.md`, `.agents/`,
 `.mcp.json`, `.github/copilot-instructions.md`,
 `.github/git-commit-instructions.md`, `.github/instructions/`, `SOUL.md`,
-`USER.md`); `--list` prints the table. Before collector 1.12.0 every project
+`USER.md`, and the [git metadata](#git-metadata) under `.git/`); `--list`
+prints the table. Before collector 1.12.0 every project
 row had agent `project`. Each row has `home` set to the project directory,
 and the user whose state referenced it (the first one, when several did). `-p`
 directories join the same list. Each gets as its user the owner of the home
@@ -575,6 +576,40 @@ nothing under the home to recover those sessions from. The other agents in
 their transcript store and its second copy under the home, or together in
 the agent's Docker or Podman volume (Hermes, Letta, nanobot, OpenClaw and
 Tabby have `DOCKER_VOLUMES` lines), where both survive the project.
+
+### Git metadata
+
+From collector 1.19.0, the git metadata of each project, discovered or
+given with `-p`, is collected under agent `project`. It says where the
+project's code came from, where it may have been pushed, and when the
+branches moved:
+
+| Path under the project | What it holds |
+| --- | --- |
+| `.git/config` | The remotes, each with its fetch URL (`url`) and push URL (`pushurl`, when one is set), the branch tracking settings, and any repository-local `user.email` and credential helper. |
+| `.git/HEAD` | The branch checked out at collection time (`ref: refs/heads/<name>`), or a commit hash when no branch is checked out. |
+| `.git/FETCH_HEAD` | The branches the last fetch or pull brought in and the URL they came from. |
+| `.git/refs/`, `.git/packed-refs` | The local branches, the remote-tracking branches (`refs/remotes/<remote>/`) and the tags, each with the commit it names. |
+| `.git/logs/` | The reflog: one line per checkout, commit, merge, pull, reset and remote-tracking update, with the time, the name and email git recorded, and the old and new commit. |
+| `.git/worktrees/` | One directory per linked worktree (a second checkout of the same repository): its `HEAD`, its `gitdir` file naming where that checkout is, and its own reflog under `logs/`. Each worktree's staging area (`index`, the `sharedindex.<hash>` files of split-index mode, and an `index.lock` left by an interrupted update) and its `modules/`, the submodule repositories checked out in that worktree, are excluded (`.git/worktrees/*/index`, `.git/worktrees/*/index.lock`, `.git/worktrees/*/sharedindex.*`, `.git/worktrees/*/modules`) and get a `skipped_excluded` row each. |
+
+Nothing else under `.git/` is collected: the object store (`objects/`),
+the index, `hooks/`, LFS objects (`lfs/`, Git Large File Storage) and
+submodule repositories (`modules/`) match no line and have no manifest
+row, like any other project file no line names. The object store and LFS
+objects hold the repository's content, which can be large and which the
+remote holds as well.
+
+A checkout whose `.git` is a file rather than a directory, a linked
+worktree or a submodule, gets none of these files: the file points at a
+git directory elsewhere, which is not followed
+([issue 234](https://github.com/seanthegeek/doubleagent/issues/234)).
+
+A remote URL can carry credentials in its user part
+(`https://<user>:<token>@<host>/<owner>/<repo>.git`). `.git/config` is
+collected unflagged all the same, so `--no-secrets` keeps the remotes;
+check its `url` and `pushurl` values and redact that part before sharing
+the collection.
 
 ### Left to the analyzer
 
@@ -871,6 +906,8 @@ row of an editor's `User/workspaceStorage/<hash>/state.vscdb` and the CLI's
 unflagged; the key to redact is `roo.retryQueue[].options.headers.Authorization`,
 a bearer token. The same releases' CLI saved its cloud token in
 `~/.roo/cli-credentials.json`, which is flagged.
+A project's `.git/config` is collected unflagged and can hold a token
+inside a remote URL; see [Git metadata](#git-metadata).
 
 ## Pattern matching
 

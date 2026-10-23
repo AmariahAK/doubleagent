@@ -927,6 +927,15 @@ which ones are written is decided in
 [3436-3452](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3436-L3452))
 is written only when `cwd` is inside a git repository
 ([recorder.rs:1978-1990](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L1978-L1990)).
+`repository_url` is a `SanitizedGitUrl`, a remote URL with its credentials removed before it is
+stored: every password, and every username other than the ssh `git` user, is dropped
+([sanitized_git_url.rs:11](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/sanitized_git_url.rs#L11),
+[73-98](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/sanitized_git_url.rs#L73-L98)).
+The type arrived in commit
+[1bc02ae](https://github.com/openai/codex/commit/1bc02aea5065dd5d1df540ecc9625794ad7a3172)
+of 2026-08-25, so a rollout an earlier build wrote, and one a fork without that commit wrote
+(Open Interpreter is such a fork), can hold the URL with its credentials; the parser writes the
+stored string as it is.
 
 Observed on Codex Desktop (Windows, 0.162.0-alpha.17.2, 2026-10-15; macOS, 0.163.0-alpha.10.2,
 2026-10-18) and in the Windows standalone CLI's rollout: `id`, `session_id`, `timestamp`, `cwd`,
@@ -1319,6 +1328,9 @@ each only when the table has it:
   ([0025_thread_timestamps_millis.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0025_thread_timestamps_millis.sql#L1-L2)),
   both the thread's creation time
   ([state/src/runtime/threads.rs:666-670](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/threads.rs#L666-L670)).
+- `git_origin_url`, the repository's remote URL when the thread's `cwd` was in a git
+  repository, read for the `git remote:` row
+  ([issue 253](https://github.com/seanthegeek/doubleagent/issues/253)).
 - `cwd`, `title`, `git_branch`, `rollout_path`, `archived`, `model` (the
   last turn's, set from each `turn_context`;
   [state/src/extract.rs:122-130](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/extract.rs#L122-L130)),
@@ -2053,7 +2065,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 
 | Record | Row |
 | --- | --- |
-| first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, [issue 118](https://github.com/seanthegeek/doubleagent/issues/118)); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
+| first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, [issue 118](https://github.com/seanthegeek/doubleagent/issues/118)); plus, right after it and at the same time, `system` `git remote: <git.repository_url>` when the [`session_meta`](#session_meta) records one ([issue 253](https://github.com/seanthegeek/doubleagent/issues/253)); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
 | `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network> reviewer=<approvals_reviewer> profile_id=<active_permission_profile.id>` at the first one with any of the fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
 | `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn. The event is the thread's settings, not a turn's: it carries `model`, `approval_policy`, `approvals_reviewer` and `active_permission_profile`, no `sandbox_policy`, and a `permission_profile` without the roots a turn adds, so only the three thread-level fields come from it; `sandbox` and `profile` stay as the last `turn_context` had them, or read `-` once the access level changed until the next `turn_context`, and an event before the thread's first `turn_context` is folded into that turn's row ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
@@ -2084,7 +2096,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | bad line, in a rollout or in `history.jsonl` | one `system` row per bad line at the end of the file's rows, `parser: unparseable line (<decoder reason>): <the line in full>`, `source_line` the bad line, `session_id` the rollout's session (empty for `history.jsonl`) |
 | cut or corrupt zstd frame | one `system` row `parser: zstd: <message>` at the end, `source_line` the line after the last one decoded |
 | `history.jsonl` line | `user` |
-| `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
+| `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `system` `git remote: <git_origin_url>` at the same time when the column is set, the same text as the rollout's row ([issue 253](https://github.com/seanthegeek/doubleagent/issues/253)); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
 | `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's ([issue 184](https://github.com/seanthegeek/doubleagent/issues/184)) |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row ([issue 119](https://github.com/seanthegeek/doubleagent/issues/119)) |

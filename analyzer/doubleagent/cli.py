@@ -10,13 +10,14 @@ import sys
 from collections import Counter, OrderedDict
 from pathlib import Path
 
-from . import VERSION
+from . import VERSION, gitmeta
 from . import catalog as catalog_mod
 from . import inventory as inventory_mod
 from .dedup import deduplicate
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
 from .model import (
+    GIT_REMOTE_PREFIX,
     SCRATCH_PREFIX,
     Row,
     SessionSummary,
@@ -374,9 +375,13 @@ def detect_object(col: Collection) -> dict:
     """The keys `detect --json` and inventory.json share, in order: `input`,
     `kind`, `host`, `notes`, `homes` (`home_agents`) and `projects` (one
     object per project directory from `project_agents`, its `agents` an
-    array of `agent`, `files`, `bytes`, `parser`, as in `homes`). The
-    callers add `problems`, and `detect --json --files` adds `files`."""
+    array of `agent`, `files`, `bytes`, `parser`, as in `homes`, and its
+    last two keys `remotes` and `head` from `gitmeta.project_git`, `[]`
+    and `""` without the repository files; one the analyzer cannot read is
+    added to `col.problems`). The callers add `problems`, and
+    `detect --json --files` adds `files`."""
     parsers = by_agent()
+    git = gitmeta.project_git(col.artifacts, col.problems)
     projects = [
         {
             "path": path,
@@ -387,6 +392,8 @@ def detect_object(col: Collection) -> dict:
             ],
             "shared_files": p["shared_files"],
             "shared_bytes": p["shared_bytes"],
+            "remotes": git.get(path, {}).get("remotes", []),
+            "head": git.get(path, {}).get("head", ""),
         }
         for path, p in project_agents(col).items()
     ]
@@ -402,8 +409,9 @@ def detect_object(col: Collection) -> dict:
 
 def print_project_table(projects: list[dict]) -> None:
     """The second table of `detect`: one line per agent of each project,
-    then a `(shared)` line when the project holds shared files; the path
-    and users appear on the project's first line only."""
+    then a `(shared)` line when the project holds shared files, then a
+    `remotes:` line (`remotes_text`) when its repository has remotes; the
+    path and users appear on the project's first line only."""
     line = "%-40s %-14s %-18s %8s %12s  %s"
     print(line % ("project", "users", "agent", "files", "bytes", "parser"))
     for p in projects:
@@ -417,6 +425,21 @@ def print_project_table(projects: list[dict]) -> None:
         for i, (agent, files, size, parser) in enumerate(lines):
             path, users = first if i == 0 else ("", "")
             print((line % (path, users, agent, files, size, parser)).rstrip())
+        if p["remotes"]:
+            print("  remotes: " + remotes_text(p["remotes"]))
+
+
+def remotes_text(remotes: list[dict]) -> str:
+    """`<name> <url> ...` per remote, its `urls` joined by a space, then
+    ` (push <pushurl> ...)` when it sets `pushurls`; remotes joined with
+    `, `."""
+    parts = []
+    for r in remotes:
+        text = " ".join([r["name"], *r["urls"]])
+        if r["pushurls"]:
+            text += " (push %s)" % " ".join(r["pushurls"])
+        parts.append(text)
+    return ", ".join(parts)
 
 
 def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
@@ -640,10 +663,16 @@ def project_inventory(
     of a project entry gets `files` and `bytes` after `turn_types` from it
     (0 when absent), an agent with files and no rows is listed with zero
     counts, and `shared_files` is the project's files with agent `project`.
-    Each mark is `project_mark` of the project's sessions. The empty path's
-    entry (`outside_projects`) has no `status`, no `shared_files` and no
-    file counts: `rows`, `sessions`, `agents`, then the same marks over its
-    sessions."""
+    Each mark is `project_mark` of the project's sessions. After the marks
+    come `remotes` and `head`, the repository's (`files` entry, `[]` and
+    `""` when it has none, so always for a `referenced` project), and
+    `recorded_remotes`, the sorted distinct URLs of the `git remote:` rows
+    (`GIT_REMOTE_PREFIX`) among `rows`: a row of a session is counted under
+    the session's project, a row without a session under its own
+    `project_path`. The empty path's entry (`outside_projects`) has no
+    `status`, no `shared_files`, no file counts and none of the three
+    repository keys: `rows`, `sessions`, `agents`, then the same marks over
+    its sessions."""
     groups: dict[str, dict] = {}
     names: dict[str, str] = {}
 
@@ -666,8 +695,12 @@ def project_inventory(
     collected_keys = set(groups)
     on_disk_by_key: dict[str, dict] = {}
     for path, f in (files or {}).items():
-        m = on_disk_by_key.setdefault(project_key(path), {"agents": {}, "shared_files": 0})
+        m = on_disk_by_key.setdefault(
+            project_key(path), {"agents": {}, "shared_files": 0, "remotes": [], "head": ""}
+        )
         m["shared_files"] += f["shared_files"]
+        m["remotes"] = m["remotes"] or f.get("remotes", [])
+        m["head"] = m["head"] or f.get("head", "")
         for agent, counts in f["agents"].items():
             c = m["agents"].setdefault(agent, {"files": 0, "bytes": 0})
             c["files"] += counts["files"]
@@ -686,10 +719,11 @@ def project_inventory(
         if path:
             for agent in f["agents"]:
                 agent_of(path, agent)
+    recorded = recorded_remotes(rows, sessions)
     out: dict[str, dict] = {}
     for key in sorted(groups, key=names.__getitem__):
         g, path = groups[key], names[key]
-        empty_disk = {"agents": {}, "shared_files": 0}
+        empty_disk = {"agents": {}, "shared_files": 0, "remotes": [], "head": ""}
         on_disk = on_disk_by_key.get(key, empty_disk) if path else None
         agents = {}
         for name in sorted(g["agents"]):
@@ -711,6 +745,28 @@ def project_inventory(
             }
         for m in PROJECT_MARKS:
             out[path][m[0]] = project_mark(marks.get(key, []), m, set(agents))
+        if on_disk is not None:
+            out[path]["remotes"] = on_disk["remotes"] if key in collected_keys else []
+            out[path]["head"] = on_disk["head"] if key in collected_keys else ""
+            out[path]["recorded_remotes"] = sorted(recorded.get(key, ()))
+    return out
+
+
+def recorded_remotes(rows: list[Row], sessions: list[SessionSummary]) -> dict[str, set[str]]:
+    """The URLs of the `git remote:` rows of `rows` by `project_key`: a row
+    with a session id under its session's project (the summary's
+    `project_path`, which `sessions` holds), a row without one, or of a
+    session `sessions` does not hold, under its own `project_path`."""
+    projects = {(s.host, s.user, s.agent, s.session_id): s.project_path for s in sessions}
+    out: dict[str, set[str]] = {}
+    for r in rows:
+        if r.turn_type != "system" or not r.text.startswith(GIT_REMOTE_PREFIX):
+            continue
+        url = r.text[len(GIT_REMOTE_PREFIX) :]
+        if not url:
+            continue
+        path = projects.get((r.host, r.user, r.agent, r.session_id), r.project_path)
+        out.setdefault(project_key(path), set()).add(url)
     return out
 
 
@@ -828,17 +884,23 @@ def home_scratch_key(key: str, home: str, cat: catalog_mod.Catalog) -> bool:
     return bool(cat.claims_home_path(key[len(home_key) :], windows))
 
 
-def project_files(col: Collection) -> dict[str, dict]:
+def project_files(col: Collection, problems: list[str] | None = None) -> dict[str, dict]:
     """`project_agents` keyed as `collected_projects` keys its paths, with
     the image root stripped and in `canonical_project_path` form, and summed
     when two directories map to one path: per path `agents` (agent to
-    `files` and `bytes`) and `shared_files`."""
+    `files` and `bytes`), `shared_files`, and the `remotes` and `head` of
+    `gitmeta.project_git` (the first directory's that has them; a
+    repository file it cannot read is added to `problems`)."""
     summary = col.summary or {}
+    git = gitmeta.project_git(col.artifacts, problems)
     merged: dict[str, dict] = {}
     for path, p in project_agents(col).items():
         key = canonical_project_path(strip_image_root(path, summary))
-        m = merged.setdefault(key, {"agents": {}, "shared_files": 0})
+        m = merged.setdefault(key, {"agents": {}, "shared_files": 0, "remotes": [], "head": ""})
         m["shared_files"] += p["shared_files"]
+        repo = git.get(path, {})
+        m["remotes"] = m["remotes"] or repo.get("remotes", [])
+        m["head"] = m["head"] or repo.get("head", "")
         for agent, counts in p["agents"].items():
             c = m["agents"].setdefault(agent, {"files": 0, "bytes": 0})
             c["files"] += counts["files"]
@@ -903,6 +965,8 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     write_jsonl(timeline, rows)
     write_jsonl(sess, sessions)
     detect = detect_object(col)
+    # Before the problem: lines, since a repository file it cannot read is one.
+    files = project_files(col, problems)
     print("input:     %s (%s)" % (col.source, col.kind))
     print("host:      %s" % (col.host or "(unknown)"))
     for n in col.notes:
@@ -951,7 +1015,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
-    groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
+    groups = project_inventory(rows, sessions, collected_projects(col), files)
     scratch = scratch_keys(col, rows)
     synced = sum(1 for s in sessions if s.synced == "yes")
     relayed = sum(1 for s in sessions if s.relayed == "yes")

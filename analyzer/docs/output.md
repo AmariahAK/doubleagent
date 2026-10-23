@@ -57,6 +57,13 @@ and the per-agent research documents cite each reader:
   by the Copilot editor extensions, Copilot CLI, Crush and Zed.
 - `SOUL.md` and `USER.md`, the persona and user-profile files of an
   OpenClaw or nanobot workspace; Hermes reads `SOUL.md` too.
+- The repository's git metadata, from collector 1.19.0: `.git/HEAD`,
+  `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`, `.git/refs/`,
+  `.git/logs/` and `.git/worktrees/`, the checked-out branch, the
+  remotes, the branches and the reflog, which say where the code came
+  from and where it may have been pushed rather than which agent worked
+  there. [Git metadata in `collectors/docs/coverage.md`](../../collectors/docs/coverage.md#git-metadata)
+  says what each file holds and what under `.git/` is not collected.
 
 A project file no project catalog entry matches is counted as shared as
 well. `project` is not an agent, so it never appears as an agent in
@@ -84,7 +91,15 @@ Each project has one line per agent, sorted by agent, then a `(shared)`
 line when it holds shared files, with an empty `parser` column. The path
 (cut to 40 characters) and `users` (the users whose manifest rows name the
 directory, sorted and joined by `,`) are printed on the project's first
-line only.
+line only. A project whose `.git/config` names remotes gets one more
+line after its last (since 0.21.0): `  remotes: ` followed, per remote
+sorted by name and joined by `, `, by the name and its `url` values
+separated by spaces, then ` (push <pushurl> ...)` when the remote sets
+push URLs, as in `  remotes: origin git@github.com:alice/proj.git
+https://mirror.example.com/alice/proj.git (push
+https://github.com/alice/proj.git), upstream
+https://github.com/upstream/proj.git`. The example above has none,
+since its collection holds no `.git/` files.
 
 ### detect --json
 
@@ -162,7 +177,9 @@ the `files` key appears only with `--files`:
         }
       ],
       "shared_files": 1,
-      "shared_bytes": 9
+      "shared_bytes": 9,
+      "remotes": [],
+      "head": ""
     },
     {
       "path": "/srv/shared",
@@ -171,7 +188,9 @@ the `files` key appears only with `--files`:
       ],
       "agents": [],
       "shared_files": 1,
-      "shared_bytes": 9
+      "shared_bytes": 9,
+      "remotes": [],
+      "head": ""
     }
   ],
   "problems": [
@@ -233,7 +252,9 @@ the `files` key appears only with `--files`:
 ```
 
 `inferred` is `true` only in loose mode, where `projects` is always `[]`,
-so no single run shows both. `homes` holds the counts of the first table
+so no single run shows both. The run was made before analyzer 0.21.0;
+its collection holds no `.git/` files, so each project's `remotes` and
+`head` are filled in as `[]` and `""` by the 0.21.0 rules, not by a run. `homes` holds the counts of the first table
 of `detect`, which prints one line per user, home and agent in the order
 each one's first file was met, while `homes` groups them by home and
 sorts each home's agents: here alice's `amp` comes before `claude-code`,
@@ -262,8 +283,13 @@ which the first table prints first. Its keys, in order:
 | `projects[].agents[].files` | integer | Files of this agent in the directory, counted as for `homes[].agents[].files`. |
 | `projects[].agents[].bytes` | integer | Their total manifest `size`. |
 | `projects[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
-| `projects[].shared_files` | integer | The shared files in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). 0 when there is none. |
+| `projects[].shared_files` | integer | The shared files in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`, the `.git/` metadata; see [detect](#detect) for the full list and their readers). 0 when there is none. |
 | `projects[].shared_bytes` | integer | The total manifest `size` of those shared files. |
+| `projects[].remotes` | array of objects | The remotes of the directory's `.git/config`, one per `[remote "<name>"]` section that sets a non-empty `url` or `pushurl`, sorted by `name`; `[]` when the collection holds no `.git/config` there (a collector before 1.19.0, a directory that is not a repository, or a linked worktree or submodule whose `.git` is a file). The file is read whole, as git writes it: lines ending at a line feed or a carriage return and line feed, an initial byte-order mark ignored, section and key names in any case, quoted values, `#` and `;` comments, a pair on the same line as its section header, a value continued by a backslash at the end of its line (a backslash that ends a comment continues nothing); a line that is neither a section header nor a `key = value` pair is skipped, as are the keys after an unterminated section header. A value git rejects, a quoted one the file ends inside or one holding an escape git does not define (only `\\`, `\"`, `\n`, `\t` and `\b` are escapes), is left out and listed under `problems` as `<path>: line <n>: unterminated quoted value` or `<path>: line <n>: unsupported escape \q`, so a config cut mid-URL or edited by hand never yields a destination git would not read. The deprecated `[remote.name]` header form lower-cases its name, as git does, so it names the same remote as `[remote "name"]`. A `.git/config` or `.git/HEAD` the analyzer cannot read (not a regular file, a permission or I/O error) leaves `remotes` `[]` and `head` `""` and is listed under `problems` as `<path>: <reason>`. Since 0.21.0. |
+| `projects[].remotes[].name` | string | The remote's name, as the section header spells it (`origin`, `upstream`). |
+| `projects[].remotes[].urls` | array of strings | Every `url` value of the section, in file order; `[]` when it sets none. Git fetches from the first and, when the section sets no `pushurl`, pushes to every one. A URL may carry credentials in its user part (`https://<user>:<token>@<host>/...`): redact them before sharing the output. |
+| `projects[].remotes[].pushurls` | array of strings | Every `pushurl` value of the section, in file order; `[]` when it sets none. Git pushes to every one, so a second value is a second destination of each push. These are the values the file records, not git's fallback to `urls`, and they may carry credentials as `urls` can. |
+| `projects[].head` | string | What the directory's `.git/HEAD` names: the checked-out branch (`main` for `ref: refs/heads/main`), the full ref for any other symbolic ref, or the commit hash of a detached HEAD; `""` when the collection holds no `.git/HEAD` there. Last key of the object since 0.21.0. |
 | `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)). `[]` when there are none. |
 | `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so a shared file such as `AGENTS.md` appears here with agent `project`. |
 | `files[].user` | string | As `homes[].user`. |
@@ -489,7 +515,10 @@ the test collection of the [`detect --json`](#detect---json) example:
       "synced": "",
       "relayed": "",
       "origin": "",
-      "recovered": ""
+      "recovered": "",
+      "remotes": [],
+      "head": "",
+      "recorded_remotes": []
     },
     "/srv/proj": {
       "status": "collected",
@@ -530,7 +559,10 @@ the test collection of the [`detect --json`](#detect---json) example:
       "synced": "",
       "relayed": "",
       "origin": "",
-      "recovered": "no"
+      "recovered": "no",
+      "remotes": [],
+      "head": "",
+      "recorded_remotes": []
     },
     "/srv/shared": {
       "status": "collected",
@@ -541,7 +573,10 @@ the test collection of the [`detect --json`](#detect---json) example:
       "synced": "",
       "relayed": "",
       "origin": "",
-      "recovered": ""
+      "recovered": "",
+      "remotes": [],
+      "head": "",
+      "recorded_remotes": []
     }
   },
   "outside_projects": {
@@ -613,7 +648,10 @@ existed; those keys are filled in by applying the 0.15.0 rules to the
 agents and sessions the run shows, not by a run. `scratch_directories`
 is `{}` the same way, by the 0.18.0 rules: none of the example's paths
 lies under a home or project catalog entry, and none of its agents wrote
-a `scratch directory:` row. Its keys, in order:
+a `scratch directory:` row. Each project's `remotes`, `head` and
+`recorded_remotes` are filled in by the 0.21.0 rules the same way: the
+collection holds no `.git/` files, and none of its parsers writes a `git
+remote:` row. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -651,12 +689,15 @@ a `scratch directory:` row. Its keys, in order:
 | `projects.<path>.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type in the project, after the filters, listing only the types that occur; `{}` with no rows. |
 | `projects.<path>.agents.<agent>.files` | integer | The files the collection holds for this agent in this directory, not filtered; 0 for an agent with rows and no files there, and for every agent of a `referenced` project. |
 | `projects.<path>.agents.<agent>.bytes` | integer | Their total manifest `size`, not filtered. |
-| `projects.<path>.shared_files` | integer | The shared files the collection holds in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). Not filtered; 0 for a `referenced` project. |
+| `projects.<path>.shared_files` | integer | The shared files the collection holds in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`, the `.git/` metadata; see [detect](#detect) for the full list and their readers). Not filtered; 0 for a `referenced` project. |
 | `projects.<path>.synced` | string | `yes` when every session counted under the project has `synced` `yes`; `partial` when some do; `no` when none does and at least one agent of the project records sync state; `""` otherwise, and for a project with no session. Since 0.15.0. |
 | `projects.<path>.relayed` | string | The same four values from `relayed`, with `no` when at least one agent of the project records relay state. Since 0.15.0. |
 | `projects.<path>.origin` | string | `remote` when every session counted under the project has `origin` `remote`; `mixed` when some do; `local` when none does and at least one agent of the project records origin; `""` otherwise, and for a project with no session. Since 0.15.0. |
-| `projects.<path>.recovered` | string | `yes` when every session counted under the project has `recovered` `yes`, so the project's primary transcripts are gone and only secondary sources remain; `partial` when some of its sessions are `yes` or `partial`; `no` when none is and at least one agent of the project reads a secondary source; `""` otherwise, and for a project with no session. A `referenced` project whose `recovered` is `yes` is one whose directory and whose agents' primary stores are both gone: what is left of it is the secondary sources. Last keys of the entry since 0.15.0: `synced`, `relayed`, `origin` and `recovered`, in that order. Counts of these sessions are kept only at the top level and per home agent. |
-| `outside_projects` | object | The counts for the rows and sessions whose `project_path` is empty. It has no status and no file counts: files outside projects are counted per home under `homes`. |
+| `projects.<path>.recovered` | string | `yes` when every session counted under the project has `recovered` `yes`, so the project's primary transcripts are gone and only secondary sources remain; `partial` when some of its sessions are `yes` or `partial`; `no` when none is and at least one agent of the project reads a secondary source; `""` otherwise, and for a project with no session. A `referenced` project whose `recovered` is `yes` is one whose directory and whose agents' primary stores are both gone: what is left of it is the secondary sources. Last keys of the entry from 0.15.0 to 0.20.1: `synced`, `relayed`, `origin` and `recovered`, in that order. Counts of these sessions are kept only at the top level and per home agent. |
+| `projects.<path>.remotes` | array of objects | The remotes of the directory's `.git/config`, as `projects[].remotes` in [`detect --json`](#detect---json): `name`, `urls` and `pushurls` per remote, sorted by `name`. `[]` for a `referenced` project and for a collected one whose collection holds no `.git/config`. Not filtered. Since 0.21.0. |
+| `projects.<path>.head` | string | The branch or detached commit the directory's `.git/HEAD` names, as `projects[].head` in `detect --json`; `""` for a `referenced` project and when the collection holds no `.git/HEAD`. Not filtered. Since 0.21.0. |
+| `projects.<path>.recorded_remotes` | array of strings | The remote URLs the agents recorded for the project: the distinct URLs of the `git remote:` rows (see [Row order and system rows](#row-order-and-system-rows)) after the filters, sorted. A row of a session is counted under the session's project, as the session is, and a row without a session under its own `project_path`. It is filled for a `referenced` project too, so a project whose directory is gone still names the remote its agent saw; `[]` when no row names one. Last keys of the entry since 0.21.0: `remotes`, `head` and `recorded_remotes`, in that order. |
+| `outside_projects` | object | The counts for the rows and sessions whose `project_path` is empty. It has no status, no file counts and no `remotes`, `head` or `recorded_remotes`: files outside projects are counted per home under `homes`. |
 | `outside_projects.rows` | integer | Rows with an empty `project_path`, after the filters. |
 | `outside_projects.sessions` | integer | Sessions with an empty `project_path`, after the filters. |
 | `outside_projects.agents` | object | Keyed by agent name, sorted: the agents with such rows or sessions; `{}` when there is none. |
@@ -675,6 +716,7 @@ a `scratch directory:` row. Its keys, in order:
 | `scratch_directories.<path>.status` | string | As `projects.<path>.status`: `collected` when the collector gathered project files from the directory, `referenced` when only rows name it. Since 0.18.0. |
 | `scratch_directories.<path>.rows`, `sessions`, `agents`, `shared_files` | integer, object | As for a project, over the rows and sessions with this `project_path` and the files in the directory; each agent object has the keys of `projects.<path>.agents.<agent>`. Since 0.18.0. |
 | `scratch_directories.<path>.synced`, `relayed`, `origin`, `recovered` | string | As for a project, by the same rules and in the same order. Since 0.18.0. |
+| `scratch_directories.<path>.remotes`, `head`, `recorded_remotes` | array of objects, string, array of strings | As for a project, by the same rules and in the same order, as the last keys of the entry. Since 0.21.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -832,7 +874,9 @@ last keys of the file and of each `homes[].agents[]` object, and
 `synced`, `relayed`, `origin` and `recovered` as the last keys of each
 `projects.<path>` entry and of `outside_projects`. Analyzer 0.18.0
 added `scratch_directories` as the last key of the file and moved the
-scratch directories out of `projects` into it. The one key added at the front is `doubleagent_version`, in
+scratch directories out of `projects` into it. Analyzer 0.21.0 added
+`remotes`, `head` and `recorded_remotes` as the last keys of each
+`projects.<path>` and `scratch_directories.<path>` entry. The one key added at the front is `doubleagent_version`, in
 analyzer 0.14.0, because a reader needs the version before the rest; the
 file is one object read by key, not by position.
 
@@ -961,6 +1005,36 @@ the record's `lastActivityAt` (else `createdAt`), which the text names as
 (Claude Code) or `permission request:`, `permission response:`,
 `permission auto-approved:` and `permission auto-denied:` (the Claude
 Desktop audit log).
+
+A remote URL an agent recorded for the repository it worked in is a
+`system` row too, `git remote: <url>`, with the URL exactly as the agent
+recorded it after the prefix; inventory.json lists the URLs of these rows
+under each project's `recorded_remotes`. A parser writes it once per
+session and URL, at the time of the record that names it (since 0.21.0):
+
+- `codex-cli` and `open-interpreter`: the rollout's `session_meta`
+  `git.repository_url`, right after the `session start:` row, and the
+  `state_5.sqlite` `threads.git_origin_url` at the thread's creation
+  time, right after its `thread record:` row. The second is a secondary
+  source, so the timeline keeps one of the two when both survive.
+- `zed`: the `git_state.remote_url` of the thread's
+  `initial_project_snapshot` worktree whose `worktree_path` is the
+  thread's project (else of the first worktree, as for the branch), at
+  the thread-start time, right after the `thread start:` row.
+- `openclaw`: each `projects` row of `state/openclaw.sqlite` that has an
+  `origin_url`, at its `created_at_ms`, with `project_path` its
+  `repo_root` and no `session_id`, since the table names a repository
+  the Gateway registered or cloned, not a session.
+
+The URL can carry credentials in its user part; redact them before
+sharing the timeline. That holds for every source, the rollout's
+`git.repository_url` included: Codex has removed every password and
+every username but the ssh `git` user before storing the value since
+late August 2026
+([`session_meta` in `research/codex-cli.md`](../../research/codex-cli.md#session_meta)),
+but a rollout an earlier build wrote, or one written by a fork such as
+Open Interpreter, may hold the URL as the remote had it, and the parser
+writes the stored string as it is.
 
 The `codex-cli` and `open-interpreter` parsers (one shared reader) write
 `model: <id>` at the first record of a rollout that names a model and
