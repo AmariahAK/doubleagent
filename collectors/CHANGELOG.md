@@ -62,7 +62,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Catalog lines and secret globs from the 2026-10-19 source review's
-  issues, taken from each agent's source; the real-install rounds that
+  issues, taken from each agent's source; the
+  [real-install rounds](../AGENTS.md#real-install-rounds) that
   confirm them are still owed.
 - A project's `.crewai` directory (CrewAI's `last_run.json`, the record
   that a run's trace reached AMP, and the `crewai eval` state) is
@@ -304,7 +305,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on a real Linux install) is a new catalog agent, `copilot-desktop`. The
   app runs its sessions through a bundled Copilot CLI that writes them to
   `.copilot/session-state` in the CLI's format, so those stay
-  `copilot-cli`; nested entries inside `.copilot` claim the app's own
+  `copilot-cli`; [nested entries](docs/coverage.md#nested-entries) inside
+  `.copilot` claim the app's own
   files: `data.db*`, `repo-metadata-cache.db*`, `chats`, `repos`, `run`,
   `media-cache`, `canvas-catalog-probe` and `logs/github-app.*.log`. The
   app's data directory (`.local/share/com.github.githubapp`,

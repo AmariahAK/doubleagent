@@ -15,7 +15,8 @@ DoubleAgent does with its files. The status is one of three words:
   format research: its record format is not known well enough to write
   one.
 - `collected`: the files are collected and detected but hold nothing to
-  parse: a token store, configuration only, or a surface that left no
+  parse: a token store, configuration only, or a surface (a CLI, a
+  desktop app or an editor extension of the agent) that left no
   local transcript on the installs checked. The analyzer's `timeline`
   command reports these agents as `collected only`.
 
@@ -125,7 +126,8 @@ approval denied automatically, an Infection Check verdict), an editor
 (ACP) session's mode, model and container working directory, with its
 workspace `data.acp_cwd` as the project path, and the per-chat model
 override, printed without its API key. Beside the chats, in the same
-install or volume: `usr/scheduler/tasks.json` (a secondary source: each
+install or volume: `usr/scheduler/tasks.json` (a
+[secondary source](../analyzer/docs/output.md#secondary-sources): each
 task's prompt and last result), the Telegram plugin's `state.json` (a
 secondary source: a mapped chat that is gone gives a `session deleted:`
 row), the `_tool_access` and `_orchestrator` `config.json` files and the
@@ -499,7 +501,8 @@ and runtime strings) and real installs of Copilot CLI 1.0.98 on macOS
 (2026-10-17) the standalone CLI 1.0.98 installed with winget and the CLI
 1.0.99-2 that GitHub Copilot Desktop 1.1.30 bundles, not an npm install,
 synthetic fixture; `forge_trajectory_events`, checkpoints, references,
-denials, resumes and subagents fixture only (the Windows winget round
+denials, resumes and subagents fixture only (the
+[Windows winget round](../research/copilot-cli.md#observed)
 exercised a denial, a resume and subagents, but its session was deleted
 before collection, so only the shapes were seen). The GitHub
 Copilot Desktop app's sessions, which its bundled Copilot CLI writes into
