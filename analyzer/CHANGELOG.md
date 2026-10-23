@@ -26,6 +26,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the file's modification time, so a session whose transcript is gone but
   whose registry file shows Remote Control attached reads `synced` `yes`
   in `sessions.jsonl` rather than `no` ([#256]).
+- The URL of a `session synced: remote control bridge` row is the
+  `bridge_status` record that belongs to that bridge, the first at or
+  after the `bridge-session` record up to the next bridge or detach, else
+  the nearest before it back to the previous one, else `-`; a second
+  bridge in one transcript took the first bridge's URL before ([#256]).
 - The bundled catalog copy has the collector's seven new project lines,
   `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`,
   `.git/refs`, `.git/logs` and `.git/worktrees`, and its exclusion of

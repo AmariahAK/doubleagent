@@ -139,8 +139,11 @@ evidence is in `research/claude-code.md`. Files:
     are not printed. The first `bridge-session` record of a session that
     names a bridge id also gives `session synced: remote control bridge
     <bridgeSessionId> url <url>`, the URL being the `url` key of the
-    nearest `bridge_status` system record at or before the line (else
-    the file's first, else `-`): the bridge puts the session on
+    `bridge_status` system record that belongs to that bridge: among the
+    status records between the previous and the next `bridge-session`
+    record of another id (a detach counts), the first at or after the
+    line, else the nearest before, else `-`, so a second bridge never
+    takes the first one's URL: the bridge puts the session on
     claude.ai, so `records_sync` is set and a session without the row is
     `synced` `no`. The other state types (mode, last-prompt, cost-state,
     file-history-snapshot, file-history-delta, atis-latch, and the
@@ -609,17 +612,20 @@ class ClaudeCodeParser(Parser):
                     yield self._standing_row(artifact, ts, str(path), key, proj[key])
 
     @staticmethod
-    def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str, list]:
+    def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str, list, list]:
         """The lines that deliver each prompt by an attachment or a user
         record (so a queue enqueue can point at them instead of repeating the
         text), whether the file is a fork, the first cwd and branch (for
-        state records before any transcript one), and the `(line, url)` of
+        state records before any transcript one), the `(line, url)` of
         each `bridge_status` system record (for the sync row of a
-        `bridge-session` record, which has no URL of its own)."""
+        `bridge-session` record, which has no URL of its own), and the
+        `(line, bridgeSessionId or None)` of each `bridge-session` record,
+        which bound the status lines a bridge may take its URL from."""
         delivered: dict[str, list[int]] = {}
         fork = False
         cwd = branch = ""
         bridge_urls: list[tuple[int, str]] = []
+        bridge_lines: list[tuple[int, str | None]] = []
 
         def deliver(text: str, n: int) -> None:
             if text:
@@ -633,6 +639,9 @@ class ClaudeCodeParser(Parser):
                 branch = str(rec.get("gitBranch"))
             if rtype == "system" and rec.get("subtype") == "bridge_status" and rec.get("url"):
                 bridge_urls.append((n, str(rec.get("url"))))
+            if rtype == "bridge-session":
+                b = rec.get("bridgeSessionId")
+                bridge_lines.append((n, b if isinstance(b, str) and b else None))
             if rtype == "attachment":
                 att = rec.get("attachment") or {}
                 if isinstance(att, dict) and att.get("type") == "queued_command":
@@ -648,11 +657,13 @@ class ClaudeCodeParser(Parser):
                             deliver(t, n)
                             if t.lstrip().startswith(FORK_MARK):
                                 fork = True
-        return delivered, fork, cwd, branch, bridge_urls
+        return delivered, fork, cwd, branch, bridge_urls, bridge_lines
 
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
-        delivered, is_fork, first_cwd, first_branch, bridge_urls = self._prescan(artifact)
+        delivered, is_fork, first_cwd, first_branch, bridge_urls, bridge_lines = self._prescan(
+            artifact
+        )
         sub = SUBAGENT_RX.search(artifact.rel)
         file_agent_id = sub.group(1) if sub else ""
         header_done = not sub
@@ -766,7 +777,7 @@ class ClaudeCodeParser(Parser):
                 )
             elif rtype == "bridge-session":
                 yield from self._bridge(
-                    rec, n, state_row, session_id, bridges, seen_sync, bridge_urls
+                    rec, n, state_row, session_id, bridges, seen_sync, bridge_urls, bridge_lines
                 )
             elif rtype in TITLE_FIELDS:
                 title = str(rec.get(TITLE_FIELDS[rtype]) or "")
@@ -816,12 +827,19 @@ class ClaudeCodeParser(Parser):
         return row
 
     @staticmethod
-    def _bridge(rec, n: int, state_row, session_id: str, bridges, seen_sync, urls) -> Iterator[Row]:
+    def _bridge(
+        rec, n: int, state_row, session_id: str, bridges, seen_sync, urls, lines
+    ) -> Iterator[Row]:
         """The rows of a `bridge-session` record: `remote control: bridge
         session ...` when the bridge id or sequence number changes, and the
         `session synced:` row the first time a session names a bridge id,
-        with the URL of the nearest `bridge_status` record at or before the
-        line (else the file's first)."""
+        with the URL of the `bridge_status` record that belongs to that
+        bridge. `urls` are the `(line, url)` of the status records and
+        `lines` the `(line, id)` of the `bridge-session` records; the
+        status records of this bridge are those between the previous and
+        the next `bridge-session` record of another id (a detach counts),
+        the first at or after the line is taken, else the nearest before,
+        else `-`, so a second bridge never takes the first one's URL."""
         bridge = rec.get("bridgeSessionId")
         seq = rec.get("lastSequenceNum")
         if bridges.get(session_id) != (bridge, seq):
@@ -832,8 +850,11 @@ class ClaudeCodeParser(Parser):
             )
         if bridge and (session_id, bridge) not in seen_sync:
             seen_sync.add((session_id, bridge))
-            before = [u for x, u in urls if x <= n]
-            url = before[-1] if before else (urls[0][1] if urls else "-")
+            start = max((x for x, b in lines if x < n and b != bridge), default=0)
+            end = min((x for x, b in lines if x > n and b != bridge), default=None)
+            after = [u for x, u in urls if x >= n and (end is None or x < end)]
+            before = [u for x, u in urls if start < x < n]
+            url = after[0] if after else (before[-1] if before else "-")
             yield state_row("%s remote control bridge %s url %s" % (SYNCED_PREFIX, bridge, url))
 
     @staticmethod

@@ -1082,6 +1082,58 @@ class ClaudeCode309Tests(ParserBase):
         # No owner UUID is printed.
         self.assertFalse(any("00000000-0000-4000-8000" in t for t in texts))
 
+    def test_second_bridge_takes_its_own_status_url(self):
+        # A detach, a second bridge and its own status record: the second sync
+        # row names the second URL, never the first bridge's.
+        second = "cse_9f8e7d6c5b4a3928"
+        second_url = "https://claude.ai/code/session_9f8e7d6c5b4a3928"
+        self._append(
+            {"type": "bridge-session", "bridgeSessionId": None, "sessionId": CLAUDE_309_SESSION},
+            {
+                "type": "bridge-session",
+                "bridgeSessionId": second,
+                "lastSequenceNum": 1,
+                "sessionId": CLAUDE_309_SESSION,
+            },
+            {
+                "type": "system",
+                "subtype": "bridge_status",
+                "content": "/remote-control is active",
+                "url": second_url,
+                "sessionId": CLAUDE_309_SESSION,
+                "timestamp": "2026-10-01T13:05:00.000Z",
+                "uuid": "r9",
+            },
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        synced = [r.text for r in rows if r.text.startswith("session synced:")]
+        self.assertEqual(
+            synced,
+            [
+                "session synced: remote control bridge %s url %s"
+                % (CLAUDE_309_BRIDGE, CLAUDE_309_BRIDGE_URL),
+                "session synced: remote control bridge %s url %s" % (second, second_url),
+            ],
+        )
+
+    def test_second_bridge_without_status_has_no_url(self):
+        # The first bridge's status record is not reused for a second bridge
+        # that has none of its own.
+        second = "cse_9f8e7d6c5b4a3928"
+        self._append(
+            {"type": "bridge-session", "bridgeSessionId": None, "sessionId": CLAUDE_309_SESSION},
+            {
+                "type": "bridge-session",
+                "bridgeSessionId": second,
+                "lastSequenceNum": 1,
+                "sessionId": CLAUDE_309_SESSION,
+            },
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        synced = [r.text for r in rows if r.text.startswith("session synced:")]
+        self.assertEqual(synced[-1], "session synced: remote control bridge %s url -" % second)
+        self.assertEqual(len(synced), 2)
+
     def test_sync_flag_and_sessions(self):
         self.assertTrue(ClaudeCodeParser.records_sync)
         self.assertFalse(_ClaudeDesktopParser.records_sync)

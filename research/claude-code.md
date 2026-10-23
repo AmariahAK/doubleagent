@@ -1560,7 +1560,10 @@ The agent records sync through Remote Control. A `bridge-session` line becomes a
 row whenever its id and sequence pair changes, `none` marking the detach. At the first
 `bridge-session` line that names an id, once per session and bridge id, the parser also yields
 `session synced: remote control bridge <bridgeSessionId> url <url>`, the `url` being that of the
-nearest `bridge_status` system line at or before it, else the file's first, else `-`, and it sets
+`bridge_status` system line that belongs to the bridge: among the status lines between the
+previous and the next `bridge-session` line of another id (a detach counts), the first at or
+after it, else the nearest before it, else `-`, so a second bridge in one file never takes the
+first bridge's URL, and it sets
 `records_sync`, so `sessions.jsonl` `synced` reads `yes` or `no` for this agent's sessions. The
 row rests on the `bridge_status` URL (`https://claude.ai/code/session_<id>`) naming the session on
 claude.ai while the bridge is up; whether claude.ai keeps the transcript after the detach was not
