@@ -53,6 +53,14 @@ inside them goes to the extension's agent.
   `marketplaces/` in its cache directory (`.cache/copilot`,
   `Library/Caches/copilot`, `AppData/Local/copilot`), is excluded from
   1.13.0; 263 MB on the Windows install observed in October 2026.
+- **Claude Code's VS Code extension** keeps no `globalStorage` directory:
+  its sessions are Claude Code sessions in `~/.claude`, collected as
+  `claude-code`. Its own log,
+  `Code/logs/<start>/window1/exthost/Anthropic.claude-code/Claude VSCode.log`,
+  is collected as `vscode` by the editor's `logs` entry, and the extension
+  directory `.vscode/extensions/anthropic.claude-code-<version>-<platform>`
+  (282 MB on Windows, the CLI binary included) is not collected (observed
+  with 2.1.309 on Windows, October 2026).
 - **Skills and configuration files** that several agents read are
   collected too, with agent `shared` in the manifest.
 - **`.env` files:** an agent's own `.env` inside its state directory, such
@@ -145,7 +153,7 @@ collected as `claude-code` from these locations, none flagged
 | --- | --- |
 | `Library/Caches/claude-cli-nodejs` | macOS (observed with CLI 2.1.295, October 2026) |
 | `.cache/claude-cli-nodejs` | Linux, when `XDG_CACHE_HOME` is unset (from the CLI binary, not observed) |
-| `AppData/Local/claude-cli-nodejs/Cache/*` | Windows (from the CLI binary, not observed) |
+| `AppData/Local/claude-cli-nodejs/Cache/*` | Windows (observed with CLI 2.1.309, October 2026) |
 
 On Windows the catalog names each project-slug directory under `Cache/`
 rather than the directory itself, because the PowerShell collector matches
@@ -153,6 +161,35 @@ exclusions without regard to case and the Claude Desktop exclusion
 `*/Claude*/Cache` would prune `AppData/Local/claude-cli-nodejs/Cache`
 whole; the slug directories are not named `Cache`, so both collectors
 collect them. A relocated `XDG_CACHE_HOME` on Linux is not found.
+
+## Claude Code temp root and git excludes
+
+The Claude Code CLI gives each session a directory under its temp root,
+`<project slug>/<session id>/`, holding `scratchpad/`, the model's
+scratch space, and `tasks/`, the `<id>.output` files of background
+commands and subagents. Claude Code's own cleanup at a later session
+start removes the directories of earlier sessions, open ones included,
+and on Windows they outlive a reboot (observed with CLI 2.1.309, October
+2026):
+
+| Platform | Temp root | Collected |
+| --- | --- | --- |
+| Windows | `AppData/Local/Temp/claude` under the home | From collector 1.19.0, as `claude-code`, none flagged `secret: true` |
+| Linux, macOS | `/tmp/claude-<uid>` on Linux, in the system temp directory on macOS | No: outside every home; copy it by hand ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)) |
+
+When a user grants a standing permission in a project, Claude Code
+writes it to the project's `.claude/settings.local.json` and adds
+`**/.claude/settings.local.json` to the user's global git exclude file,
+`~/.config/git/ignore`, so the grant stays out of commits (observed with
+2.1.309 on Windows, October 2026, where it created the file). The
+collector does not take that file: it is git's, and a catalog line for
+it would mark every home that has one as a Claude Code home. Check it by
+hand when it matters which patterns Claude Code added. Claude Code also
+rewrites a project's `.git/info/exclude` with patterns for its own
+project files (eleven lines naming `claude` after a `/loop` scheduled
+task on the install observed); from 1.19.0 that file is collected with
+the project's [git metadata](#git-metadata), so its patterns are in the
+collection.
 
 ## Claude Desktop data directories
 
@@ -178,7 +215,8 @@ The Code tab's shadow git state (private git index copies, `shadow-of`
 and `*-gitdir` directories) lives in the Claude Code CLI's temp root,
 `/tmp/claude-<uid>` on Linux, which the app records in
 `git-shadow/cli-temp-roots.json` under the data directory. That root is
-outside every home and is not collected; the JSON list is. The CLI
+outside every home and is not collected; the JSON list is (see
+[Claude Code temp root and git excludes](#claude-code-temp-root-and-git-excludes)). The CLI
 binary the app downloads into `claude-code/<version>/<hash>/` (255 MB on
 Linux, 247 MB on Windows) is excluded by `*/Claude*/claude-code` on every
 platform and gets one `skipped_excluded` row with its size (on macOS a
@@ -591,6 +629,7 @@ branches moved:
 | `.git/FETCH_HEAD` | The branches the last fetch or pull brought in and the URL they came from. |
 | `.git/refs/`, `.git/packed-refs` | The local branches, the remote-tracking branches (`refs/remotes/<remote>/`) and the tags, each with the commit it names. |
 | `.git/logs/` | The reflog: one line per checkout, commit, merge, pull, reset and remote-tracking update, with the time, the name and email git recorded, and the old and new commit. |
+| `.git/info/exclude` | The repository's own ignore patterns, kept outside the tree. Claude Code adds patterns for its project files here, so lines naming `claude` show it ran in the project; the user's global exclude file, where it adds a pattern too, is not collected ([Claude Code temp root and git excludes](#claude-code-temp-root-and-git-excludes)). |
 | `.git/worktrees/` | One directory per linked worktree (a second checkout of the same repository): its `HEAD`, its `gitdir` file naming where that checkout is, and its own reflog under `logs/`. Each worktree's staging area (`index`, the `sharedindex.<hash>` files of split-index mode, and an `index.lock` left by an interrupted update) and its `modules/`, the submodule repositories checked out in that worktree, are excluded (`.git/worktrees/*/index`, `.git/worktrees/*/index.lock`, `.git/worktrees/*/sharedindex.*`, `.git/worktrees/*/modules`) and get a `skipped_excluded` row each. |
 
 Nothing else under `.git/` is collected: the object store (`objects/`),
@@ -827,6 +866,14 @@ also in a Hermes Docker or Podman volume. Hermes' zip backups under
 excluded too and needed `--full`. The facts are in
 [Transcript stores in `research/hermes.md`](../../research/hermes.md#transcript-stores).
 
+Claude Code's `.claude/paste-cache/` is collected from collector 1.19.0;
+before it was excluded and needed `--full`. It holds the text of each
+long pasted prompt as `<hash>.txt`, which `history.jsonl` names only by
+that hash, so once the transcript is gone it is the only copy of the
+text. `.claude/plugins/plugin-directory-cache*`, a downloaded copy of the
+plugin directory (2.6 MB on the Windows install observed in October
+2026), is excluded from 1.19.0.
+
 OpenClaw's exclusions under its state directory, `.openclaw*/dev`, `git`,
 `npm`, `tmp` and `tools` (managed checkouts, packages, temporary files and
 downloaded runtimes, the directories `openclaw backup` also skips), match a
@@ -872,6 +919,16 @@ the full pattern list.
   admits a connection to that session's socket; the file is deleted when
   the session exits, so only a collection taken while one runs, or after a
   crash, holds it.
+- **Claude Code's session daemon and `.claude.json` backups**, flagged from
+  collector 1.19.0: `.claude/daemon/control.key` and `pipe.key`, raw keys
+  for the local connection to the daemon that keeps sessions running in
+  the background, and `.claude/daemon/roster.json`, which holds each
+  worker's terminal and attach auth values; and
+  `.claude/backups/.claude.json.backup.<epoch ms>`, the dated copies of
+  `.claude.json` Claude Code writes at start and exit, each with the same
+  account and MCP server settings as the flagged `.claude.json`, as do the
+  older `.claude.json.backup*` files beside `.claude.json` in the home or
+  a `~/.claude-<name>` config home.
 - **Databases flagged whole:** Kilo Code's `kilo.db` and OpenCode's
   `opencode.db`, which embed tokens in their `account` and `credential`
   tables.

@@ -171,6 +171,10 @@ claude-code|.local/share/claude
 claude-code|Library/Caches/claude-cli-nodejs
 claude-code|.cache/claude-cli-nodejs
 claude-code|AppData/Local/claude-cli-nodejs/Cache/*
+# Claude Code Windows temp root, under the home: <slug>/<session>/ with
+# scratchpad/ and tasks/ (2.1.309, #256); the Linux and macOS roots are
+# outside every home (#163)
+claude-code|AppData/Local/Temp/claude
 claude-desktop|Library/Application Support/Claude
 claude-desktop|Library/Application Support/Claude-3p
 claude-desktop|Library/Logs/Claude
@@ -668,6 +672,7 @@ project|.git/packed-refs
 project|.git/refs
 project|.git/logs
 project|.git/worktrees
+project|.git/info/exclude
 gemini-cli|GEMINI.md
 gemini-cli|.gemini
 gemini-cli|.geminiignore
@@ -798,10 +803,10 @@ $EXCLUDES = @'
 .claude/cache
 .claude/plugins/marketplaces
 .claude/plugins/cache
+.claude/plugins/plugin-directory-cache*
 .claude/plugins/*/node_modules
 .claude/local/node_modules
 .claude/image-cache
-.claude/paste-cache
 .claude/chrome
 .claude/worktrees
 .claude/checkpoints
@@ -1340,14 +1345,24 @@ $SECRET_GLOBS = @'
 .claude/remote/.oauth_token
 .claude/remote/.api_key
 .claude/sessions/*.key
+.claude/daemon/control.key
+.claude/daemon/pipe.key
+.claude/daemon/roster.json
+.claude/backups/.claude.json.backup.*
 .claude.json
+.claude.json.backup*
 .claude-*/.credentials.json
 .claude-*/hfi-auth.json
 .claude-*/.session_ingress_token
 .claude-*/remote/.oauth_token
 .claude-*/remote/.api_key
 .claude-*/sessions/*.key
+.claude-*/daemon/control.key
+.claude-*/daemon/pipe.key
+.claude-*/daemon/roster.json
+.claude-*/backups/.claude.json.backup.*
 .claude-*/.claude.json
+.claude-*/.claude.json.backup*
 Library/Application Support/Claude*/config.json
 Library/Application Support/Claude*/Cookies*
 Library/Application Support/Claude*/host-creds-*.json

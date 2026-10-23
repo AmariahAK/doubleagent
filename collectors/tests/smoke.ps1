@@ -1331,6 +1331,30 @@ Mk "$g253/hooks/pre-commit.sample" "#!/bin/sh`n"
 Mk "$g253/lfs/objects/x" "lfs`n"
 Mk "$g253/modules/sub/HEAD" "ref: refs/heads/main`n"
 
+# 2026-10-23 claude-code Windows round (#256)
+# Claude Code 2.1.309 on Windows 11 (real install, 2026-10-23) keeps its
+# temp root under the home, AppData/Local/Temp/claude/<slug>/<session>/
+# with scratchpad/ and tasks/, and rewrites a project's
+# .git/info/exclude, collected as git metadata. Its session daemon keeps
+# raw IPC keys and auth values in .claude/daemon/, and .claude/backups/
+# holds full copies of .claude.json, as does the older home-level
+# .claude.json.backup, so all are secret globs. paste-cache/ holds pasted
+# prompt text that history.jsonl names only by hash and is collected;
+# plugin-directory-cache-v2.json is a downloaded copy and is excluded.
+# Checks follow the default and --no-secrets runs below; the same
+# files are in smoke.sh under alice and the project /srv/proj.
+$t256 = 'Users/alice/AppData/Local/Temp/claude/C--proj/25625625-6256-4256-8256-256256256256'
+Mk "$t256/scratchpad/notes.txt" "scratch`n"
+Mk "$t256/tasks/b256b256b.output" "done`n"
+Mk 'Users/alice/.claude.json.backup' "{`"oauthAccount`":{}}`n"
+Mk 'Users/alice/.claude/daemon/control.key' '0123456789abcdef0123456789abcdef'
+Mk 'Users/alice/.claude/daemon/pipe.key' '0123456789abcdef'
+Mk 'Users/alice/.claude/daemon/roster.json' "{`"proto`":1,`"workers`":{}}`n"
+Mk 'Users/alice/.claude/backups/.claude.json.backup.1792800000000' "{`"oauthAccount`":{}}`n"
+Mk 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' "pasted text`n"
+Mk 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json' "{`"plugins`":[]}`n"
+Mk "$g253/info/exclude" "# git ls-files --others --exclude-from=.git/info/exclude`n.claude/scheduled_tasks.lock`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1983,6 +2007,15 @@ Check '#253 project git linked worktree index.lock and sharedindex excluded' { $
 Check '#253 project git objects, index, hooks, lfs and modules have no row' { NoRow253 @('objects', 'index', 'hooks', 'lfs', 'modules') }
 Check '#253 project git config not flagged secret' { $r = Rows253 | Where-Object { ($_.path -replace '\\', '/').EndsWith("/$g253/config") } | Select-Object -First 1; $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
 
+# 2026-10-23 claude-code Windows round (#256)
+Check '#256 Claude Code Windows temp root collected as claude-code' { (Is113 "$t256/scratchpad/notes.txt" 'claude-code' $false) -and (Is113 "$t256/tasks/b256b256b.output" 'claude-code' $false) }
+Check '#256 home-level .claude.json.backup flagged secret' { Is113 'Users/alice/.claude.json.backup' 'claude-code' $true }
+Check '#256 Claude Code daemon keys and roster flagged secret' { (Is113 'Users/alice/.claude/daemon/control.key' 'claude-code' $true) -and (Is113 'Users/alice/.claude/daemon/pipe.key' 'claude-code' $true) -and (Is113 'Users/alice/.claude/daemon/roster.json' 'claude-code' $true) }
+Check '#256 Claude Code .claude.json backup flagged secret' { Is113 'Users/alice/.claude/backups/.claude.json.backup.1792800000000' 'claude-code' $true }
+Check '#256 Claude Code paste-cache collected' { Is113 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' 'claude-code' $false }
+Check '#256 Claude Code plugin directory cache excluded' { (StatusOf 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json') -eq 'skipped_excluded' }
+Check '#256 project git info/exclude collected as project' { Is253 @('info/exclude') }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -2213,6 +2246,9 @@ Check '#213 OpenCode service.json skipped without secrets' { (StatusOf 'Users/al
 # 2026-10-21 Qwen Code session registry (#230)
 Check '#230 Qwen Code session registry skipped without secrets' { (StatusOf 'Users/alice/.qwen/sessions/4242.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/sessions/4243-0123abcd.json') -eq 'skipped_secret' }
 
+# 2026-10-23 claude-code Windows round (#256)
+Check '#256 Claude Code daemon keys and .claude.json backup skipped without secrets' { (StatusOf 'Users/alice/.claude/daemon/control.key') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude/daemon/roster.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude/backups/.claude.json.backup.1792800000000') -eq 'skipped_secret' }
+
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
 Check 'Full exit 0' { $script:rc -eq 0 }
@@ -2341,7 +2377,7 @@ Check 'Inventory every later line is an agent line, keys in order' { $script:inv
 $r = InvAgent 'bob' 'ollama'
 Check 'Inventory ollama line: history and manifest, excluded blobs not counted' { $r -and $r.files -eq 2 -and $r.bytes -eq 23 -and (InvRaw 'bob' 'ollama').Contains('"first":"2026-09-14T00:00:00Z","last":"2026-09-15T01:02:03Z"') -and $r.evidence -eq '.ollama' }
 $r = InvAgent 'alice' 'claude-code'
-Check 'Inventory claude-code evidence in catalog order' { $r -and $r.evidence -eq '.claude,.claude.json*,.claude-*/projects,.claude-*/history.jsonl,.claude-*/.claude.json*,.claude-*/.credentials.json,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/*' }
+Check 'Inventory claude-code evidence in catalog order' { $r -and $r.evidence -eq '.claude,.claude.json*,.claude-*/projects,.claude-*/history.jsonl,.claude-*/.claude.json*,.claude-*/.credentials.json,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/*,AppData/Local/Temp/claude' }
 Check 'Inventory first and last set for alice claude-code' { (InvRaw 'alice' 'claude-code') -match '"first":"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","last":"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ"' }
 Check 'Inventory: matched directory with no files of its own gives no line' { $null -eq (InvAgent 'bob' 'gemini-cli') -and ($b = InvAgent 'bob' 'antigravity') -and $b.files -eq 1 -and $b.bytes -eq 2 -and $b.evidence -eq '.gemini/antigravity-cli' }
 Check 'Inventory: no agent line has zero files' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { $_.files -eq 0 }) }

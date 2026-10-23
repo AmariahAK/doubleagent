@@ -1437,6 +1437,33 @@ printf '#!/bin/sh\n' >"$G253/hooks/pre-commit.sample"
 printf 'lfs\n' >"$G253/lfs/objects/x"
 printf 'ref: refs/heads/main\n' >"$G253/modules/sub/HEAD"
 
+# 2026-10-23 claude-code Windows round (#256)
+# Claude Code 2.1.309 on Windows 11 (real install, 2026-10-23) keeps its
+# temp root under the home, AppData/Local/Temp/claude/<slug>/<session>/
+# with scratchpad/ and tasks/, and rewrites a project's
+# .git/info/exclude, collected as git metadata. Its session daemon keeps
+# raw IPC keys and auth values in .claude/daemon/, and .claude/backups/
+# holds full copies of .claude.json, as does the older home-level
+# .claude.json.backup, so all are secret globs. paste-cache/ holds pasted
+# prompt text that history.jsonl names only by hash and is collected;
+# plugin-directory-cache-v2.json is a downloaded copy and is excluded.
+# Checks follow the default and --no-secrets runs below; the same
+# files are in smoke.ps1 under alice and the project proj.
+T256="$H/AppData/Local/Temp/claude/C--srv-proj/25625625-6256-4256-8256-256256256256"
+mkdir -p "$T256/scratchpad" "$T256/tasks" "$H/.claude/daemon" \
+  "$H/.claude/backups" "$H/.claude/paste-cache" "$H/.claude/plugins" "$G253/info"
+printf 'scratch\n' >"$T256/scratchpad/notes.txt"
+printf 'done\n' >"$T256/tasks/b256b256b.output"
+printf '{"oauthAccount":{}}\n' >"$H/.claude.json.backup"
+printf '0123456789abcdef0123456789abcdef' >"$H/.claude/daemon/control.key"
+printf '0123456789abcdef' >"$H/.claude/daemon/pipe.key"
+printf '{"proto":1,"workers":{}}\n' >"$H/.claude/daemon/roster.json"
+printf '{"oauthAccount":{}}\n' >"$H/.claude/backups/.claude.json.backup.1792800000000"
+printf 'pasted text\n' >"$H/.claude/paste-cache/0123456789abcdef.txt"
+printf '{"plugins":[]}\n' >"$H/.claude/plugins/plugin-directory-cache-v2.json"
+printf '# git ls-files --others --exclude-from=.git/info/exclude\n.claude/scheduled_tasks.lock\n' \
+  >"$G253/info/exclude"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1915,6 +1942,15 @@ check "#253 project git linked worktree index.lock and sharedindex excluded" "[ 
 check "#253 project git objects, index, hooks, lfs and modules have no row" "norow253 objects index hooks lfs modules"
 check "#253 project git config not flagged secret" "row \"$G253/config\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
 
+# 2026-10-23 claude-code Windows round (#256)
+check "#256 Claude Code Windows temp root collected as claude-code" "row \"$T256/scratchpad/notes.txt\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"' && row \"$T256/tasks/b256b256b.output\" | grep -q '\"agent\":\"claude-code\".*\"status\":\"collected\"'"
+check "#256 home-level .claude.json.backup flagged secret" "row \"$H/.claude.json.backup\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
+check "#256 Claude Code daemon keys and roster flagged secret" "row \"$H/.claude/daemon/control.key\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$H/.claude/daemon/pipe.key\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$H/.claude/daemon/roster.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#256 Claude Code .claude.json backup flagged secret" "row \"$H/.claude/backups/.claude.json.backup.1792800000000\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
+check "#256 Claude Code paste-cache collected" "row \"$H/.claude/paste-cache/0123456789abcdef.txt\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
+check "#256 Claude Code plugin directory cache excluded" "[ \"\$(status_of \"$H/.claude/plugins/plugin-directory-cache-v2.json\")\" = skipped_excluded ]"
+check "#256 project git info/exclude collected as project" "is253 info/exclude"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1965,6 +2001,9 @@ check "#213 OpenCode service.json skipped without secrets" "[ \"\$(status_of \"$
 
 # 2026-10-21 Qwen Code session registry (#230)
 check "#230 Qwen Code session registry skipped without secrets" "[ \"\$(status_of \"$H/.qwen/sessions/4242.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.qwen/sessions/4243-0123abcd.json\")\" = skipped_secret ]"
+
+# 2026-10-23 claude-code Windows round (#256)
+check "#256 Claude Code daemon keys and .claude.json backup skipped without secrets" "[ \"\$(status_of \"$H/.claude/daemon/control.key\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.claude/daemon/roster.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.claude/backups/.claude.json.backup.1792800000000\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -2090,7 +2129,7 @@ check "inventory first line is the host line, keys in order" "head -n1 \"$OUT/in
 check "inventory host line counts" "head -n1 \"$OUT/inventory.stdout\" | grep -q '\"users_unreadable\":0,\"docker_volumes\":3}\$'"
 check "inventory every later line is an agent line, keys in order" "[ \"\$(sed 1d \"$OUT/inventory.stdout\" | grep -vc '$INV_AGENT_RE')\" = 0 ] && [ \"\$(grep -c . \"$OUT/inventory.stdout\")\" -gt 10 ]"
 check "inventory ollama line: history and manifest, excluded blobs not counted" "agent_line inventory ollama ollama | grep -q '\"files\":2,\"bytes\":25,\"first\":\"2026-09-14T00:00:00Z\",\"last\":\"2026-09-15T01:02:03Z\",\"projects\":0,\"evidence\":\".ollama\"}\$'"
-check "inventory claude-code evidence in catalog order" "agent_line inventory alice claude-code | grep -q '\"evidence\":\".claude,.claude.json\\*,.claude-\\*/projects,.claude-\\*/history.jsonl,.claude-\\*/.claude.json\\*,.claude-\\*/.credentials.json,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/\\*\"}\$'"
+check "inventory claude-code evidence in catalog order" "agent_line inventory alice claude-code | grep -q '\"evidence\":\".claude,.claude.json\\*,.claude-\\*/projects,.claude-\\*/history.jsonl,.claude-\\*/.claude.json\\*,.claude-\\*/.credentials.json,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/\\*,AppData/Local/Temp/claude\"}\$'"
 check "inventory first and last set for alice claude-code" "agent_line inventory alice claude-code | grep -q '\"first\":\"20[0-9-]*T[0-9:]*Z\",\"last\":\"20[0-9-]*T[0-9:]*Z\"'"
 check "inventory nested entry claimed from the enclosing agent" "agent_line inventory alice antigravity | grep -q '\"evidence\":\"[^\"]*.gemini/antigravity-cli' && agent_line inventory alice gemini-cli | grep -q '\"evidence\":\".gemini\"'"
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"

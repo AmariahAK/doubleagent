@@ -26,6 +26,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.git/worktrees/*/modules`, a `skipped_excluded` row each), and
   `.git/config` is not flagged `secret` although a remote URL can carry
   a token ([#253]).
+- Claude Code's Windows temp root, `AppData/Local/Temp/claude`, with each
+  session's `scratchpad/` and the `tasks/<id>.output` files of background
+  commands and subagents, is collected as `claude-code` (observed with
+  Claude Code 2.1.309 on Windows 11, October 2026) ([#256]).
+- A project's `.git/info/exclude`, which Claude Code rewrites with
+  patterns for its own files, is collected as `project` ([#256]).
+- Claude Code's session daemon files `.claude/daemon/control.key`,
+  `.claude/daemon/pipe.key` and `.claude/daemon/roster.json`, and the
+  `.claude.json` copies in `.claude/backups/.claude.json.backup.*`, are
+  flagged `secret: true` ([#256]).
+- The older home-level `.claude.json.backup*` files, which the
+  `.claude.json*` catalog line collects and which hold the same account
+  and MCP server settings as `.claude.json`, are flagged `secret: true`,
+  in the home and in a `~/.claude-<name>` config home ([#256]).
+- `.claude/plugins/plugin-directory-cache*`, Claude Code's downloaded copy
+  of the plugin directory, is excluded ([#256]).
+
+### Changed
+
+- Claude Code's `.claude/paste-cache` is no longer excluded: it holds the
+  text of each long pasted prompt, which `history.jsonl` names only by
+  hash ([#256]).
 
 ## [1.18.0] - 2026-10-21
 
@@ -1101,6 +1123,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#256]: https://github.com/seanthegeek/doubleagent/issues/256
 [#253]: https://github.com/seanthegeek/doubleagent/issues/253
 [#242]: https://github.com/seanthegeek/doubleagent/issues/242
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
