@@ -29,10 +29,9 @@ which is itself evidence of what it did.
 Four things about the host decide what the VMs can do:
 
 - **A Mac, for the macOS VM.** Apple's software licence allows macOS to
-  run as a guest only on Apple hardware, so a lab that covers the macOS
-  cells needs a Mac as its host. Windows and Linux guests run on any
-  host, so a lab on other hardware covers those two platforms and leaves
-  the macOS cells to a Mac.
+  run as a guest only on Apple hardware, so a lab that covers macOS needs
+  a Mac as its host. Windows and Linux guests run on any host, so a lab
+  on other hardware covers those two platforms and leaves macOS to a Mac.
 - **Memory.** A running VM holds a large share of the host's memory, so
   on a host with little of it only one VM runs at a time, and the
   collector's smoke tests and the analyzer's tests are not run on the
