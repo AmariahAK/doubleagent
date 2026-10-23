@@ -25,6 +25,11 @@ before the agent is installed. A directory a tool creates on first use
 appears in the diff of the step in which the agent first used that tool,
 which is itself evidence of what it did.
 
+The snapshot holds what a developer has, not what this repository's CI
+runs: its linters (shellcheck, shfmt, PSScriptAnalyzer, ruff) are not
+installed. An agent that wants one installs it during the round, and the
+install is part of the record.
+
 ## The host
 
 Four things about the host decide what the VMs can do:
@@ -82,8 +87,6 @@ winget install --id Microsoft.PowerShell -e --accept-package-agreements --accept
 winget install --id astral-sh.uv -e --accept-package-agreements --accept-source-agreements
 py -m pip install --user pipx
 py -m pipx ensurepath
-Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion 1.25.0 -Force
-pwsh -NoProfile -Command 'Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion 1.25.0 -Force'
 ```
 
 - The Build Tools go first, because rustup's default toolchain on Windows
@@ -106,10 +109,7 @@ pwsh -NoProfile -Command 'Install-Module PSScriptAnalyzer -Scope CurrentUser -Re
   where pipx and uv both put the tools they install, to the user PATH.
 - `Microsoft.PowerShell` is PowerShell 7 beside the Windows PowerShell 5.1
   the collector targets, so the VM runs both sides of the collector's test
-  matrix. PSScriptAnalyzer is installed under each, since each has its own
-  module path; on 5.1 the first `Install-Module` asks to update the NuGet
-  provider and to trust PSGallery, and both are answered before the
-  snapshot so the round's runs stay non-interactive.
+  matrix.
 `winget show --id <id>` prints the installer URL and hash a package would
 install, for checking a package before trusting it.
 
@@ -143,13 +143,12 @@ brew analytics off
 Then:
 
 ```sh
-brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv shellcheck shfmt powershell
+brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
 brew install --cask visual-studio-code
 brew link --overwrite node@24
 rustup default stable
 sudo ln -sfn "$(brew --prefix)/opt/openjdk@25/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-25.jdk
 echo 'export PATH="$(brew --prefix)/opt/ruby/bin:$(brew --prefix)/opt/node@24/bin:$PATH"' >> ~/.zprofile
-pwsh -NoProfile -Command 'Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion 1.25.0 -Force'
 brew cleanup -s
 ```
 
@@ -168,10 +167,8 @@ brew cleanup -s
 - `powershell` is a formula, not a cask: the `powershell` cask was
   disabled on 2026-09-01 because its package fails Homebrew's Gatekeeper
   check, and the formula has arm64 bottles for macOS 26.
-- `shellcheck` and `shfmt` make the VM the one place in the lab where the
-  collector's lint gates run beside a bash 3.2 `/bin/sh`, the shell CI
-  does not test. The smoke test also validates its JSON there once
-  `python3` exists.
+- The collector's smoke test runs there under a bash 3.2 `/bin/sh`, the
+  shell CI does not test, and validates its JSON once `python3` exists.
 - VS Code's cask installs the same universal build the vendor's download
   button serves and links the `code` command into Homebrew's `bin`, so
   the app is never opened before the snapshot. The app writes
@@ -194,7 +191,7 @@ each. Most of the toolchain is in Ubuntu's own archive; the rest comes from the
 vendor's documented route:
 
 ```sh
-sudo apt install git python3 python3-pip pipx ruby-full golang-go openjdk-25-jdk shellcheck shfmt
+sudo apt install git python3 python3-pip pipx ruby-full golang-go openjdk-25-jdk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ```
@@ -209,8 +206,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
   PowerShell install page documents. The `.deb` registers no apt source,
   so it does not update itself. The snap (`sudo snap install powershell
   --classic`) is the alternative on both and runs a release or two
-  behind. Then the same `Install-Module PSScriptAnalyzer` line as on the
-  other two.
+  behind.
 - Docker Engine comes from Docker's own apt repository, under
   [Docker](#docker).
 
@@ -320,7 +316,6 @@ date, checked against the release pages and the package indexes.
 | Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` 4.0.7 | `ruby` 4.0.9 | 4.0 |
 | OpenJDK | `Microsoft.OpenJDK.25` 25.0.4 | `openjdk@25` 25.0.5 | LTS |
 | PowerShell | `Microsoft.PowerShell` 7.6.8 | `powershell` 7.6.8 | 7.6, the LTS line until November 2028; 7.4 LTS ends 2026-11-10 |
-| PSScriptAnalyzer | 1.25.0 | 1.25.0 | the version CI pins |
 | uv | `astral-sh.uv` 0.13 | `uv` 0.13 | current |
 | pipx | pip, 1.18 | `pipx` 1.18 | current |
 | Docker Desktop | `Docker.DockerDesktop` 4.96.3 | `docker-desktop` 4.96.3 | current; only on a host with nested virtualization |
