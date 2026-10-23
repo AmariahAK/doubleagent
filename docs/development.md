@@ -26,35 +26,39 @@ listing shows it.
 
 ## The host
 
-The VMs run in Parallels Desktop on an Apple M1 Mac with 8 GB of memory,
-which sets three limits:
+Three things about the host decide what the VMs can do:
 
-- **One VM at a time.** A running VM holds most of the host's memory, so
-  the collector's smoke tests and the analyzer's tests are not run on the
+- **Memory.** A running VM holds a large share of the host's memory, so
+  on a host with little of it only one VM runs at a time, and the
+  collector's smoke tests and the analyzer's tests are not run on the
   host beside one; see
   [Validation and testing](../AGENTS.md#validation-and-testing).
-- **No nested virtualization.** A guest can run a hypervisor of its own
+- **Nested virtualization.** A guest can run a hypervisor of its own
   only when the host passes the hardware virtualization extensions
-  through, which Parallels on Apple silicon does for Linux guests alone,
-  and only on an M3 or later chip with macOS 15 or later on the host and
-  the Pro or Business edition; a Windows on ARM guest and a macOS guest
-  never get it. On this M1 host no guest does, so there is no WSL 2 (the
-  Windows Subsystem for Linux, which runs a Linux kernel in a Hyper-V
-  virtual machine) in the Windows VM and no Virtualization framework
-  (Apple's hypervisor API) in the macOS VM, and an agent feature that needs a container in either is recorded
-  in the round as a feature the VM cannot run. What that means for Docker
-  in each VM is under [Docker](#docker).
-- **The VM bundles live on an external SSD.** The internal disk is too
-  full for a snapshot merge, which needs scratch space beside the virtual
-  disk. The Mac stays awake while a VM runs, because a bus sleep under a
-  running VM or a merging snapshot damages the bundle.
+  through. Whether it does depends on the host's hypervisor and chip:
+  Parallels Desktop on Apple silicon does it for Linux guests alone, on
+  an M3 or later chip with macOS 15 or later and the Pro or Business
+  edition, and never for a Windows on ARM guest or a macOS guest; a
+  hypervisor on an x86-64 host usually offers it to every guest as a
+  setting. Without it there is no WSL 2 (the Windows Subsystem for Linux,
+  which runs a Linux kernel in a Hyper-V virtual machine) in a Windows
+  VM and no Virtualization framework (Apple's hypervisor API) in a macOS
+  VM, and an agent feature that needs a container in such a VM is
+  recorded in the round as a feature the VM cannot run. What that means
+  for Docker in each VM is under [Docker](#docker).
+- **Disk.** A snapshot merge, which deleting an older snapshot triggers,
+  needs free space beside the virtual disk on the same volume, and the
+  virtual disk only grows across revert-and-reinstall cycles. A VM on an
+  external disk needs the host kept awake while it runs, because a bus
+  sleep under a running VM or a merging snapshot damages the bundle.
 
 ## Windows
 
-Windows 11 on ARM64. Everything comes from the community source of
-`winget`, the package manager Windows ships, whose manifests download each
-installer from the vendor's own release host and pin its SHA-256; the ids
-below all have native ARM64 builds
+Windows 11. Everything comes from the community source of `winget`, the
+package manager Windows ships, whose manifests download each installer
+from the vendor's own release host and pin its SHA-256, and `winget` picks
+the build for the guest's architecture. On an Apple silicon host the guest
+is Windows 11 on ARM, and the ids below all have native ARM64 builds
 except the Visual Studio Build Tools bootstrapper, which is x64 and
 installs the ARM64 compilers itself. Run from an elevated PowerShell:
 
@@ -82,8 +86,8 @@ pwsh -NoProfile -Command 'Install-Module PSScriptAnalyzer -Scope CurrentUser -Re
   the linker present. The `--override` string
   replaces winget's own silent switches, so it carries `--wait --passive`
   itself; the VCTools workload alone installs the x64 and x86 compilers,
-  hence the explicit ARM64 component. This is the largest install of the
-  set.
+  hence the explicit ARM64 component, which an x64 guest can leave out.
+  This is the largest install of the set.
 - `Microsoft.VisualStudio.BuildTools` is the 2026 release (version 18);
   the ids with a year, such as `Microsoft.VisualStudio.2022.BuildTools`,
   are the older lines.
@@ -106,7 +110,7 @@ install, for checking a package before trusting it.
 
 ## macOS
 
-macOS on Apple silicon. The VM starts with no package manager, so the
+macOS. The VM starts with no package manager, so the
 Command Line Tools (Apple's package with `git`, `clang` and
 `/usr/bin/python3`) come first, then Homebrew, then the toolchain as
 Homebrew formulas (command-line tools Homebrew builds or unpacks) and one
@@ -173,16 +177,15 @@ brew cleanup -s
   home, so the round's first listing is taken from the snapshot, not from
   a fresh install.
 
-Snapshots of a macOS guest on Apple silicon are a newer Parallels feature
-than Windows and Linux snapshots. When the Snapshots button is greyed out
-for the VM, the finished VM is cloned as the clean copy and reverted by
-cloning it again.
+Not every hypervisor snapshots a macOS guest. When the VM has no
+snapshot control, the finished VM is cloned as the clean copy and
+reverted by cloning it again.
 
 ## Ubuntu
 
-Ubuntu on arm64, with `sh` as dash and bash and busybox present, so the
-collector's smoke test runs under all three there in a few minutes each.
-Most of the toolchain is in Ubuntu's own archive; the rest comes from the
+Ubuntu, where `sh` is dash and bash and busybox are a package away, so
+the collector's smoke test runs under all three there in a few minutes
+each. Most of the toolchain is in Ubuntu's own archive; the rest comes from the
 vendor's documented route:
 
 ```sh
@@ -194,13 +197,15 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 - `gh` comes from GitHub's own apt repository, Node from NodeSource's
   repository for the LTS line, and VS Code from Microsoft's `.deb`, each
   as the vendor's install page documents for Ubuntu.
-- PowerShell: Microsoft's apt repository ships amd64 packages only, so the
+- PowerShell: Microsoft's apt repository ships amd64 packages only, so an
   arm64 VM takes the `.deb` published on the PowerShell GitHub release
   (`powershell_<version>-1.deb_arm64.deb`) and installs it with
-  `sudo apt install ./<file>`. The package registers no apt source, so it
-  does not update itself. The snap (`sudo snap install powershell
-  --classic`) is the alternative and runs a release or two behind. Then
-  the same `Install-Module PSScriptAnalyzer` line as on the other two.
+  `sudo apt install ./<file>`; an amd64 VM uses the repository as the
+  PowerShell install page documents. The `.deb` registers no apt source,
+  so it does not update itself. The snap (`sudo snap install powershell
+  --classic`) is the alternative on both and runs a release or two
+  behind. Then the same `Install-Module PSScriptAnalyzer` line as on the
+  other two.
 - Docker Engine comes from Docker's own apt repository, under
   [Docker](#docker).
 
@@ -208,12 +213,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 Docker Desktop runs containers inside a Linux virtual machine of its own,
 so inside a guest it needs nested virtualization; Docker Engine on Linux
-runs containers on the guest's own kernel and needs none. That is why the
-Ubuntu VM is the one that runs containers in this lab, where the
+runs containers on the guest's own kernel and needs none. So the Ubuntu
+VM runs containers on any host, and is where the
 [agent lab](../lab/README.md) and the container-deployed agents are
-exercised, and why the Windows and macOS lines below are recorded with
-their requirements but are not in those VMs' snapshots on the M1 host.
-The versions are the current releases on 2026-10-23.
+exercised; the Windows and macOS lines below belong in those VMs'
+snapshots only on a host that gives them nested virtualization, and are
+recorded with their requirements for a host that does. The versions are
+the current releases on 2026-10-23.
 
 ### Docker Engine on Ubuntu
 
@@ -244,9 +250,8 @@ sudo usermod -aG docker "$USER"
 The `usermod` line lets the lab user run `docker` without `sudo` after the
 next login, which `lab/lab.sh` expects. Docker Desktop for Linux is a
 different product that runs its engine in a virtual machine under KVM,
-the Linux kernel's hypervisor, so it needs nested virtualization: an M3 or later host on macOS 15 or later,
-Parallels Pro or Business, and "Nested virtualization" enabled in the
-VM's CPU settings. The Engine is what the lab uses.
+the Linux kernel's hypervisor, so it needs nested virtualization enabled
+for the VM. The Engine is what the lab uses.
 
 ### Docker Desktop on Windows
 
@@ -254,9 +259,9 @@ VM's CPU settings. The Engine is what the lab uses.
 winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements
 ```
 
-The winget package is Docker's own installer with a native ARM64 build.
+The winget package is Docker's own installer, with x64 and ARM64 builds.
 Docker Desktop for Windows on Arm is an early-access build that supports
-the WSL 2 backend only, with no Windows containers, and needs:
+the WSL 2 backend only, with no Windows containers. Both need:
 
 - Windows 11 Pro, Enterprise or Education, version 23H2 (build 22631) or
   later;
@@ -265,10 +270,9 @@ the WSL 2 backend only, with no Windows containers, and needs:
 - hardware virtualization available to Windows, which inside a VM is
   nested virtualization.
 
-Parallels gives a Windows on ARM guest no nested virtualization on any
-Apple silicon chip, so WSL 2 cannot start and Docker Desktop's engine
-never comes up, however the install itself succeeds. It is left out of
-the Windows snapshot.
+In a Windows VM without nested virtualization the install itself
+succeeds, WSL 2 cannot start and Docker Desktop's engine never comes up,
+so on such a host it is left out of the Windows snapshot.
 
 ### Docker Desktop on macOS
 
@@ -276,7 +280,8 @@ the Windows snapshot.
 brew install --cask docker-desktop
 ```
 
-The cask installs Docker's own Apple silicon build and needs:
+The cask installs Docker's own build for the Mac's architecture and
+needs:
 
 - macOS 14 or later: Docker supports the current major release and the
   two before it;
@@ -286,10 +291,10 @@ The cask installs Docker's own Apple silicon build and needs:
 - the Virtualization framework, which inside a VM is nested
   virtualization.
 
-Parallels gives a macOS guest no nested virtualization, so the engine
-cannot start there; OrbStack and Colima use the same framework and fail
-the same way. It is left out of the macOS snapshot, and runs on the host
-Mac instead when a macOS agent needs a container.
+In a macOS VM without nested virtualization the engine cannot start;
+OrbStack and Colima use the same framework and fail the same way. On
+such a host it is left out of the macOS snapshot, and a macOS agent that
+needs a container is exercised on a Mac that is not a VM.
 
 ## Versions
 
@@ -313,7 +318,7 @@ date, checked against the release pages and the package indexes.
 | PSScriptAnalyzer | 1.25.0 | 1.25.0 | the version CI pins |
 | uv | `astral-sh.uv` 0.13 | `uv` 0.13 | current |
 | pipx | pip, 1.18 | `pipx` 1.18 | current |
-| Docker Desktop | `Docker.DockerDesktop` 4.96.3, not in the snapshot | `docker-desktop` 4.96.3, not in the snapshot | current; needs nested virtualization |
+| Docker Desktop | `Docker.DockerDesktop` 4.96.3 | `docker-desktop` 4.96.3 | current; only on a host with nested virtualization |
 | Docker Engine | not available | not available | 29.9 on Ubuntu, from Docker's apt repository |
 
 A rebuild of a snapshot checks the current versions first: a line that

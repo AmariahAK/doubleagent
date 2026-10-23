@@ -105,7 +105,7 @@ produced without installing agents on a workstation. See the
 
 The clean virtual machines that the real-install rounds start from: the
 toolchain their snapshots hold, the install commands that rebuild them on
-Windows, macOS and Ubuntu, what the host allows, and Docker's
+Windows, macOS and Ubuntu, what the host decides, and Docker's
 requirements in each. See [Lab VMs](development.md).
 
 ## Contributing
