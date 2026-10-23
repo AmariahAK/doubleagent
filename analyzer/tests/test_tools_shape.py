@@ -141,11 +141,15 @@ class JsonlTests(ShapeBase):
         out = shape(self.root / "s.jsonl")
         self.assertIn("== s.jsonl (", out)
         self.assertIn("jsonl, 5 lines)", out)
-        self.assertIn("  type=user: 1\n    keys: message, type, uuid\n", out)
+        self.assertRegex(out, r"  type=user: 1 \(\d+ bytes\)\n    keys: message, type, uuid\n")
         self.assertIn("    content blocks: text\n", out)
-        self.assertIn("  type=assistant: 1\n    keys: message, type\n", out)
+        self.assertRegex(out, r"  type=assistant: 1 \(\d+ bytes\)\n    keys: message, type\n")
+        self.assertIn("    message.content[].name: Bash=1\n", out)
         self.assertIn("    content blocks: text, tool_use\n", out)
-        self.assertIn("  type=system: 2\n    keys: content, error, level, subtype, type\n", out)
+        self.assertRegex(
+            out, r"  type=system: 2 \(\d+ bytes\)\n    keys: content, error, level, subtype, type\n"
+        )
+        self.assertIn("    subtype: api_error=1, compact_boundary=1\n", out)
         self.assertIn("    subtype=api_error: 1\n      keys: error, level, subtype, type\n", out)
         self.assertIn("    subtype=compact_boundary: 1\n      keys: content, subtype, type\n", out)
         self.assertIn("  bad lines 1\n", out)
@@ -154,16 +158,39 @@ class JsonlTests(ShapeBase):
         out = shape(self.root / "s.jsonl")
         self.assertNotIn(PROMPT, out)
         self.assertNotIn("billing", out)
-        self.assertNotIn("Bash", out)
+        self.assertNotIn("command", out)
         self.assertNotIn(UUID, out)
         self.assertNotIn("cut mid", out)
+
+    def test_ids_and_paths_in_enum_values_redacted(self):
+        # Values at the enum paths that fit the token shape but are identifiers
+        # print as their class, never verbatim.
+        hexid = "0123456789abcdef0123456789abcdef"
+        lines = [
+            {"type": "system", "subtype": UUID},
+            {
+                "type": "user",
+                "sessionKind": hexid,
+                "entrypoint": "https://example.test/cb",
+                "message": {"role": "user", "model": "/Users/alice/private-model", "content": []},
+            },
+        ]
+        body = "".join(json.dumps(r) + "\n" for r in lines)
+        (self.root / "ids.jsonl").write_text(body, encoding="utf-8")
+        out = shape(self.root / "ids.jsonl")
+        self.assertIn("    subtype: <uuid>=1\n", out)
+        self.assertIn("    sessionKind: <hex>=1\n", out)
+        self.assertIn("    entrypoint: <url>=1\n", out)
+        self.assertIn("    message.model: <abs-path>=1\n", out)
+        for raw in (UUID, hexid, "example.test", "private-model", "alice"):
+            self.assertNotIn(raw, out)
 
     def test_untyped_lines(self):
         (self.root / "h.jsonl").write_text(
             '{"display": "x", "ts": 1}\n{"ts": 2, "display": "y"}\n', encoding="utf-8"
         )
         out = shape(self.root / "h.jsonl")
-        self.assertIn("  keys{display,ts}: 2\n", out)
+        self.assertRegex(out, r"  keys\{display,ts\}: 2 \(\d+ bytes\)\n    keys: display, ts\n")
 
 
 class RedactionTests(ShapeBase):

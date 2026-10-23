@@ -25,6 +25,16 @@ CLAUDE_295_SESSION = "11111111-2222-4333-8444-777777777777"
 CLAUDE_BRIDGE_SESSION = "11111111-2222-4333-8444-888888888888"
 # A 2.1.296 session with permission mode and model changes (issue 93).
 CLAUDE_296_SESSION = "11111111-2222-4333-8444-999999999999"
+# A 2.1.309 session of the Windows round (issue 256), the session-daemon
+# worker it was handed to, its scratchpad, its Remote Control bridge and its
+# persisted tool output.
+CLAUDE_309_SESSION = "11111111-2222-4333-8444-aaaaaaaaaaaa"
+CLAUDE_309_WORKER = "11111111-2222-4333-8444-bbbbbbbbbbbb"
+CLAUDE_309_SCRATCH = "/tmp/claude-1000/-srv-proj/%s/scratchpad" % CLAUDE_309_SESSION
+CLAUDE_309_BRIDGE = "cse_0a1b2c3d4e5f6a7b"
+CLAUDE_309_BRIDGE_URL = "https://claude.ai/code/session_0a1b2c3d4e5f6a7b"
+CLAUDE_309_TOOL_RESULT = "k3j9x2m1q.txt"
+CLAUDE_309_PERSISTED = "first line of the listing\nsecond line of the listing"
 # Modification time given to the settings fixtures: 2026-10-01T09:00:00Z.
 CLAUDE_SETTINGS_MTIME = 1790845200
 CLAUDE_REGISTRY_KEY = "4242." + "ab" * 32 + ".key"
@@ -658,6 +668,277 @@ def claude_296_records():
         assistant("m6", "08", "Switched.", "claude-opus-5-5", "opus"),  # 8
         user("m7", "09", "apply it", "acceptEdits"),  # 9
         assistant("m8", "10", "Applied.", "claude-opus-5-5", "opus"),  # 10: unchanged
+    ]
+
+
+def claude_309_records(entrypoint="cli", session=CLAUDE_309_SESSION):
+    """A Claude Code 2.1.309 session with the line types and keys of the
+    Windows round (issue 256; research/claude-code.md, Record schema): the
+    environment attachment's scratchpad, the request-capture lines, a
+    one-time approval with `grantScope`/`reasonCode` and a persisted output
+    named by `toolUseResult.persistedOutputPath`, a denial, a Remote
+    Control bridge, prompts that were not typed, and the daemon handover.
+    Values are invented. Line numbers are what ClaudeCode309Tests asserts."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=session, version="2.1.309", entrypoint=entrypoint)
+    sid = session
+    side = dict(c, sessionKind="bg", slug="lab-round")
+
+    def ts(t):
+        return "2026-10-01T13:00:%s.000Z" % t
+
+    def prompt(uuid, t, text, **keys):
+        return dict(
+            c,
+            type="user",
+            uuid=uuid,
+            timestamp=ts(t),
+            message={"role": "user", "content": text},
+            permissionMode="default",
+            sandboxed=False,
+            turnPosition=0,
+            session_id=sid,
+            **keys,
+        )
+
+    def call(uuid, t, tool_id, command):
+        return dict(
+            side,
+            type="assistant",
+            uuid=uuid,
+            timestamp=ts(t),
+            requestId="req_" + uuid,
+            requestRef="ref_" + uuid,
+            requestedModel="claude-sonnet-5-5",
+            thinkingDisplay="summarized",
+            thinkingDurationMs=900,
+            message={
+                "model": "claude-sonnet-5-5",
+                "id": "msg_" + uuid,
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_id,
+                        "name": "PowerShell",
+                        "input": {"command": command, "description": "Run the script"},
+                    }
+                ],
+            },
+        )
+
+    def result(uuid, t, tool_id, content, **keys):
+        return dict(
+            c,
+            type="user",
+            uuid=uuid,
+            timestamp=ts(t),
+            message={
+                "role": "user",
+                "content": [{"tool_use_id": tool_id, "type": "tool_result", "content": content}],
+            },
+            sourceToolAssistantUUID="a" + uuid,
+            **keys,
+        )
+
+    def bridge(bridge_id, seq):
+        return dict(
+            type="bridge-session",
+            bridgeSessionId=bridge_id,
+            lastSequenceNum=seq,
+            ownerAccountUuid="00000000-0000-4000-8000-00000000000a",
+            ownerOrganizationUuid="00000000-0000-4000-8000-00000000000b",
+            sessionId=sid,
+        )
+
+    saved = "C:\\Users\\alice\\.claude\\projects\\-srv-proj\\%s\\tool-results\\%s" % (
+        sid,
+        CLAUDE_309_TOOL_RESULT,
+    )
+    shell = {"interrupted": False, "isImage": False, "noOutputExpected": False, "stderr": ""}
+    return [
+        dict(type="mode", mode="normal", sessionId=sid),  # 1
+        dict(type="permission-mode", permissionMode="default", sessionId=sid),  # 2
+        prompt(
+            "r1",
+            "01",
+            "Run python calc.py 2 3",
+            origin={"kind": "human"},
+            promptSource="typed",
+            turnOrigin="human",
+        ),  # 3
+        dict(
+            side,
+            type="attachment",
+            uuid="r2",
+            timestamp=ts("01"),
+            attachment={
+                "type": "environment",
+                "snapshot": {
+                    "additionalWorkingDirectories": [],
+                    "isGitRepo": True,
+                    "isWorktree": False,
+                    "osVersion": "Linux 6.17",
+                    "platform": "linux",
+                    "scratchpadDirectory": CLAUDE_309_SCRATCH.replace(CLAUDE_309_SESSION, sid),
+                    "shell": "bash",
+                    "workingDirectory": "/srv/proj",
+                },
+            },
+        ),  # 4
+        dict(
+            side,
+            type="attachment",
+            uuid="r3",
+            timestamp=ts("01"),
+            attachment={
+                "type": "auto_mode",
+                "autoModeConsentFlow": "none",
+                "bashFirst": False,
+                "bashFirstSteer": False,
+                "bypass": False,
+                "finishExposedWork": False,
+                "steerOnly": False,
+            },
+        ),  # 5: the turn's auto-mode configuration, skipped
+        dict(
+            type="api-request-shape",
+            shape={"tools": []},
+            shapeHash="0f0f",
+            timestamp=ts("02"),
+            version="2.1.309",
+            sessionId=sid,
+        ),  # 6
+        dict(
+            type="api-request",
+            base="0f0f",
+            cacheControl={},
+            id="areq1",
+            keep=[],
+            params={"model": "claude-sonnet-5-5", "max_tokens": 32000},
+            querySource="repl_main_thread",
+            requestDigest="d1",
+            shapeHash="0f0f",
+            tail=[],
+            timestamp=ts("02"),
+            version="2.1.309",
+        ),  # 7
+        dict(
+            type="api-request-blob",
+            hash="b1",
+            message={"role": "user", "content": "Run python calc.py 2 3"},
+        ),  # 8: the prompt again, inside the captured request; skipped
+        call("ar4", "03", "toolu_309a", "python calc.py 2 3"),  # 9
+        result(
+            "r4",
+            "04",
+            "toolu_309a",
+            "<persisted-output>\nOutput too large (1.2MB).\n\nPreview (first 2KB):\n"
+            "first line of the listing\n</persisted-output>",
+            toolUseResult=dict(
+                shell,
+                stdout="first line of the listing",
+                persistedOutputPath=saved,
+                persistedOutputSize=1200000,
+            ),
+            permissionDecision={
+                "decision": "accept",
+                "source": "user_temporary",
+                "grantScope": "once",
+                "reasonCode": "other",
+            },
+        ),  # 10
+        call("ar5", "05", "toolu_309b", "python calc.py 5 7"),  # 11
+        result(
+            "r5",
+            "06",
+            "toolu_309b",
+            "The user doesn't want to proceed with this tool use.",
+            toolUseResult="User rejected tool use",
+            permissionDecision={
+                "decision": "reject",
+                "source": "user_reject",
+                "reasonCode": "other",
+            },
+            toolDenialKind="user-rejected",
+            userFeedback="use the test runner instead",
+        ),  # 12
+        dict(
+            side,
+            type="system",
+            uuid="r6",
+            timestamp=ts("07"),
+            subtype="bridge_status",
+            content="/remote-control is active",
+            url=CLAUDE_309_BRIDGE_URL,
+            isMeta=False,
+            level="info",
+        ),  # 13
+        bridge(CLAUDE_309_BRIDGE, 1),  # 14
+        prompt(
+            "r7",
+            "08",
+            "Run python calc.py 3 4",
+            origin={"kind": "human"},
+            promptSource="queued",
+            turnOrigin="human",
+            queueSkipSlashCommands=True,
+        ),  # 15: sent from the phone
+        bridge(CLAUDE_309_BRIDGE, 1),  # 16: re-appended, skipped
+        bridge(None, 4),  # 17: detached
+        prompt(
+            "r8",
+            "09",
+            "Say tick in one word",
+            turnOrigin="scheduled",
+            scheduledFireId="fire1",
+            scheduledTaskId="task1",
+            wakeupSource="cron",
+            queuePriority="later",
+        ),  # 18: a /loop firing
+        prompt(
+            "r9",
+            "10",
+            "Add a subtract function to calc.py",
+            origin={"kind": "human"},
+            promptSource="suggestion_accepted",
+            turnOrigin="human",
+        ),  # 19
+        dict(
+            type="continued-in",
+            continuedInSessionId=CLAUDE_309_WORKER,
+            sessionId=sid,
+            timestamp=ts("11"),
+        ),  # 20
+        dict(
+            type="cost-state",
+            hasUnknownModelCost=False,
+            modelUsage={},
+            sessionId=sid,
+            startTime=1790859600000,
+            totalAPIDuration=4000,
+            totalAPIDurationWithoutRetries=4000,
+            totalCostUSD=0.01,
+            totalDuration=11000,
+            totalLinesAdded=0,
+            totalLinesRemoved=0,
+            totalToolDuration=900,
+        ),  # 21
+    ]
+
+
+def claude_309_history_records():
+    """`history.jsonl` lines of 2.1.309: a long paste is named by its hash in
+    `pastedContents`, its text kept in `paste-cache/<contentHash>.txt`."""
+    return [
+        {
+            "display": "[Pasted text #1 +40 lines] Summarise the text above in one sentence",
+            "pastedContents": {"1": {"contentHash": "0123456789abcdef", "id": 1, "type": "text"}},
+            "timestamp": 1790859600000,
+            "project": "/srv/proj",
+            "sessionId": CLAUDE_309_SESSION,
+        },
     ]
 
 
@@ -2308,6 +2589,12 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     _jsonl(
         home / ".claude/projects/-srv-proj" / (CLAUDE_296_SESSION + ".jsonl"), claude_296_records()
     )
+    _jsonl(
+        home / ".claude/projects/-srv-proj" / (CLAUDE_309_SESSION + ".jsonl"), claude_309_records()
+    )
+    claude_309_results = home / ".claude/projects/-srv-proj" / CLAUDE_309_SESSION / "tool-results"
+    claude_309_results.mkdir(parents=True)
+    (claude_309_results / CLAUDE_309_TOOL_RESULT).write_text(CLAUDE_309_PERSISTED, encoding="utf-8")
     _jsonl(home / ".claude/history.jsonl", claude_history_records())
     for rel, doc in (
         (".claude/settings.json", claude_user_settings()),

@@ -13,6 +13,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The bundled catalog copy has the collector's Claude Code lines from the
+  Windows round: the Windows temp root `AppData/Local/Temp/claude` and the
+  project's `.git/info/exclude` are detected, `.claude/paste-cache` is no
+  longer excluded, `.claude/plugins/plugin-directory-cache*` is, and the
+  session daemon's keys and the `.claude.json` backups are secrets, in
+  `.claude` and, with the session keys, in a `~/.claude-<name>` config
+  home ([#256]).
+- The `claude-code` parser yields `session synced: remote control bridge
+  <bridgeSessionId> url - (from <path>, file mtime)` from a
+  `.claude/sessions/<pid>.json` registry file that names a bridge id, at
+  the file's modification time, so a session whose transcript is gone but
+  whose registry file shows Remote Control attached reads `synced` `yes`
+  in `sessions.jsonl` rather than `no` ([#256]).
+- The URL of a `session synced: remote control bridge` row is the
+  `bridge_status` record that belongs to that bridge, the first at or
+  after the `bridge-session` record up to the next bridge or detach, else
+  the nearest before it back to the previous one, else `-`; a second
+  bridge in one transcript took the first bridge's URL before ([#256]).
 - The bundled catalog copy has the collector's seven new project lines,
   `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`,
   `.git/refs`, `.git/logs` and `.git/worktrees`, and its exclusion of
@@ -45,6 +63,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   snapshot's `git_state.remote_url`; the `openclaw` parser reads the
   `projects` table's `origin_url` of `state/openclaw.sqlite`, with the
   project path its `repo_root` and no session ([#253]).
+- The `claude-code` parser writes `session surface: <entrypoint>` at the
+  first record of each transcript file (`cli`, `claude-vscode` for the VS
+  Code extension, `claude-desktop`), and `session surface: <old> -> <new>`
+  when it changes ([#256]).
+- The `claude-code` parser writes `prompt trigger: promptSource=<v>
+  turnOrigin=<v>` after a prompt that was not typed by the person at the
+  terminal: one sent from a Remote Control client (`queued`), from the VS
+  Code extension (`sdk`), a suggestion the person accepted
+  (`suggestion_accepted`), a `/loop` firing (`turnOrigin=scheduled`) or a
+  background task's completion ([#256]).
+- The `claude-code` parser writes `scratch directory: <path> (session
+  scratchpad, from the environment attachment)` for the session
+  scratchpad a transcript's `environment` attachment names, so
+  `inventory.json` lists it under `scratch_directories` ([#256]).
+- The `claude-code` parser writes `session continued in: <session id>`
+  for a 2.1.309 `continued-in` record, the session daemon's handover of a
+  console session to the worker session that holds the later turns, and
+  `remote control: bridge session <id or none> lastSequenceNum=<n>` for a
+  Remote Control `bridge-session` record ([#256]).
+
+### Changed
+
+- `claude-code` sessions now have `synced` `yes` or `no` in
+  `sessions.jsonl` (and the inventory's `synced_sessions` and project
+  `synced` follow): a session with a Remote Control bridge gets a
+  `session synced: remote control bridge <id> url <url>` row, because the
+  bridge puts the session on claude.ai. `claude-desktop` sessions keep
+  `synced` `""` ([#256]).
+- A `scratch directory:` row no longer decides a session's
+  `project_path` in `sessions.jsonl` when another row of the session has
+  a path; it is used only when no other row has one ([#256]).
+- The `claude-code` parser takes a persisted tool output's file from the
+  2.1.309 `toolUseResult.persistedOutputPath` when the line has one tool
+  result, and from the `<persisted-output>` stub's text otherwise; the
+  file must still be in the session's own `tool-results/` ([#256]).
 
 ## [0.20.1] - 2026-10-21
 
@@ -1941,6 +1994,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#256]: https://github.com/seanthegeek/doubleagent/issues/256
 [#253]: https://github.com/seanthegeek/doubleagent/issues/253
 [#237]: https://github.com/seanthegeek/doubleagent/issues/237
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236

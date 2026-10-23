@@ -149,7 +149,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from ..inputs import Artifact
-from ..model import Row, compact
+from ..model import SCRATCH_PREFIX, Row, compact
 from ..timeutil import to_utc
 from .base import (
     Options,
@@ -330,6 +330,10 @@ class ClaudeDesktopParser(ClaudeCodeParser):
     agent = "claude-desktop"
     name = "claude-desktop"
     has_secondary = True
+    # Not inherited from ClaudeCodeParser: the desktop's sync state is not
+    # established, so its sessions keep `synced` "" (a `bridge-session`
+    # record in one of its transcripts still gives `session synced:`).
+    records_sync = False
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
@@ -382,7 +386,8 @@ class ClaudeDesktopParser(ClaudeCodeParser):
     def _transcript(self, artifact: Artifact, opts: Options, sess: Path | None) -> Iterator[Row]:
         folder = _folder(_find_record(sess)) if sess is not None else ""
         for row in self._parse_session(artifact, opts):
-            if folder:
+            # A `scratch directory:` row names its directory, not the folder.
+            if folder and not (row.turn_type == "system" and row.text.startswith(SCRATCH_PREFIX)):
                 row.project_path = folder
             yield row
 

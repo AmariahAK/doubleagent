@@ -25,10 +25,17 @@ What it prints, per file, in sorted path order:
   digits, `_` and `-` prints as `str=<value>`, except under a key whose name
   suggests a credential (`token`, `secret`, `key`, `passw`, `cred`, `auth`,
   `cookie`, `bearer`, `salt`), which keeps the `str(len n)` form.
-- a `.jsonl` or `.ndjson` file: line counts per `type` (or per top-level key
-  set), the union of top-level keys per type, the `subtype` breakdown of
-  `system` lines, the content block types of `user` and `assistant`
-  messages, and the count of lines that do not parse.
+- a `.jsonl` or `.ndjson` file: line counts and byte totals per `type` (or
+  per top-level key set), the union of top-level keys per type, the values
+  of the enum-like keys in `ENUM_PATHS` (modes, kinds, decisions, model ids,
+  tool and attachment names; a value prints only when it is a short token,
+  never free text, and a token that is a UUID, a long hex id, an absolute
+  path or a URL prints as `<uuid>`, `<hex>`, `<abs-path>` or `<url>`), the
+  key sets of the nested objects in `NESTED_KEYS`
+  (an `attachment` per `attachment.type`, a `permissionDecision`, a
+  `toolUseResult`), the `subtype` breakdown of `system` lines, the content
+  block types of `user` and `assistant` messages, and the count of lines
+  that do not parse.
 - anything else: the size, `not JSON`, and for a text file under 1 KiB the
   character class of its content (`hex`, `base64`, `printable`, `binary`).
 
@@ -200,6 +207,80 @@ class Shaper:
         return out
 
 
+# Dotted key paths whose values are enum-like (a mode, a kind, a decision, a model id, a
+# tool name) and are counted per line type in a JSONL summary. A value is counted only
+# when it is a short token of letters, digits, `_`, `-`, `.`, `:` and `/`, so free text
+# never prints, and a token that is a UUID, a long hex id, an absolute path or a URL
+# is redacted to its class; `message.content[].name` and `attachment.type` are the
+# tool names and the attachment kinds of Claude Code's transcripts.
+ENUM_PATHS: tuple[str, ...] = (
+    "attachment.type",
+    "entrypoint",
+    "mode",
+    "message.model",
+    "message.content[].name",
+    "origin.kind",
+    "permissionDecision.decision",
+    "permissionDecision.grantScope",
+    "permissionDecision.reasonCode",
+    "permissionDecision.reasonType",
+    "permissionDecision.source",
+    "permissionMode",
+    "sessionKind",
+    "promptSource",
+    "requestedModel",
+    "sandboxed",
+    "subtype",
+    "toolDenialKind",
+    "toolUseResult.type",
+    "turnOrigin",
+    "userType",
+)
+ENUM_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:-]{1,48}$")
+# Top-level objects whose own key set is printed per line type (an `attachment` object
+# per `attachment.type`), so a sidecar structure's keys show without its values.
+NESTED_KEYS: tuple[str, ...] = (
+    "attachment",
+    "compactMetadata",
+    "message",
+    "origin",
+    "params",
+    "pastedContents",
+    "permissionDecision",
+    "snapshot",
+    "toolUseResult",
+)
+
+
+def enum_at(rec: object, path: str) -> str | None:
+    """The enum-like value at a dotted path of rec, `true`/`false` for a boolean, the
+    values joined with `|` for a `[]` segment, or None when absent or not enum-like."""
+    node: object = rec
+    parts = path.split(".")
+    for i, part in enumerate(parts):
+        if part.endswith("[]"):
+            if not isinstance(node, dict) or not isinstance(node.get(part[:-2]), list):
+                return None
+            found = sorted(
+                {
+                    v
+                    for v in (enum_at(item, ".".join(parts[i + 1 :])) for item in node[part[:-2]])
+                    if v is not None
+                }
+            )
+            return "|".join(found) if found else None
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    if isinstance(node, bool):
+        return "true" if node else "false"
+    if isinstance(node, str) and ENUM_VALUE_RE.match(node):
+        # A UUID, a long hex id, an absolute path or a URL fits the token shape too;
+        # it prints as its class, as a key would, never as the value.
+        return redact_key(node)
+    return None
+
+
 def jsonl_lines(data: bytes, indent: str) -> tuple[str, list[str]]:
     total = bad = non_object = 0
     counts: Counter[str] = Counter()
@@ -207,6 +288,9 @@ def jsonl_lines(data: bytes, indent: str) -> tuple[str, list[str]]:
     sub_counts: Counter[str] = Counter()
     sub_keys: dict[str, set[str]] = {}
     blocks: dict[str, set[str]] = {}
+    sizes: Counter[str] = Counter()
+    enums: dict[str, Counter[str]] = {}
+    nested: dict[str, set[str]] = {}
     for raw in data.splitlines():
         if not raw.strip():
             continue
@@ -228,7 +312,23 @@ def jsonl_lines(data: bytes, indent: str) -> tuple[str, list[str]]:
         else:
             label = "keys{%s}" % ",".join(sorted(top))
         counts[label] += 1
+        sizes[label] += len(raw)
         keys.setdefault(label, set()).update(top)
+        for path in ENUM_PATHS:
+            value = enum_at(rec, path)
+            if value is not None:
+                enums.setdefault("%s %s" % (label, path), Counter())[value] += 1
+        for name in NESTED_KEYS:
+            sub = rec.get(name)
+            if isinstance(sub, dict):
+                kind = enum_at(sub, "type") if name == "attachment" else None
+                nlabel = "%s %s%s keys" % (label, name, "[%s]" % kind if kind else "")
+                nested.setdefault(nlabel, set()).update(redact_key(str(k)) for k in sub)
+                inner = [v for v in sub.values() if isinstance(v, dict)]
+                if inner:  # a map of objects (`pastedContents`): the union of the inner keys
+                    nested.setdefault(nlabel.replace(" keys", ".* keys"), set()).update(
+                        redact_key(str(k)) for v in inner for k in v
+                    )
         if rtype == "system":
             sub = rec.get("subtype")
             slabel = "subtype=%s" % redact_key(sub) if isinstance(sub, str) else "no subtype"
@@ -244,8 +344,16 @@ def jsonl_lines(data: bytes, indent: str) -> tuple[str, list[str]]:
                     found.add(redact_key(btype) if isinstance(btype, str) else "<no type>")
     out: list[str] = []
     for label in sorted(counts):
-        out.append("%s%s: %d" % (indent, label, counts[label]))
+        out.append("%s%s: %d (%d bytes)" % (indent, label, counts[label], sizes[label]))
         out.append("%s  keys: %s" % (indent, ", ".join(sorted(keys[label]))))
+        for elabel in sorted(e for e in enums if e.startswith(label + " ")):
+            values = enums[elabel]
+            shown = ", ".join("%s=%d" % (v, n) for v, n in sorted(values.items()))
+            out.append("%s  %s: %s" % (indent, elabel[len(label) + 1 :], shown))
+        for nlabel in sorted(n for n in nested if n.startswith(label + " ")):
+            out.append(
+                "%s  %s: %s" % (indent, nlabel[len(label) + 1 :], ", ".join(sorted(nested[nlabel])))
+            )
         if label in blocks:
             out.append("%s  content blocks: %s" % (indent, ", ".join(sorted(blocks[label]))))
         if label == "type=system":

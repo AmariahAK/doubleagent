@@ -127,6 +127,7 @@ class SessionSummary:
     _sources: dict[str, int] = field(default_factory=dict)
     _rows: int = 0
     _recovered_rows: int = 0
+    _scratch_path: str = ""
 
     def add(self, row: Row) -> None:
         # Only event rows decide `recovered`: a `system` row describes its
@@ -147,7 +148,13 @@ class SessionSummary:
                 self.last_timestamp_utc = row.timestamp_utc
         if row.model:
             self.models.setdefault(row.model)
-        if not self.project_path and row.project_path:
+        # A `scratch directory:` row names the agent's directory, not the
+        # session's project, so it decides `project_path` only when no other
+        # row has one (`summarise` applies the fallback).
+        if row.turn_type == "system" and row.text.startswith(SCRATCH_PREFIX):
+            if not self._scratch_path:
+                self._scratch_path = row.project_path
+        elif not self.project_path and row.project_path:
             self.project_path = row.project_path
         if row.turn_type == "user":
             self.user_turns += 1
@@ -211,6 +218,8 @@ def summarise(
             out[key] = s
         s.add(r)
     for s in out.values():
+        if not s.project_path:
+            s.project_path = s._scratch_path
         if not s.synced and s.agent in sync_agents:
             s.synced = "no"
         if not s.relayed and s.agent in relay_agents:
