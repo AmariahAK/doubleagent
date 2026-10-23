@@ -14,7 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - The bundled catalog copy has the collector's Claude Code lines from the
-  Windows round: the Windows temp root `AppData/Local/Temp/claude` and the
+  [Windows round](../research/claude-code.md#observed): the Windows temp
+  root `AppData/Local/Temp/claude` and the
   project's `.git/info/exclude` are detected, `.claude/paste-cache` is no
   longer excluded, `.claude/plugins/plugin-directory-cache*` is, and the
   session daemon's keys and the `.claude.json` backups are secrets, in
