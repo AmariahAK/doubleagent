@@ -304,7 +304,7 @@ date, checked against the release pages and the package indexes.
 
 | Tool | Windows (winget id) | macOS (Homebrew) | Line |
 | --- | --- | --- | --- |
-| Python | `Python.Python.3.13` 3.13.15 | `python@3.13` 3.13.17 | 3.13; 3.14 and 3.15 exist, and winget has no 3.15 yet, so 3.13 keeps the VMs matched |
+| Python | `Python.Python.3.13` 3.13.15 | `python@3.13` 3.13.17 | 3.13 on every VM; 3.15.0 is the current release, from 2026-10-09 |
 | Git | `Git.Git` 2.55 | `git` 2.56 | current |
 | GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
 | Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
