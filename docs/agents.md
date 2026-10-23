@@ -261,17 +261,20 @@ and `disableBypassPermissionsMode` in `.claude/settings.json` and
 `.claude.json`, no other key of either file being read; the same files
 under a `.claude-<name>` config home moved with `CLAUDE_CONFIG_DIR` (such
 as `.claude-work/projects/...`). The transcripts also give a `session
-surface: <entrypoint>` row (`cli`, or `claude-vscode` for the VS Code
-extension, which writes into the same tree), a `prompt trigger:
-promptSource=<v> turnOrigin=<v>` row beside a prompt that was not typed
-by the person in the console (a Remote Control prompt from a phone, the
-extension's panel, an accepted suggestion, a `/loop` firing), a `session
-continued in:` row where a session was handed to the session daemon's
-worker, `remote control: bridge session <id>` and `session synced:
-remote control bridge <id> url <url>` rows for a Remote Control bridge,
-and a `scratch directory: <path>` row from the session's environment
-snapshot; a persisted tool output is found through
-`toolUseResult.persistedOutputPath` when the line has it.
+surface: <entrypoint>` row per file (`cli`, `claude-vscode` for the VS
+Code extension, which writes into the same tree, or `claude-desktop` for
+the Code tab), a `prompt trigger: promptSource=<promptSource>
+turnOrigin=<turnOrigin>` row after a prompt that was not typed by the
+person in the console (a Remote Control prompt from a phone, the
+extension's panel, an accepted suggestion, a task notification, a `/loop`
+firing), a `session continued in: <continuedInSessionId>` row where a
+session was handed to the session daemon's worker, `remote control:
+bridge session <id or none> lastSequenceNum=<n>` rows and one `session
+synced: remote control bridge <id> url <url>` row per bridge for Remote
+Control (the URL from the `bridge_status` line), and a `scratch
+directory: <path> (session scratchpad, from the environment attachment)`
+row per session; a persisted tool output is found through
+`toolUseResult.persistedOutputPath` when the line has one tool result.
 
 Validated against: Real installs, Claude Code 2.1.286 to 2.1.289 on Linux
 (WSL2) and 2.1.295 on macOS (launched from the Claude Desktop Code tab),

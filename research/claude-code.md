@@ -567,7 +567,11 @@ Observed on Windows 2.1.309:
   directory for it is `projects/C--Users-sean-lab-proj/`
   ([issue 112](https://github.com/seanthegeek/doubleagent/issues/112)); a start in the home that
   stopped at the trust prompt added no key. `projects.<path>.lastSessionId` names the last session
-  run there ([`.claude.json`](#claudejson)).
+  run there ([`.claude.json`](#claudejson)). The `environment` attachment's
+  `snapshot.scratchpadDirectory` spelled the same project's slug two ways across sessions on
+  Windows 2.1.309, `C--Users-sean-lab-proj` and `c--Users-sean-lab-proj` (the drive letter's case
+  differs), so a project's scratch directories can differ only by case
+  ([issue 112](https://github.com/seanthegeek/doubleagent/issues/112)).
 - `~/.claude.json` → `githubRepoPaths`, `{"<owner>/<repo>": ["<local path>", ...]}`: every GitHub
   repository the CLI has seen as a checkout's `origin` remote, with the local checkouts of it. On
   Windows 2.1.309 it was filled at the first launch in the lab checkout, with no GitHub sign-in, and
@@ -808,11 +812,11 @@ cc:483772 lists them; observed except the compaction fields, which Windows 2.1.3
 ([Permission decisions](#permission-decisions)), `mcpMeta` (on the `/install-github-app` command's
 lines), `queueSkipSlashCommands` (the Remote Control prompt), and on the prompt a `/loop` fired
 `scheduledFireId`, `scheduledTaskId`, `wakeupSource`, `turnCompanion` and `queuePriority`. Values
-seen there: `promptSource` `typed`, `system` (a task notification), `suggestion_accepted` (a prompt
-Claude suggested and the person accepted), `queued` (the Remote Control prompt) and `sdk` (the VS
-Code extension); `turnOrigin` `human`, `task_notification` and `scheduled`; `origin.kind` `human`
-and `task-notification`, with `origin` keys `kind, producer, runId` on the latter; `isMeta` on the
-lines of a slash command.
+seen there: `promptSource` `typed`, `system` (a task notification or a `/loop` firing),
+`suggestion_accepted` (a prompt Claude suggested and the person accepted), `queued` (the Remote
+Control prompt) and `sdk` (the VS Code extension); `turnOrigin` `human`, `task_notification` and
+`scheduled`; `origin.kind` `human` and `task-notification`, with `origin` keys
+`kind, producer, runId` on the latter; `isMeta` on the lines of a slash command.
 
 #### Permission decisions
 
@@ -997,7 +1001,7 @@ A `user` record is not always typed by the person:
 | --- | --- | --- |
 | `origin.kind:"human"`, `promptSource` `typed`, `queued` or `suggestion_accepted` | a prompt the person submitted | 165 |
 | `origin.kind:"human"`, `promptSource` `sdk` | a prompt typed in the VS Code extension's panel | Windows 2.1.309 |
-| `turnOrigin:"scheduled"` with `scheduledTaskId` | the prompt of a `/loop` firing, after a `scheduled_task_fire` system line | Windows 2.1.309 |
+| `turnOrigin:"scheduled"`, `promptSource:"system"`, with `scheduledTaskId` | the prompt of a `/loop` firing, after a `scheduled_task_fire` system line | Windows 2.1.309 |
 | no `origin`, `parentUuid` null, first line of a subagent file | the task the parent agent gave the subagent | 80 of 80 subagent files |
 | `origin.kind:"task-notification"`, content `<task-notification>...` | a background task's completion notice; `isMeta` absent in 62 of 66; on Windows 2.1.309 with `promptSource` `system` and `turnOrigin` `task_notification`, for a subagent's end and a backgrounded command's | 66 |
 | `origin.kind` `peer`, `coordinator`, `auto-continuation` | messages from other sessions or the runtime; `isMeta:true` | 65 |
@@ -1444,15 +1448,15 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | `user`, `origin.kind` `task-notification`, `peer`, `coordinator`, `auto-continuation` | `system`, label `task notification`, `peer message`, `coordinator message`, `auto-continuation` |
 | `user`, other `isMeta` | `system`, label `context` |
 | `user`, any other string, `text` or `image` block | `user` (one row per block); the rules above are tried in this order, the record-level ones for every block |
-| `user`, `tool_result` block | `tool_result`; `tool_reference` blocks as their `tool_name`; a `<persisted-output>` stub replaced by its `tool-results/` file, named by `toolUseResult.persistedOutputPath` when that key is set and by the stub's text otherwise (below); text prefixed `[error]` when `is_error` |
+| `user`, `tool_result` block | `tool_result`; `tool_reference` blocks as their `tool_name`; a `<persisted-output>` stub replaced by its `tool-results/` file, named by `toolUseResult.persistedOutputPath` when that key is set and the line has one `tool_result` block, else by the stub's text (below); text prefixed `[error]` when `is_error` |
 | `user`, `permissionDecision` (2.1.295) | one `system` row after the line's `tool_result` rows, `permission decision: <decision> source=<source> reason=<reasonType>` (`-` for a missing key), then a space and the object's compact JSON when it has other keys (`grantScope` and `reasonCode` on 2.1.309, [Permission decisions](#permission-decisions)); `tool_use_id` of the line's first `tool_result` block, `tool_name` empty as on `tool_result` rows |
 | `user`, `toolDenialKind`, `userFeedback` (factory key list, [Record schema](#record-schema)) | appended to that line's `permission decision:` row as ` toolDenialKind=<value> userFeedback=<value>`, in that order, each only when set, printed as recorded (no value set is recorded; `userFeedback` is free text, so it comes last); a line with either key and no `permissionDecision` gets the row with `-` for `decision`, `source` and `reasonType` ([issue 97](https://github.com/seanthegeek/doubleagent/issues/97)) |
 | `attachment` `plan_mode`, `plan_mode_exit`, `plan_mode_reentry`, `auto_mode`, `auto_mode_exit` | skip: their keys are now recorded ([`attachment` records](#attachment-records)); `auto_mode` is the turn's auto-mode configuration, not a decision, and every mode change they mark is also a `permissionMode` value or a `permission-mode` record, which the `permission mode:` rows read |
-| first record of a file that carries `entrypoint` | before its rows, a `system` row `session surface: <entrypoint>` (`cli`, `claude-vscode`), and `session surface: <old> -> <new>` if a later record of the file carries another value |
-| `user` prompt whose `promptSource` is not `typed` or whose `turnOrigin` is not `human` | beside the prompt's row, a `system` row `prompt trigger: promptSource=<v> turnOrigin=<v>` (values seen: `queued`, the Remote Control phone; `sdk`, the VS Code extension; `suggestion_accepted`; `turnOrigin` `scheduled`, a `/loop` firing); `origin.kind` still picks the label above |
-| `continued-in` | `system`, `session continued in: ` and the session that took the conversation over (`continuedInSessionId`, ids as recorded), at the record's `timestamp` |
-| `bridge-session` | `system`, `remote control: bridge session <bridgeSessionId>` and its status keys; with the `bridge_status` line's `url`, a `session synced: remote control bridge <id> url <url>` row ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
-| `attachment` `environment` with `snapshot.scratchpadDirectory` | one `system` row per session, `scratch directory: <path>` ([Scratch directory rows](#scratch-directory-rows)) |
+| first record of a transcript file that carries `entrypoint` | before its rows, a `system` row `session surface: <entrypoint>` (values `cli`, `claude-vscode`, `claude-desktop` for the Code tab), and `session surface: <old> -> <new>` on a change; a subagent file gets its own row |
+| `user` record with `promptSource` set and not `typed`, or `turnOrigin` set and not `human` | after the record's rows, a `system` row `prompt trigger: promptSource=<promptSource> turnOrigin=<turnOrigin>`, `-` for a missing key; the pairs seen on Windows 2.1.309 are `promptSource=suggestion_accepted turnOrigin=human`, `promptSource=system turnOrigin=task_notification` (a subagent's or a background command's end), `promptSource=queued turnOrigin=human` (the Remote Control phone), `promptSource=system turnOrigin=scheduled` (a `/loop` firing) and `promptSource=sdk turnOrigin=human` (the VS Code extension); `origin.kind` still picks the label above |
+| `continued-in` | `system`, `session continued in: <continuedInSessionId>`, at the record's `timestamp` |
+| `bridge-session` | `system`, `remote control: bridge session <bridgeSessionId or none> lastSequenceNum=<lastSequenceNum or ->`, written when the (id, sequence) pair changes, `none` being the detach; the owner uuids are never printed. At the first record naming an id, once per session and bridge id, `session synced: remote control bridge <bridgeSessionId> url <url>` ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
+| `attachment` `environment` with `snapshot.scratchpadDirectory` | `system`, `scratch directory: <path> (session scratchpad, from the environment attachment)`, once per session and path, `project_path` the scratchpad path ([Scratch directory rows](#scratch-directory-rows)) |
 | `user` `permissionMode`, `permission-mode` record | one tracker per session id in the file: the first value is a `system` row `permission mode: <mode>`, a later different value `permission mode: <old> -> <new>`, before the line's other rows; a `user` line's row takes its timestamp, a `permission-mode` record (no timestamp) the latest one seen; an unchanged value, such as a re-appended state record, yields nothing; a subagent file has its own tracker |
 | `assistant` `message.model` (not `<synthetic>`, not an API error) | before the line's rows, `model: <id>` at the session's first one and `model: <old> -> <new>` on each change, with ` requested=<requestedModel>` when that key is set and differs; `model` column the new model; a subagent file has its own tracker |
 | `assistant`, `isApiErrorMessage` or model `<synthetic>` | `system`, `api error: <apiErrorStatus> <error>: <text>`, no model |
@@ -1500,8 +1504,10 @@ the other `sessions/<pid>.json` keys (`procStart`, `version`, `peerProtocol`, `p
 the model row and `wireToolInputs` only for Bash), `sourceToolAssistantUUID` and
 `serverClassifierContext`, the 2.1.309 request capture lines (`api-request-shape`, `api-request`,
 `api-request-blob`), `cost-state`, `mode`, `atis-latch`, `custom-title.json` (the `custom-title`
-line is read), the session daemon's files and `jobs/`, `backups/`, `state/`, `skills/synced/`,
-`plugins/synced/`, and the `claude-cli-nodejs` MCP logs
+line is read), the session daemon's files (`daemon.log`, `roster.json`) and `jobs/`,
+`backups/`, `file-history/`, `plans/`, `state/mcp-discover-verdicts.json`, `skills/synced/`,
+`plugins/synced/`, the registry keys `formerNames`, `parkedJobId` and `jobId`, `sessionKind` (kept
+in the row's envelope, not printed), and the `claude-cli-nodejs` MCP logs
 ([CLI cache directory](#cli-cache-directory)), whose lines name the session, the project and a
 time, so each `debug` message could become a `system` row joined to the session.
 
@@ -1546,23 +1552,31 @@ project and a time and so could become rows of their own.
 #### Sync, relay and origin rows
 
 The agent records sync through Remote Control. A `bridge-session` line becomes a
-`remote control: bridge session <bridgeSessionId>` row, and the session, which the vendor then
-holds on claude.ai and the phone app while the bridge is up, a `session synced: remote control
-bridge <id> url <url>` row with the `bridge_status` line's pairing URL; the parser sets
-`records_sync`, so `sessions.jsonl` `synced` reads `yes` or `no` for this agent's sessions
-([Remote Control](#remote-control)). The `bridge=` value of a `sessions/<pid>.json` row still says
-the process was under Remote Control when the collector ran. The daemon handover is local and is a
-`session continued in:` row, not a sync row. The agent records no relay. No origin row: a cloud
-session could not be started from the CLI on the Windows round, and the files the bundle names for
-one (`.session_ingress_token`, `remote/`, `server-sessions.json`, `remote-settings.json`) were never
-written; the `remote_session_change` attachment, present in plain local sessions with nothing to
-link, is skipped. The source host is not a row: Claude Code records no GitHub account of its own
-([Source-host integration](#source-host-integration)); `githubRepoPaths` is not read.
+`remote control: bridge session <bridgeSessionId or none> lastSequenceNum=<lastSequenceNum or ->`
+row whenever its id and sequence pair changes, `none` marking the detach. At the first
+`bridge-session` line that names an id, once per session and bridge id, the parser also yields
+`session synced: remote control bridge <bridgeSessionId> url <url>`, the `url` being that of the
+nearest `bridge_status` system line at or before it, else the file's first, else `-`, and it sets
+`records_sync`, so `sessions.jsonl` `synced` reads `yes` or `no` for this agent's sessions. The
+row rests on the `bridge_status` URL (`https://claude.ai/code/session_<id>`) naming the session on
+claude.ai while the bridge is up; whether claude.ai keeps the transcript after the detach was not
+determined. The registry's `bridgeSessionId` alone yields no sync row: the `bridge=` value of a
+`sessions/<pid>.json` row only says the process was under Remote Control when the collector ran
+([Remote Control](#remote-control)). The daemon handover is local and is a `session continued in:`
+row, not a sync row. The agent records no relay, and the parser sets neither `records_relay` nor
+`records_origin`: a cloud session could not be started from the CLI on the Windows round, and the
+files the bundle names for one (`.session_ingress_token`, `remote/`, `server-sessions.json`,
+`remote-settings.json`) were never written; the `remote_session_change` attachment, present in
+plain local sessions with nothing to link, is skipped. The source host is not a row: Claude Code
+records no GitHub account of its own ([Source-host integration](#source-host-integration));
+`githubRepoPaths` is not read.
 
 #### Scratch directory rows
 
-The `environment` attachment's `snapshot.scratchpadDirectory` becomes one `system` row per session,
-`scratch directory: <path>`, which fills the inventory's `scratch_directories`. On Windows the path
+The `environment` attachment's `snapshot.scratchpadDirectory` becomes a `system` row
+`scratch directory: <path> (session scratchpad, from the environment attachment)`, once per session
+and path, whose `project_path` is the scratchpad path, so `inventory.json` lists it under
+`scratch_directories`. On Windows the path
 is under the collected temp root `AppData/Local/Temp/claude/<slug>/<session id>/scratchpad`
 ([Scratch directories](#scratch-directories)); on Linux and macOS the temp root is outside the home
 and not collected ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)), so the row
@@ -1649,14 +1663,18 @@ daemon handover):
 {"type":"continued-in","continuedInSessionId":"33333333-4444-4555-8666-777777777777","sessionId":"22222222-3333-4444-8555-666666666666","timestamp":"2026-10-23T17:03:00.000Z"}
 ```
 
-They yield, in the forms of the coverage table: `session surface: claude-vscode` and then
-`session surface: claude-vscode -> cli` (line 3 carries another value); `scratch directory: ...`
-(line 1); the `user` row with `prompt trigger: promptSource=sdk turnOrigin=human` (line 2); the
-`tool_result` row and `permission decision: accept source=user_temporary reason=-` with the
-object's compact JSON (line 3); the `remote control: bridge session` row (line 4) and, with the
-`url` of line 5, the `session synced:` row; the `bridge_status` `system` row (line 5); and
-`session continued in:` naming `33333333-...` (line 6). The surface change is a fixture device,
-not something a real file was seen to do.
+They yield, in the forms of the coverage table: `session surface: claude-vscode` (line 1) and
+`session surface: claude-vscode -> cli` (line 3 carries another value);
+`scratch directory: /tmp/claude-1000/-srv-proj/22222222-.../scratchpad (session scratchpad, from the
+environment attachment)` (line 1); the `user` row and then
+`prompt trigger: promptSource=sdk turnOrigin=human` (line 2); the `tool_result` row and
+`permission decision: accept source=user_temporary reason=- {"decision":"accept","grantScope":"once","reasonCode":"other","source":"user_temporary"}`
+(line 3); `remote control: bridge session cse_0123456789abcdef lastSequenceNum=3` and
+`session synced: remote control bridge cse_0123456789abcdef url https://claude.ai/code/session_0123456789abcdef`
+(line 4; no `bridge_status` line precedes it, so the file's first, line 5, gives the url); the
+`bridge_status` `system` row (line 5); and
+`session continued in: 33333333-4444-4555-8666-777777777777` (line 6). The surface change is a
+fixture device, not something a real file was seen to do.
 
 #### Forked subagents
 
@@ -1716,5 +1734,7 @@ resolved.
   one-day period could not reach files of the same day); what triggered the daemon handover and
   what ended the daemon; whether a prompt sent through `claude agents` was answered, since no
   `assistant` line followed it; whether `claude mcp add` wrote `.claude.json` before the session
-  started; the meaning of the two-character `kind` of a worker's registry file; `defaultMode` for
+  started; whether claude.ai keeps a Remote Control session's transcript after the detach, which
+  the `session synced:` row assumes only for while the bridge is up; the meaning of the
+  two-character `kind` of a worker's registry file; `defaultMode` for
   a mode kept as the default, which no step chose.
