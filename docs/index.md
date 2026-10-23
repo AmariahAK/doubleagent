@@ -101,6 +101,13 @@ and exporting it for the collector, so real-install test material can be
 produced without installing agents on a workstation. See the
 [agent lab README](../lab/README.md).
 
+## Lab VMs
+
+The clean virtual machines that the real-install rounds start from: the
+toolchain their snapshots hold, the install commands that rebuild them on
+Windows, macOS and Ubuntu, what the host allows, and Docker's
+requirements in each. See [Lab VMs](development.md).
+
 ## Contributing
 
 The standards every change must keep, the process for adding an agent or
