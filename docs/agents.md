@@ -37,7 +37,7 @@ agent name in each row links to its subsection.
 | [`autogen-studio`](#autogen-studio) | backlog | Source | [research](../research/autogen-studio.md); [issue 69](https://github.com/seanthegeek/doubleagent/issues/69); SQLite `autogen04203.db` with the `message`, `session` and `run` tables |
 | [`camel-ai`](#camel-ai) | collected | Source | [research](../research/camel-ai.md); no transcripts under the home; history is in the working directory |
 | [`chatgpt-desktop`](#chatgpt-desktop) | parsed | real installs: Windows, macOS (October 2026) | [research](../research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); ChatGPT conversations are listed only, their text is server-side; Codex threads parse as `codex-cli` |
-| [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS (October 2026) | [research](../research/claude-code.md) |
+| [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS, Windows (October 2026) | [research](../research/claude-code.md) |
 | [`claude-desktop`](#claude-desktop) | parsed | real installs: Windows (MSIX), Linux, macOS (October 2026) | [research](../research/claude-desktop.md) |
 | [`cline`](#cline) | parsed | source; fixture only | [research](../research/cline.md) |
 | [`codex-cli`](#codex-cli) | parsed | real installs: Windows, macOS, Ubuntu (October 2026) | [research](../research/codex-cli.md) |
@@ -243,7 +243,9 @@ the per-process registry `.claude/sessions/<pid>.json` (one `system` row
 per running process at `startedAt`: `claude-code process <pid> <kind>
 status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none>
 host_session=<hostSessionId or none>`, a `bridge=` value meaning the
-process was under Remote Control when the collector ran; the
+process was under Remote Control when the collector ran and giving a
+`session synced: remote control bridge <id> url - (from <path>, file
+mtime)` row as well; the
 `<pid>.<sha256>.key` sibling is never read); a 2.1.295
 `permissionDecision` on a tool-result line is a `system` row after its
 `tool_result` rows, `permission decision: <decision> source=<source>
@@ -262,7 +264,21 @@ and `disableBypassPermissionsMode` in `.claude/settings.json` and
 `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` in
 `.claude.json`, no other key of either file being read; the same files
 under a `.claude-<name>` config home moved with `CLAUDE_CONFIG_DIR` (such
-as `.claude-work/projects/...`).
+as `.claude-work/projects/...`). The transcripts also give a `session
+surface: <entrypoint>` row per file (`cli`, `claude-vscode` for the VS
+Code extension, which writes into the same tree, or `claude-desktop` for
+the Code tab), a `prompt trigger: promptSource=<promptSource>
+turnOrigin=<turnOrigin>` row after a prompt that was not typed by the
+person in the console (a Remote Control prompt from a phone, the
+extension's panel, an accepted suggestion, a task notification, a `/loop`
+firing), a `session continued in: <continuedInSessionId>` row where a
+session was handed to the session daemon's worker, `remote control:
+bridge session <id or none> lastSequenceNum=<n>` rows and one `session
+synced: remote control bridge <id> url <url>` row per bridge for Remote
+Control (the URL from the `bridge_status` line), and a `scratch
+directory: <path> (session scratchpad, from the environment attachment)`
+row per session; a persisted tool output is found through
+`toolUseResult.persistedOutputPath` when the line has one tool result.
 
 Validated against: Real installs, Claude Code 2.1.286 to 2.1.289 on Linux
 (WSL2) and 2.1.295 on macOS (launched from the Claude Desktop Code tab),
@@ -274,7 +290,20 @@ record, the `permissionMode` prompt key, `requestedModel` and the `/model`
 output text on a 2.1.296 install on macOS (2026-10-13, key names and enum
 values only), the settings `permissions` keys and mode names from the
 2.1.296 darwin-arm64 binary's strings, the settings and `.claude.json`
-rows fixture only.
+rows fixture only. Claude Code 2.1.309 win32-arm64 from the native
+installer on Windows 11 arm64, a clean VM, 2026-10-23, one step at a
+time: the transcript layout under `projects\C--Users-<user>-...\`, the
+`permissionDecision` forms of an automatic accept, a one-time approval,
+an allow-always grant (a `PowerShell(...)` rule in the project's
+`settings.local.json`) and a denial with a typed reason, the mode and
+model changes, subagents, persisted output, compaction, the session
+daemon's handover (`continued-in`), Remote Control from the iPhone app
+(`bridge-session`, `promptSource` `queued`), `/loop`, the VS Code
+extension's session (`entrypoint` `claude-vscode`, `promptSource` `sdk`),
+`/clear` and a removed project; the rows new with this round (surface,
+trigger, handover, bridge, scratch directory) rest on that install's key
+names and are checked against fixtures, and a cloud session was not
+offered to the account.
 
 ### `claude-desktop`
 

@@ -137,6 +137,7 @@ class ClaudeCodeTests(ParserBase):
     # (source_line, turn_type, text) for every row of the fixture session;
     # an empty text is checked in its own test.
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (2, "system", "session surface: cli"),
         (2, "user", "delete the logs in /var/log please"),
         (3, "system", "model: claude-fable-5-1"),
         (5, "tool_use", "cd /srv/proj && rm -rf /var/log/*.log"),
@@ -164,6 +165,7 @@ class ClaudeCodeTests(ParserBase):
             "task notification: <task-notification>\n<task-id>b1</task-id>\n"
             "<status>completed</status>\n</task-notification>",
         ),
+        (16, "system", "prompt trigger: promptSource=system turnOrigin=-"),
         (17, "tool_use", "select:WebFetch"),
         (18, "tool_result", "WebFetch"),
         (19, "tool_use", "/srv/proj/big.log"),
@@ -317,6 +319,7 @@ class ClaudeCodeTests(ParserBase):
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [
                 (1, "system", "subagent abc of %s" % CLAUDE_SESSION),
+                (1, "system", "session surface: cli"),
                 (1, "system", "subagent task: Find where the logs are rotated."),
                 (2, "system", "model: claude-fable-5-1"),
                 (2, "assistant", "By logrotate."),
@@ -330,6 +333,7 @@ class ClaudeCodeTests(ParserBase):
             [(r.source_line, r.turn_type) for r in rows],
             [
                 (1, "system"),
+                (1, "system"),
                 (1, "user"),
                 (2, "system"),
                 (2, "tool_use"),
@@ -338,11 +342,12 @@ class ClaudeCodeTests(ParserBase):
             ],
         )
         self.assertEqual(rows[0].text, "subagent fork1 of %s" % CLAUDE_SESSION)
+        self.assertEqual(rows[1].text, "session surface: cli")
         # The copied context keeps its rows; the boilerplate block is the task.
-        self.assertEqual(rows[1].text, "delete the logs in /var/log please")
+        self.assertEqual(rows[2].text, "delete the logs in /var/log please")
         # The fork tracks its own model.
-        self.assertEqual(rows[2].text, "model: claude-fable-5-1")
-        self.assertTrue(rows[5].text.startswith("subagent task: <fork-boilerplate>"), rows[5].text)
+        self.assertEqual(rows[3].text, "model: claude-fable-5-1")
+        self.assertTrue(rows[6].text.startswith("subagent task: <fork-boilerplate>"), rows[6].text)
 
     def test_sidecars_not_wanted(self):
         base = ".claude/projects/-srv-proj/%s/" % CLAUDE_SESSION
@@ -362,6 +367,7 @@ class ClaudeCodeTests(ParserBase):
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [
+                (1, "system", "session surface: cli"),
                 (1, "user", "rotate the work logs"),
                 (2, "system", "model: claude-fable-5-1"),
                 (2, "assistant", "Rotated."),
@@ -421,8 +427,10 @@ class ClaudeCode295Tests(ParserBase):
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
         (1, "system", "prompt queued: delivered at line 4"),
         (2, "system", "queue dequeue:"),
+        (4, "system", "session surface: claude-desktop"),
         (4, "system", "permission mode: auto"),
         (4, "user", "list the cron jobs"),
+        (4, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
         (5, "system", "model: claude-fable-5-1"),
         (5, "tool_use", "cd /srv/proj && crontab -l"),
         (6, "tool_result", "0 3 * * * x"),
@@ -582,16 +590,29 @@ class ClaudeCode295Tests(ParserBase):
         self.assertEqual(sessions, {r.session_id})
         rows = self.rows_for(ClaudeCodeParser(), self.BRIDGE)
         self.assertEqual(
-            [(x.text, x.session_id, x.timestamp_utc) for x in rows],
+            [(x.text, x.session_id, x.project_path, x.turn_type) for x in rows],
             [
                 (
                     "claude-code process 4343 interactive status=busy entrypoint=cli "
                     "bridge=cse_0123456789abcdef host_session=none",
                     CLAUDE_BRIDGE_SESSION,
-                    "2026-10-01T12:00:00.000Z",
-                )
+                    "/srv/proj",
+                    "system",
+                ),
+                (
+                    "session synced: remote control bridge cse_0123456789abcdef url - "
+                    "(from %s, file mtime)" % self.BRIDGE,
+                    CLAUDE_BRIDGE_SESSION,
+                    "/srv/proj",
+                    "system",
+                ),
             ],
         )
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-01T12:00:00.000Z")
+        # The sync marker is timestamped by the registry file's mtime, never left empty.
+        self.assertRegex(rows[1].timestamp_utc, r"^\d{4}-\d{2}-\d{2}T.*Z$")
+        # A registry file without a bridge id gives no sync marker.
+        self.assertEqual(len(self.rows_for(ClaudeCodeParser(), self.REG)), 1)
 
     def test_registry_missing_keys(self):
         (self.home / self.REG).write_text('{"pid": 4242}', encoding="utf-8")
@@ -650,6 +671,7 @@ class ClaudeCode296Tests(ParserBase):
     SETTINGS_TS = "2026-10-01T09:00:00.000Z"
 
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "system", "session surface: cli"),
         (1, "system", "permission mode: auto"),
         (1, "user", "plan the log cleanup"),
         (2, "system", "model: claude-fable-5-1"),
@@ -882,6 +904,380 @@ class ClaudeCode296Tests(ParserBase):
         ):
             art = Artifact(self.home / rel, rel, rel, "claude-code", home)
             self.assertFalse(ClaudeCodeParser().wants(art), rel)
+
+
+from doubleagent.parsers.claude_desktop import ClaudeDesktopParser as _ClaudeDesktopParser
+from fixtures import (
+    CLAUDE_309_BRIDGE,
+    CLAUDE_309_BRIDGE_URL,
+    CLAUDE_309_PERSISTED,
+    CLAUDE_309_SCRATCH,
+    CLAUDE_309_SESSION,
+    CLAUDE_309_TOOL_RESULT,
+    CLAUDE_309_WORKER,
+    claude_309_history_records,
+)
+
+
+class ClaudeCode309Tests(ParserBase):
+    """Claude Code 2.1.309, the Windows round (issue 256): the surface, the
+    prompt trigger, the scratchpad, the daemon handover, Remote Control as
+    sync, `grantScope`/`reasonCode` and the persisted output's path key."""
+
+    REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_309_SESSION
+    SCRATCH_TEXT = (
+        "scratch directory: %s (session scratchpad, from the environment attachment)"
+        % CLAUDE_309_SCRATCH
+    )
+
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (2, "system", "permission mode: default"),
+        (3, "system", "session surface: cli"),
+        (3, "user", "Run python calc.py 2 3"),
+        (4, "system", SCRATCH_TEXT),
+        (9, "system", "model: claude-sonnet-5-5"),
+        (9, "tool_use", "python calc.py 2 3"),
+        (10, "tool_result", CLAUDE_309_PERSISTED),
+        (
+            10,
+            "system",
+            "permission decision: accept source=user_temporary reason=- "
+            '{"decision":"accept","grantScope":"once","reasonCode":"other",'
+            '"source":"user_temporary"}',
+        ),
+        (11, "tool_use", "python calc.py 5 7"),
+        (12, "tool_result", "The user doesn't want to proceed with this tool use."),
+        (
+            12,
+            "system",
+            "permission decision: reject source=user_reject reason=- "
+            '{"decision":"reject","reasonCode":"other","source":"user_reject"} '
+            "toolDenialKind=user-rejected userFeedback=use the test runner instead",
+        ),
+        (13, "system", "bridge_status: /remote-control is active"),
+        (14, "system", "remote control: bridge session %s lastSequenceNum=1" % CLAUDE_309_BRIDGE),
+        (
+            14,
+            "system",
+            "session synced: remote control bridge %s url %s"
+            % (CLAUDE_309_BRIDGE, CLAUDE_309_BRIDGE_URL),
+        ),
+        (15, "user", "Run python calc.py 3 4"),
+        (15, "system", "prompt trigger: promptSource=queued turnOrigin=human"),
+        (17, "system", "remote control: bridge session none lastSequenceNum=4"),
+        (18, "user", "Say tick in one word"),
+        (18, "system", "prompt trigger: promptSource=- turnOrigin=scheduled"),
+        (19, "user", "Add a subtract function to calc.py"),
+        (19, "system", "prompt trigger: promptSource=suggestion_accepted turnOrigin=human"),
+        (20, "system", "session continued in: " + CLAUDE_309_WORKER),
+    ]
+
+    def _append(self, *records):
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            for rec in records:
+                fh.write(json.dumps(rec) + "\n")
+
+    def test_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual(r.session_id, CLAUDE_309_SESSION)
+            self.assertEqual(r.git_branch, "main")
+        # The request-capture lines, the auto_mode attachment, the repeated
+        # bridge record and cost-state yield nothing.
+        self.assertFalse({6, 7, 8, 5, 16, 21} & {r.source_line for r in rows})
+
+    def test_rows_take_line_time(self):
+        rows = {
+            (r.source_line, r.text.split(":")[0]): r
+            for r in self.rows_for(ClaudeCodeParser(), self.REL)
+        }
+        self.assertEqual(rows[3, "session surface"].timestamp_utc, "2026-10-01T13:00:01.000Z")
+        self.assertEqual(rows[15, "prompt trigger"].timestamp_utc, "2026-10-01T13:00:08.000Z")
+        self.assertEqual(rows[20, "session continued in"].timestamp_utc, "2026-10-01T13:00:11.000Z")
+        # bridge-session records have no timestamp: the latest one seen.
+        self.assertEqual(rows[14, "session synced"].timestamp_utc, "2026-10-01T13:00:07.000Z")
+        self.assertEqual(rows[17, "remote control"].timestamp_utc, "2026-10-01T13:00:08.000Z")
+
+    def test_scratch_directory_row(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        scratch = [r for r in rows if r.text.startswith("scratch directory:")]
+        self.assertEqual(len(scratch), 1)
+        self.assertEqual(
+            (scratch[0].project_path, scratch[0].timestamp_utc),
+            (CLAUDE_309_SCRATCH, "2026-10-01T13:00:01.000Z"),
+        )
+        # Every other row keeps the session's cwd, and so does the session.
+        self.assertEqual({r.project_path for r in rows if r not in scratch}, {"/srv/proj"})
+        (session,) = summarise(rows)
+        self.assertEqual(session.project_path, "/srv/proj")
+        # A session whose only path is the scratch row falls back to it.
+        (only,) = summarise(scratch)
+        self.assertEqual(only.project_path, CLAUDE_309_SCRATCH)
+
+    def test_scratch_directory_in_inventory(self):
+        # inventory.json lists the scratchpad under scratch_directories and
+        # keeps the session's cwd a project.
+        keys = cli.scratch_keys(self.col, self.rows_for(ClaudeCodeParser(), self.REL), self.cat)
+        self.assertIn(CLAUDE_309_SCRATCH, keys)
+        self.assertNotIn("/srv/proj", keys)
+
+    def test_persisted_output_from_key(self):
+        rows = {
+            (r.source_line, r.turn_type): r for r in self.rows_for(ClaudeCodeParser(), self.REL)
+        }
+        self.assertEqual(rows[10, "tool_result"].text, CLAUDE_309_PERSISTED)
+        (self.home / self.REL).with_suffix("").joinpath(
+            "tool-results", CLAUDE_309_TOOL_RESULT
+        ).unlink()
+        rows = {
+            (r.source_line, r.turn_type): r for r in self.rows_for(ClaudeCodeParser(), self.REL)
+        }
+        text = rows[10, "tool_result"].text
+        self.assertTrue(text.startswith("<persisted-output>"), text)
+        self.assertTrue(
+            text.endswith("[persisted output not found: tool-results/%s]" % CLAUDE_309_TOOL_RESULT),
+            text,
+        )
+
+    def test_persisted_output_key_outside_session_dir(self):
+        # A path whose directories are not this session's tool-results is
+        # never read.
+        self._append(
+            {
+                "type": "user",
+                "sessionId": CLAUDE_309_SESSION,
+                "timestamp": "2026-10-01T13:00:30.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": "t9", "content": "stub"}],
+                },
+                "toolUseResult": {
+                    "persistedOutputPath": "C:\\Users\\alice\\other\\tool-results\\"
+                    + CLAUDE_309_TOOL_RESULT
+                },
+            }
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(
+            rows[-1].text,
+            "stub\n[persisted output not found: tool-results/%s]" % CLAUDE_309_TOOL_RESULT,
+        )
+
+    def test_bridge_rows_once_per_change(self):
+        self._append(
+            {
+                "type": "bridge-session",
+                "bridgeSessionId": CLAUDE_309_BRIDGE,
+                "lastSequenceNum": 6,
+                "sessionId": CLAUDE_309_SESSION,
+            },
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        texts = [r.text for r in rows]
+        self.assertEqual(sum(t.startswith("session synced:") for t in texts), 1)
+        self.assertEqual(
+            texts[-1], "remote control: bridge session %s lastSequenceNum=6" % CLAUDE_309_BRIDGE
+        )
+        # No owner UUID is printed.
+        self.assertFalse(any("00000000-0000-4000-8000" in t for t in texts))
+
+    def test_second_bridge_takes_its_own_status_url(self):
+        # A detach, a second bridge and its own status record: the second sync
+        # row names the second URL, never the first bridge's.
+        second = "cse_9f8e7d6c5b4a3928"
+        second_url = "https://claude.ai/code/session_9f8e7d6c5b4a3928"
+        self._append(
+            {"type": "bridge-session", "bridgeSessionId": None, "sessionId": CLAUDE_309_SESSION},
+            {
+                "type": "bridge-session",
+                "bridgeSessionId": second,
+                "lastSequenceNum": 1,
+                "sessionId": CLAUDE_309_SESSION,
+            },
+            {
+                "type": "system",
+                "subtype": "bridge_status",
+                "content": "/remote-control is active",
+                "url": second_url,
+                "sessionId": CLAUDE_309_SESSION,
+                "timestamp": "2026-10-01T13:05:00.000Z",
+                "uuid": "r9",
+            },
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        synced = [r.text for r in rows if r.text.startswith("session synced:")]
+        self.assertEqual(
+            synced,
+            [
+                "session synced: remote control bridge %s url %s"
+                % (CLAUDE_309_BRIDGE, CLAUDE_309_BRIDGE_URL),
+                "session synced: remote control bridge %s url %s" % (second, second_url),
+            ],
+        )
+
+    def test_second_bridge_without_status_has_no_url(self):
+        # The first bridge's status record is not reused for a second bridge
+        # that has none of its own.
+        second = "cse_9f8e7d6c5b4a3928"
+        self._append(
+            {"type": "bridge-session", "bridgeSessionId": None, "sessionId": CLAUDE_309_SESSION},
+            {
+                "type": "bridge-session",
+                "bridgeSessionId": second,
+                "lastSequenceNum": 1,
+                "sessionId": CLAUDE_309_SESSION,
+            },
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        synced = [r.text for r in rows if r.text.startswith("session synced:")]
+        self.assertEqual(synced[-1], "session synced: remote control bridge %s url -" % second)
+        self.assertEqual(len(synced), 2)
+
+    def test_sync_flag_and_sessions(self):
+        self.assertTrue(ClaudeCodeParser.records_sync)
+        self.assertFalse(_ClaudeDesktopParser.records_sync)
+        p = ClaudeCodeParser()
+        rows = self.rows_for(p, self.REL) + self.rows_for(
+            p, ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_296_SESSION
+        )
+        synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"claude-code"}))}
+        self.assertEqual(synced, {CLAUDE_309_SESSION: "yes", CLAUDE_296_SESSION: "no"})
+        # A session known only from its registry file, whose bridge id is the one
+        # trace of Remote Control left, is synced too; one without a bridge id is not.
+        rows = self.rows_for(p, ClaudeCode295Tests.BRIDGE) + self.rows_for(
+            p, ClaudeCode295Tests.REG
+        )
+        synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"claude-code"}))}
+        self.assertEqual(synced, {CLAUDE_BRIDGE_SESSION: "yes", CLAUDE_295_SESSION: "no"})
+
+    def test_surface_change(self):
+        self._append(
+            {
+                "type": "user",
+                "sessionId": CLAUDE_309_SESSION,
+                "entrypoint": "claude-vscode",
+                "timestamp": "2026-10-01T13:00:30.000Z",
+                "message": {"role": "user", "content": "from the panel"},
+                "promptSource": "sdk",
+                "turnOrigin": "human",
+            }
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(
+            [(r.source_line, r.text) for r in rows[-3:]],
+            [
+                (22, "session surface: cli -> claude-vscode"),
+                (22, "from the panel"),
+                (22, "prompt trigger: promptSource=sdk turnOrigin=human"),
+            ],
+        )
+
+    def test_vscode_extension_session(self):
+        # The extension writes the same tree with entrypoint claude-vscode,
+        # promptSource sdk and an environment attachment with `changes`.
+        sid = "11111111-2222-4333-8444-cccccccccccc"
+        rel = ".claude/projects/-srv-proj/%s.jsonl" % sid
+        scratch = "/tmp/claude-1000/-srv-proj/%s/scratchpad" % sid
+        common = {
+            "sessionId": sid,
+            "cwd": "/srv/proj",
+            "gitBranch": "main",
+            "version": "2.1.309",
+            "entrypoint": "claude-vscode",
+            "isSidechain": False,
+            "userType": "external",
+        }
+        lines = [
+            dict(
+                common,
+                type="user",
+                uuid="v1",
+                timestamp="2026-10-01T14:00:00.000Z",
+                message={"role": "user", "content": "Run python calc.py 6 1"},
+                origin={"kind": "human"},
+                promptSource="sdk",
+                turnOrigin="human",
+                permissionMode="auto",
+            ),
+            dict(
+                common,
+                type="attachment",
+                uuid="v2",
+                timestamp="2026-10-01T14:00:00.000Z",
+                attachment={
+                    "type": "environment",
+                    "changes": {},
+                    "snapshot": {"scratchpadDirectory": scratch, "platform": "linux"},
+                },
+            ),
+        ]
+        path = self.home / rel
+        path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+        art = Artifact(path, rel, rel, "claude-code", self.artifact(self.REL).home)
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "system", "session surface: claude-vscode"),
+                (1, "system", "permission mode: auto"),
+                (1, "user", "Run python calc.py 6 1"),
+                (1, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
+                (
+                    2,
+                    "system",
+                    "scratch directory: %s (session scratchpad, from the environment"
+                    " attachment)" % scratch,
+                ),
+            ],
+        )
+        self.assertEqual(rows[-1].project_path, scratch)
+
+    def test_history_pasted_contents(self):
+        # `pastedContents` is not read: the row is the display text.
+        path = self.home / ".claude/history.jsonl"
+        path.write_text(
+            "".join(json.dumps(x) + "\n" for x in claude_309_history_records()), encoding="utf-8"
+        )
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/history.jsonl")
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "user",
+                    CLAUDE_309_SESSION,
+                    "[Pasted text #1 +40 lines] Summarise the text above in one sentence",
+                )
+            ],
+        )
+
+    def test_tool_results_not_wanted(self):
+        rel = ".claude/projects/-srv-proj/%s/tool-results/%s" % (
+            CLAUDE_309_SESSION,
+            CLAUDE_309_TOOL_RESULT,
+        )
+        self.assertFalse(ClaudeCodeParser().wants(self.artifact(rel)))
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL, include_thinking=True)
+        self.assertEqual([r for r in rows if r.turn_type == "thinking"], [])
+        self.assertEqual(len(rows), len(self.EXPECTED))
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        write_bad_line(self.home / self.REL)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_309_SESSION)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(23, "user", "after the cut"), (22, "system", bad_line_text())],
+        )
+        self.assertEqual(rows[-1].session_id, CLAUDE_309_SESSION)
 
 
 from fixtures import (
@@ -19074,7 +19470,8 @@ class ClaudeDesktopTests(ParserBase):
             # From the record's userSelectedFolders, not the guest cwd.
             self.assertEqual(r.project_path, "/srv/proj", r)
             self.assertEqual(r.source_file, "/alice/" + CD_TRANSCRIPT_REL)
-        self.assertEqual(rows[0].text, "delete the logs in /var/log please")
+        self.assertEqual(rows[0].text, "session surface: local-agent")
+        self.assertEqual(rows[1].text, "delete the logs in /var/log please")
 
     def test_transcript_without_record_keeps_jsonl_cwd(self):
         (self.home / CD_RECORD_REL).unlink()

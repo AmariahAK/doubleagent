@@ -556,7 +556,7 @@ the test collection of the [`detect --json`](#detect---json) example:
         }
       },
       "shared_files": 1,
-      "synced": "",
+      "synced": "no",
       "relayed": "",
       "origin": "",
       "recovered": "no",
@@ -603,7 +603,7 @@ the test collection of the [`detect --json`](#detect---json) example:
         }
       }
     },
-    "synced": "",
+    "synced": "no",
     "relayed": "",
     "origin": "",
     "recovered": "no"
@@ -633,10 +633,13 @@ because none of the three `history.jsonl` prompts is one a transcript
 records, so every history line is kept, `collected_only` is `[]`
 because no agent of the input is one with nothing to parse, and every
 `synced_sessions`, `relayed_sessions` and `remote_sessions` is 0
-because the parsers of the agents with sessions here record no sync,
-relay or origin state (the `cursor` parser records origin, but `cursor`
-has no session), so every project's `synced`, `relayed` and `origin` is
-`""`.
+because no session here carries a `session synced:`, `session relayed:`
+or `session origin:` row. The `claude-code` parser records sync state
+since 0.21.0, so the `synced` of `/srv/proj` and of `outside_projects`,
+whose only sessions are its, is `no`; the other parsers with sessions
+here record no sync, relay or origin state (the `cursor` parser records
+origin, but `cursor` has no session), so every other project's `synced`
+and every `relayed` and `origin` is `""`.
 Every `recovered_sessions` is 0 because the session under `/srv/proj`
 and the one outside projects come from their transcripts alone (the
 history lines that survive carry no session), so the `recovered` of
@@ -651,7 +654,8 @@ lies under a home or project catalog entry, and none of its agents wrote
 a `scratch directory:` row. Each project's `remotes`, `head` and
 `recorded_remotes` are filled in by the 0.21.0 rules the same way: the
 collection holds no `.git/` files, and none of its parsers writes a `git
-remote:` row. Its keys, in order:
+remote:` row; so are the two `no` marks of `synced`, by the 0.21.0 rule
+that the `claude-code` parser records sync state. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -764,7 +768,11 @@ scratch directory when any of these holds:
    worktree root `/tmp/conversation-worktrees`, and the `agent-zero`
    parser for an editor (ACP) chat's container working directory; each
    paragraph under [Row order and system rows](#row-order-and-system-rows)
-   gives the row's text.
+   gives the row's text. Since 0.21.0 the `claude-code` parser writes
+   `scratch directory: <path> (session scratchpad, from the environment
+   attachment)` for the session scratchpad a transcript's `environment`
+   attachment names (`%LOCALAPPDATA%\Temp\claude\<slug>\<session>\scratchpad`
+   on Windows).
 2. The catalog says so: the path is in or under a directory that a home
    entry of the bundled catalog names, in one of the input's homes. The
    path relative to the home is matched segment by segment against each
@@ -1004,7 +1012,31 @@ the record's `lastActivityAt` (else `createdAt`), which the text names as
 `(as of <field>)`. A per-call decision stays `permission decision:`
 (Claude Code) or `permission request:`, `permission response:`,
 `permission auto-approved:` and `permission auto-denied:` (the Claude
-Desktop audit log).
+Desktop audit log). On Claude Code 2.1.309 the decision object also has
+`grantScope` (`once` on a one-time approval) and `reasonCode` (`other`,
+`unknown`, `subcommandResults`), which the row carries in the compact
+JSON after `reason=`, as `permission decision: accept
+source=user_temporary reason=-
+{"decision":"accept","grantScope":"once","reasonCode":"other","source":"user_temporary"}`.
+
+Since 0.21.0 the `claude-code` parser (and `claude-desktop` for the
+transcripts it reads with the same reader) also writes these `system`
+rows from a session transcript:
+
+| Row text | From | When |
+| --- | --- | --- |
+| `session surface: <entrypoint>`, then `session surface: <old> -> <new>` | the `entrypoint` key of the file's records: `cli` (the terminal), `claude-vscode` (the VS Code extension), `claude-desktop` (the desktop app's Code tab) | at the first record of each transcript file that carries it, and at each change |
+| `prompt trigger: promptSource=<promptSource> turnOrigin=<turnOrigin>` | a prompt's `promptSource` and `turnOrigin`, `-` for a missing key | after a `user` record's rows when `promptSource` is set and not `typed` or `turnOrigin` is set and not `human`: `queued` is a prompt sent from a Remote Control client such as the phone, `sdk` one from the VS Code extension, `suggestion_accepted` a prompt Claude suggested, `turnOrigin=scheduled` a `/loop` firing, `task_notification` a background task's completion |
+| `scratch directory: <path> (session scratchpad, from the environment attachment)` | `snapshot.scratchpadDirectory` of an `environment` attachment | once per session and path, with `project_path` the scratchpad, so inventory.json lists it under `scratch_directories` |
+| `session continued in: <continuedInSessionId>` | a `continued-in` record | when the session daemon hands a console session to a worker session, whose own file holds the later turns |
+| `remote control: bridge session <bridgeSessionId or none> lastSequenceNum=<n>` | a `bridge-session` record (Remote Control) | when the bridge id or sequence number changes; `none` is the detach |
+| `session synced: remote control bridge <bridgeSessionId> url <url>` | the first `bridge-session` record of a session that names a bridge id, and the `url` of the `bridge_status` system record that belongs to that bridge (among the status records between the previous and the next `bridge-session` record of another id, the first at or after it, else the nearest before, else `-`); also a `.claude/sessions/<pid>.json` registry file that names a bridge id, as `... url - (from <path>, file mtime)` at the file's modification time | once per session and bridge id: the bridge puts the session on claude.ai, so `sessions.jsonl` `synced` is `yes` for it and `no` for a `claude-code` session without one |
+
+Each takes its record's timestamp, or the latest one seen in the file for
+a record with none (`bridge-session`). The owner account and organization
+UUIDs of a `bridge-session` record are not printed. A `/clear` is not a
+deletion row: it starts a new transcript file whose `local_command:` row
+records it, and leaves the old file as it was.
 
 A remote URL an agent recorded for the repository it worked in is a
 `system` row too, `git remote: <url>`, with the URL exactly as the agent
@@ -2565,7 +2597,7 @@ no timestamp come first. Its fields, in order:
 | `user` | string | The `user` of the session's timeline records. |
 | `agent` | string | The `agent` of the session's timeline records. |
 | `session_id` | string | The `session_id` of the session's timeline records, never empty. |
-| `project_path` | string | The first non-empty `project_path` among the session's records in timeline order, so a Windows path is in the canonical form described under [`timeline.jsonl`](#timelinejsonl); `""` when none has one. `inventory.json` counts the session under this path. |
+| `project_path` | string | The first non-empty `project_path` among the session's records in timeline order, so a Windows path is in the canonical form described under [`timeline.jsonl`](#timelinejsonl); `""` when none has one. A `scratch directory:` row, which names the agent's own directory rather than the session's project, counts only when no other record has a path (since 0.21.0). `inventory.json` counts the session under this path. |
 | `first_timestamp_utc` | string | The earliest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
 | `last_timestamp_utc` | string | The latest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
 | `models` | array of strings | Each distinct non-empty `model` of the session's records, in order of first use in the timeline; `[]` when none was recorded. |
@@ -2573,7 +2605,7 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `cursor`, `kilo-code`, `letta`, `little-coder`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `claude-code` (since 0.21.0), `cline`, `codex-cli`, `copilot-cli`, `cursor`, `kilo-code`, `letta`, `little-coder`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 | `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers, and since analyzer 0.20.1 by the `crush`, `hermes`, `letta`, `little-coder`, `nanobot` and `openclaw` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). The `little-coder` rows in both fields come from the v0.0.x `.little-coder/config.json` and name no session, so every little-coder session reads `no` in both. Since analyzer 0.15.0. |
 | `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account; since analyzer 0.20.0 also by the `cursor` parser, for a conversation whose header names an agent location other than `local`, and since analyzer 0.20.1 for a Cursor cloud agent, `session origin: remote cursor cloud agent`, by the `cline` parser, for a Cline Cloud session, and by the `agent-zero` parser, for the chat the A0 CLI connector last used on an Agent Zero instance); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote `vscode`, `chatgpt-desktop` or `cursor` session is also `synced` `yes`, since the vendor holds its copy; since analyzer 0.20.1 every other Cursor session's `synced` is `no`. Since analyzer 0.15.0. |
 | `recovered` | string | Whether the session was rebuilt from secondary sources (see [Secondary sources](#secondary-sources)): `yes` when every one of its records in `timeline.jsonl` has `recovered` `yes`, so its primary transcript is gone and only secondary sources hold it; `partial` when some do, so the primary was cut or rewound and a secondary source kept turns it lost; `no` when none does and the agent's parser reads at least one secondary source; `""` when the agent's parser reads no secondary source, so nothing is known. Computed after the filters, over the session's event records only (`system` rows left out), so a secondary source's header, record or `parser:` row never makes a complete session `partial`, and a session with no event record reads `no` or `""`. Because deduplication matches on text, `partial` also results when a secondary source records an event in another form than the primary store does (an index that compresses a tool call into one line), so it marks a session to compare against its secondary sources, not proof of a cut; and a Letta session on the server backend, whose local transcript mirrors the server's store of record, reads `yes` or `partial` by design. Since analyzer 0.15.0. |
