@@ -1735,7 +1735,8 @@ give `inline edit command history: <N> commands, newest first (from
 <source>, no times)` followed by one `user` row per command, newest
 first, with an empty `timestamp_utc`.
 
-The `pearai` parser writes per-call decisions on the agent surface, from
+The `pearai` parser writes per-call decisions on the agent surface (the
+Roo Code-based agent pane, as opposed to the chat), from
 the Roo Code 3.15.3 result texts of `api_conversation_history.json`: a
 tool result that starts `The user denied this operation.` is followed by
 `permission decision: denied`, one that starts `The user denied this

@@ -89,8 +89,9 @@ tools/check_research_links.py  verifies every citation link in the research docu
 tools/check_research_structure.py  verifies every research document follows the
                                outline; with --before, lists facts a rewrite dropped
 tools/check_doc_links.py       verifies every relative link and heading fragment in the
-                               Markdown documents and that section and external
-                               references are links
+                               Markdown documents, that section and external
+                               references are links, and that a reader page
+                               introduces this file's terms of art before using them
 mkdocs/mkdocs.yml              the documentation site: MkDocs with the Material theme,
                                built from the documents where they are; its nav: tree
 mkdocs/hooks.py                site build hooks: GitHub heading ids, code spans with
@@ -1536,7 +1537,17 @@ the start of this section).
   otherwise the first sentence that uses it. Before committing a
   document, list its capitalised and letter-digit short tokens and check
   that each is a code identifier the surrounding sentence explains or a
-  term glossed earlier in the file.
+  term glossed earlier in the file. The same holds for the words this
+  file defines and uses as terms of art: cell, round, surface, Observed
+  bullet, listing diff, secondary source and nested entry. On any other
+  page they are ordinary English to the reader, so the page introduces
+  the term before relying on it, with a heading that holds it, a first
+  use that links where it is defined, or a first use followed by a
+  parenthesised gloss, or it says the thing in plain words; "covers the
+  macOS cells" on a page that never set up the surfaces-by-platforms
+  matrix became "covers macOS". `tools/check_doc_links.py` fails on a
+  term used without one of those, on every page but this one,
+  `CLAUDE.md` and the research documents.
 - Every reference from one project document to another is a Markdown
   link, never a bare path or code span: a file is written
   ``[`collectors/docs/coverage.md`](collectors/docs/coverage.md)`` with
@@ -1584,9 +1595,10 @@ the start of this section).
   link whose file or heading does not exist, on a `section <n>` (the
   research sections are named, not numbered), on an `issue <n>`, `pull request <n>`, `PR <n>` or `#<n>`
   that is not link text, on a URL or scheme-less host path
-  (`github.com/...`) outside a link target, and on a bare commit hash
-  after `at `, `commit ` or `@`; run it before pushing a documentation
-  change.
+  (`github.com/...`) outside a link target, on a bare commit hash
+  after `at `, `commit ` or `@`, and on a term of art used before the
+  page introduces it (the term rule above); run it before pushing a
+  documentation change.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
   `pyproject.toml` reads the version from it. Bump once per release: if

@@ -40,7 +40,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `git remote: <url>` `system` rows, once per session per URL at the time
   of the record that names it: the `codex-cli` and `open-interpreter`
   parsers read the rollout's `session_meta` `git.repository_url` and the
-  `state_5.sqlite` `threads.git_origin_url` (a secondary source, so the
+  `state_5.sqlite` `threads.git_origin_url` (a
+  [secondary source](docs/output.md#secondary-sources), so the
   timeline keeps one of the two); the `zed` parser reads the thread
   snapshot's `git_state.remote_url`; the `openclaw` parser reads the
   `projects` table's `origin_url` of `state/openclaw.sqlite`, with the
@@ -52,7 +53,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Source-derived rows for the open-source agents, from the 2026-10-19
   review's issues; each agent's research document marks them
-  source-derived until its real-install round. The lines below list them
+  source-derived until its
+  [real-install round](../AGENTS.md#real-install-rounds). The lines below list them
   per agent.
 - The `agent-zero` parser writes `permission decision:` rows for tools a
   policy blocked, provider MCP approvals denied automatically and
@@ -222,8 +224,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   secondary source, and writes a `scratch directory:` row for a
   conversation in the Agent Server's default worktree root,
   `/tmp/conversation-worktrees` ([#205]).
-- The `pearai` parser writes `permission decision:` rows for the
-  agent surface's denial and approval texts, one row per `taskHistory`
+- The `pearai` parser writes `permission decision:` rows for the denial
+  and approval texts of the agent surface (the Roo Code-based agent pane,
+  as opposed to the chat), one row per `taskHistory`
   entry and per standing auto-approval setting in the editor's
   `state.vscdb`, and one `tokens generated:` row per model request from
   `dev_data/tokens_generated.jsonl` ([#193]).

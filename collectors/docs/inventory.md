@@ -17,8 +17,9 @@ ignored` line goes to stderr, unless `-q` is given (PowerShell:
 
 The walk is the collection walk with the copy step removed. Homes are
 enumerated as for a collection and honour `-u` and `-r`. Every `CATALOG`
-entry is expanded against every home, nested entries claim their subtree
-from the enclosing entry, and the `EXCLUDES` patterns prune their subtrees
+entry is expanded against every home,
+[nested entries](coverage.md#nested-entries) claim their subtree from the
+enclosing entry, and the `EXCLUDES` patterns prune their subtrees
 (not with `--full`), so the counts cover what a collection would take.
 Regular files are counted with their `lstat` size and modification time
 (PowerShell: `Length` and `LastWriteTimeUtc`); symlinks and reparse points

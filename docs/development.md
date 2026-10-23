@@ -11,8 +11,9 @@ VM can only show what it does without tools. The snapshot therefore holds
 what a developer's machine has: the languages and their package managers,
 the compilers, version control, an editor and, where the host allows, a
 container engine. With them the agent can build, test, install, clone,
-commit and run whatever it is asked to, and the round's listing diffs and
-the collector record that activity for analysis: the packages it
+commit and run whatever it is asked to, and the listings the round takes
+after each step, with the collector's archive, record that activity for
+analysis: the packages it
 installed, the repositories it cloned, the commits it made, the tools it
 ran and the files each of those left behind.
 

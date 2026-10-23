@@ -32,7 +32,16 @@ every tracked Markdown file and every untracked one git does not ignore:
   commit, `[<short hash>](https://github.com/<owner>/<repo>/commit/<sha>)`.
   A purely decimal word is not taken for a hash, so the bundle citation form
   `<tool> <version> <platform> @<byte offset>` passes, and a 64-character
-  sha256 of an artifact is longer than any match.
+  sha256 of an artifact is longer than any match;
+- in every document but AGENTS.md, CLAUDE.md and the research documents, a
+  term AGENTS.md defines and uses as a term of art (`TERMS`: cell, round,
+  surface, Observed bullet, listing diff, secondary source, nested entry) is
+  introduced before it is relied on: the page has a heading that holds the
+  term, or the term's first use is link text (pointing at where it is
+  defined) or is followed by a parenthesised gloss. A plain sense listed in
+  `TERM_PLAIN` (a spreadsheet's or a table's cell) is not a use. The term
+  rule under "Conventions" in AGENTS.md is the reason: a reader who has only
+  the page must not need AGENTS.md to decode a sentence.
 
 Fenced code blocks and inline code spans are ignored before matching. The
 documentation site (mkdocs/hooks.py) gives every heading the anchor
@@ -83,6 +92,28 @@ HOST_PATH = re.compile(
 BARE_COMMIT = re.compile(r"(?:\bat |\bcommit |@)([0-9a-f]{7,40})(?![0-9A-Za-z_])")
 AUTOLINK = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>")
 LINK_IN_HEADING = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
+# Terms AGENTS.md defines and uses as terms of art (a cell is one surface on
+# one platform of a real-install round, and so on). A page written for a
+# reader may rely on one only once it has introduced it: a heading that holds
+# the term, a first use that is link text pointing at the definition, or a
+# first use followed by a parenthesised gloss. Each entry is the regex of the
+# term's forms and the name the message prints.
+TERMS: tuple[tuple[str, str], ...] = (
+    (r"cells?", "cell"),
+    (r"rounds?", "round"),
+    (r"surfaces?", "surface"),
+    (r"Observed bullets?", "Observed bullet"),
+    (r"listing diffs?", "listing diff"),
+    (r"secondary sources?", "secondary source"),
+    (r"nested entr(?:y|ies)", "nested entry"),
+)
+# Phrases in which a term has its plain sense and needs no introduction: a
+# spreadsheet's or a table's cell. Matched against the text that ends with the
+# term, lower-cased.
+TERM_PLAIN: dict[str, tuple[str, ...]] = {"cell": ("per cell", "table cell", "table's cell")}
+# The documents that define the terms or whose outline AGENTS.md fixes.
+TERM_EXEMPT_FILES = ("AGENTS.md", "CLAUDE.md")
+TERM_EXEMPT_DIRS = ("research/",)
 
 
 def strip_fences(text: str) -> str:
@@ -212,6 +243,36 @@ def display(path: pathlib.Path) -> str:
         return str(path)
 
 
+def term_problems(text: str, link_text: list[tuple[int, int]]) -> list[tuple[int, str]]:
+    """The offset and message of each term of art in `TERMS` that `text` (fences
+    stripped, code spans blanked) relies on without introducing it: no heading
+    holds the term, and its first use in a non-plain sense is neither inside
+    one of the `link_text` spans nor followed by `(`."""
+    headings = "\n".join(line for line in text.splitlines() if ATX.match(line))
+    out: list[tuple[int, str]] = []
+    for pattern, name in TERMS:
+        rx = re.compile(r"\b%s\b" % pattern, re.I)
+        if rx.search(headings):
+            continue
+        for m in rx.finditer(text):
+            lead = text[max(0, m.start() - 16) : m.end()].lower()
+            if any(lead.endswith(phrase) for phrase in TERM_PLAIN.get(name, ())):
+                continue
+            if any(lo <= m.start() and m.end() <= hi for lo, hi in link_text):
+                break
+            if re.match(r"[ \t]*\(", text[m.end() : m.end() + 3]):
+                break
+            out.append(
+                (
+                    m.start(),
+                    'term of art "%s" is not introduced: define it, link its definition, '
+                    "or use plain words" % name,
+                )
+            )
+            break
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("files", nargs="*", type=lambda s: pathlib.Path(s).resolve())
@@ -275,6 +336,10 @@ def main() -> int:
                 % (rel, line_of(text, m.start()), words)
             )
             bad += 1
+        if rel not in TERM_EXEMPT_FILES and not rel.startswith(TERM_EXEMPT_DIRS):
+            for offset, msg in term_problems(text, link_text):
+                print("%s:%d: %s" % (rel, line_of(text, offset), msg))
+                bad += 1
     if bad:
         print("%d problems in %d links checked in %d files" % (bad, links, len(files)))
         return 1
