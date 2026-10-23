@@ -1503,8 +1503,8 @@ the start of this section).
 - Documentation is written for its reader, never for the agent that
   maintains it. The READMEs and the pages under `collectors/docs/`,
   `analyzer/docs/` and `docs/` address the responder or analyst who runs
-  the tool; `testing.md`, `development.md`, `internals.md`, the lab
-  README and the research index address a contributor; this file
+  the tool; `testing.md`, `development.md`, `internals.md`, `lab-vms.md`,
+  the lab README and the research index address a contributor; this file
   alone holds the rules for making a change, and the documents do not
   repeat them. An index table (the agents page, the survival table of the
   research index) points at the documents with a short cell and
