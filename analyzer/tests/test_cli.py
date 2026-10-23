@@ -30,6 +30,7 @@ from fixtures import (
     AGY_ORPHAN,
     CHATGPT_CONVERSATION,
     CHATGPT_TPP_CONVERSATION,
+    CLAUDE_309_SESSION,
     CLAUDE_SESSION,
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
@@ -795,7 +796,10 @@ class SyncedSessionTests(unittest.TestCase):
         by_id = {(s["agent"], s["session_id"]): s["synced"] for s in sessions}
         self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
         self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
-        self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "")
+        # Claude Code records Remote Control as sync since issue 256: the
+        # 2.1.309 session had a bridge, the older one did not.
+        self.assertEqual(by_id[("claude-code", CLAUDE_309_SESSION)], "yes")
+        self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "no")
         # `synced` is "" for every agent whose parser records no sync state,
         # and "yes" or "no" for the others (#153).
         sync_agents = {p.agent for p in ALL if p.records_sync}
@@ -819,7 +823,7 @@ class SyncedSessionTests(unittest.TestCase):
                 self.assertEqual(list(a)[-4:], keys, a)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
-        self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
+        self.assertEqual(agents["claude-code"]["synced_sessions"], 1)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
         self.assertTrue(
             line.endswith(

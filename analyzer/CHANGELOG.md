@@ -45,6 +45,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   snapshot's `git_state.remote_url`; the `openclaw` parser reads the
   `projects` table's `origin_url` of `state/openclaw.sqlite`, with the
   project path its `repo_root` and no session ([#253]).
+- The `claude-code` parser writes `session surface: <entrypoint>` at the
+  first record of each transcript file (`cli`, `claude-vscode` for the VS
+  Code extension, `claude-desktop`), and `session surface: <old> -> <new>`
+  when it changes ([#256]).
+- The `claude-code` parser writes `prompt trigger: promptSource=<v>
+  turnOrigin=<v>` after a prompt that was not typed by the person at the
+  terminal: one sent from a Remote Control client (`queued`), from the VS
+  Code extension (`sdk`), a suggestion the person accepted
+  (`suggestion_accepted`), a `/loop` firing (`turnOrigin=scheduled`) or a
+  background task's completion ([#256]).
+- The `claude-code` parser writes `scratch directory: <path> (session
+  scratchpad, from the environment attachment)` for the session
+  scratchpad a transcript's `environment` attachment names, so
+  `inventory.json` lists it under `scratch_directories` ([#256]).
+- The `claude-code` parser writes `session continued in: <session id>`
+  for a 2.1.309 `continued-in` record, the session daemon's handover of a
+  console session to the worker session that holds the later turns, and
+  `remote control: bridge session <id or none> lastSequenceNum=<n>` for a
+  Remote Control `bridge-session` record ([#256]).
+
+### Changed
+
+- `claude-code` sessions now have `synced` `yes` or `no` in
+  `sessions.jsonl` (and the inventory's `synced_sessions` and project
+  `synced` follow): a session with a Remote Control bridge gets a
+  `session synced: remote control bridge <id> url <url>` row, because the
+  bridge puts the session on claude.ai. `claude-desktop` sessions keep
+  `synced` `""` ([#256]).
+- A `scratch directory:` row no longer decides a session's
+  `project_path` in `sessions.jsonl` when another row of the session has
+  a path; it is used only when no other row has one ([#256]).
+- The `claude-code` parser takes a persisted tool output's file from the
+  2.1.309 `toolUseResult.persistedOutputPath` when the line has one tool
+  result, and from the `<persisted-output>` stub's text otherwise; the
+  file must still be in the session's own `tool-results/` ([#256]).
 
 ## [0.20.1] - 2026-10-21
 
@@ -1941,6 +1976,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#256]: https://github.com/seanthegeek/doubleagent/issues/256
 [#253]: https://github.com/seanthegeek/doubleagent/issues/253
 [#237]: https://github.com/seanthegeek/doubleagent/issues/237
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
