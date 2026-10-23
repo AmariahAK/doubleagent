@@ -133,10 +133,14 @@ rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
 ```
 
 Homebrew's installer asks for the sudo password once, so it runs in the
-VM's own Terminal:
+VM's own Terminal. It does not put Homebrew on the PATH itself: its
+"Next steps" print the two lines that do, for the login file and for
+the current shell, and they come before the first `brew` call:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
 brew analytics off
 ```
 
@@ -146,19 +150,23 @@ Then:
 brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
 brew install --cask visual-studio-code
 brew link --overwrite node@24
+echo 'export PATH="$(brew --prefix)/opt/ruby/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
+. ~/.zprofile
 rustup default stable
 sudo ln -sfn "$(brew --prefix)/opt/openjdk@25/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-25.jdk
-echo 'export PATH="$(brew --prefix)/opt/ruby/bin:$(brew --prefix)/opt/node@24/bin:$PATH"' >> ~/.zprofile
 brew cleanup -s
 ```
 
 - `node@24`, `ruby`, `openjdk@25` and `rustup` are keg-only: Homebrew
   installs them under its `opt/` directory without linking them into its
-  `bin`, because macOS ships its own Ruby and Java and the versioned Node
-  would shadow the `node` formula. The `link`, PATH and `ln` lines make
-  them the ones a shell finds; the `ln` line is Homebrew's documented way
-  to register a JDK with `java_home`. Without the PATH line, Apple's
-  Ruby 2.6 in `/usr/bin` wins.
+  `bin`, because macOS ships its own Ruby and Java, the versioned Node
+  would shadow the `node` formula, and `rustup` conflicts with the `rust`
+  formula. The `link`, PATH and `ln` lines make them the ones a shell
+  finds, and the PATH line is read back into the current shell before
+  `rustup default stable` needs it; the `ln` line is Homebrew's
+  documented way to register a JDK with `java_home`. Without the PATH
+  line, Apple's Ruby 2.6 in `/usr/bin` wins and `cargo` and `rustc`,
+  which live in rustup's keg, are not found.
 - `node@24` rather than `node`: Homebrew's `node` formula tracks the
   current release, and `node@24` is the long-term support line, the one
   `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than

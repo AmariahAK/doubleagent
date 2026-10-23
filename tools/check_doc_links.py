@@ -39,7 +39,9 @@ every tracked Markdown file and every untracked one git does not ignore:
   introduced before it is relied on: the page has a heading that holds the
   term, or the term's first use is link text (pointing at where it is
   defined) or is followed by a parenthesised gloss. A plain sense listed in
-  `TERM_PLAIN` (a spreadsheet's or a table's cell) is not a use. The term
+  `TERM_PLAIN` (a spreadsheet's or a table's cell) is not a use, and neither
+  is a word inside a link destination, a reference definition's target or
+  an autolink, which the reader does not see. The term
   rule under "Conventions" in AGENTS.md is the reason: a reader who has only
   the page must not need AGENTS.md to decode a sentence.
 
@@ -245,7 +247,8 @@ def display(path: pathlib.Path) -> str:
 
 def term_problems(text: str, link_text: list[tuple[int, int]]) -> list[tuple[int, str]]:
     """The offset and message of each term of art in `TERMS` that `text` (fences
-    stripped, code spans blanked) relies on without introducing it: no heading
+    stripped, code spans and link destinations blanked) relies on without
+    introducing it: no heading
     holds the term, and its first use in a non-plain sense is neither inside
     one of the `link_text` spans nor followed by `(`."""
     headings = "\n".join(line for line in text.splitlines() if ATX.match(line))
@@ -286,11 +289,15 @@ def main() -> int:
         link_text: list[tuple[int, int]] = []
         targets: list[tuple[int, str]] = []
         hidden: list[tuple[int, int]] = []
+        # The link destinations, reference targets and autolinks alone: what
+        # the term check blanks, since a word inside a target is not displayed.
+        unseen: list[tuple[int, int]] = []
         for m in INLINE_LINK.finditer(text):
             link_text.append((m.start(1), m.end(1)))
             targets.append((m.start(2), m.group(2)))
             hidden.append((m.start(1), m.end(1)))
             hidden.append((m.end(1), m.end(0)))
+            unseen.append((m.end(1), m.end(0)))
             label = " ".join(m.group(1).split())
             if URL.search(label) or HOST_PATH.search(label):
                 print("%s:%d: link text is a URL: %s" % (rel, line_of(text, m.start(1)), label))
@@ -298,8 +305,10 @@ def main() -> int:
         for m in REF_DEF.finditer(text):
             targets.append((m.start(1), m.group(1)))
             hidden.append((m.start(1), m.end(1)))
+            unseen.append((m.start(1), m.end(1)))
         for m in AUTOLINK.finditer(text):
             hidden.append((m.start(), m.end()))
+            unseen.append((m.start(), m.end()))
         prose = blank(text, hidden)
         for pattern, what in ((URL, "URL"), (HOST_PATH, "host path")):
             for m in pattern.finditer(prose):
@@ -337,7 +346,7 @@ def main() -> int:
             )
             bad += 1
         if rel not in TERM_EXEMPT_FILES and not rel.startswith(TERM_EXEMPT_DIRS):
-            for offset, msg in term_problems(text, link_text):
+            for offset, msg in term_problems(blank(text, unseen), link_text):
                 print("%s:%d: %s" % (rel, line_of(text, offset), msg))
                 bad += 1
     if bad:
