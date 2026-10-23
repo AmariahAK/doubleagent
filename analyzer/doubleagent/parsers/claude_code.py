@@ -1,18 +1,31 @@
 """Claude Code transcripts.
 
 Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
-2026), the shipped 2.1.289 package, and 2.1.295 installs on Linux and macOS
-(2026-10-11) for the permission decision and the process registry; the
+2026), the shipped 2.1.289 package, 2.1.295 installs on Linux and macOS
+(2026-10-11) for the permission decision and the process registry, and a
+per-step round of 2.1.309 (native installer, win32-arm64) on Windows 11
+arm64 (2026-10-23, issue 256) for the CLI and the VS Code extension; the
 evidence is in `research/claude-code.md`. Files:
 
 * `~/.claude/projects/<slug>/<session>.jsonl`: one JSON object per line.
   Records with `type` user, assistant, system or attachment carry `uuid`,
   `parentUuid`, `timestamp` (ISO 8601 Z), `sessionId`, `cwd`, `gitBranch`,
-  `version` and `isSidechain`. `message.content` is a string or a list of
-  blocks typed text, thinking (`thinking`, `signature`), redacted_thinking,
-  tool_use (`id`, `name`, `input`) or tool_result (`tool_use_id`, `content`,
-  `is_error`); a tool_result `content` list holds `text` blocks and
-  `tool_reference` blocks (`tool_name`).
+  `version`, `entrypoint` and `isSidechain`; 2.1.309 adds `sessionKind`
+  (`bg` in a session-daemon worker's file) and `slug`, which a `system`
+  row's detail JSON leaves out with the other envelope keys.
+  `message.content` is a string or a list of blocks typed text, thinking
+  (`thinking`, `signature`), redacted_thinking, tool_use (`id`, `name`,
+  `input`) or tool_result (`tool_use_id`, `content`, `is_error`); a
+  tool_result `content` list holds `text` blocks and `tool_reference`
+  blocks (`tool_name`).
+  - The surface. `entrypoint` names the program that wrote the line
+    (`cli` for the terminal and `claude-vscode` for the VS Code extension
+    on 2.1.309; `claude-desktop` for the desktop app's Code tab). The
+    first record of a file that carries it becomes a `system` row
+    `session surface: <entrypoint>` before that line's other rows, and a
+    later different value `session surface: <old> -> <new>`; each file,
+    subagent files included, tracks its own. The row takes the line's
+    timestamp, else the latest one seen.
   - `user` records: `isMeta`, `origin.kind` (human, task-notification,
     peer, coordinator, auto-continuation), `isCompactSummary` and
     `interruptedMessageId` say who wrote the text; the text markers
@@ -24,22 +37,42 @@ evidence is in `research/claude-code.md`. Files:
     `task notification:`, `peer message:`, `coordinator message:`,
     `auto-continuation:`, `slash command:`, `command output:`,
     `compaction summary:`, `interrupted:`, `subagent task:` or `context:`.
-    The 2.1.295 prompt keys `turnOrigin` and `promptSource` do not become
-    rows or change a label; `permissionMode` feeds the mode tracker below.
+    The prompt keys `promptSource` and `turnOrigin` (2.1.295) say what
+    started the turn; they do not change a row's label. A `user` record
+    whose `promptSource` is set and not `typed`, or whose `turnOrigin` is
+    set and not `human`, gets one `system` row after its own rows,
+    `prompt trigger: promptSource=<promptSource> turnOrigin=<turnOrigin>`
+    (`-` for a missing key). Values seen on 2.1.309: `promptSource`
+    `typed`, `system` (a task notification), `queued` (a prompt sent from
+    a Remote Control client such as the phone), `sdk` (the VS Code
+    extension) and `suggestion_accepted` (a
+    prompt Claude suggested and the person accepted); `turnOrigin`
+    `human`, `task_notification` and `scheduled` (a `/loop` firing).
+    `sandboxed`, `turnPosition`, `serverClassifierContext`,
+    `queueSkipAttachments`, `queueSkipSlashCommands`, `mcpMeta` and the
+    scheduled-fire keys (`scheduledFireId`, `scheduledTaskId`,
+    `wakeupSource`, `turnCompanion`, `queuePriority`) are not read.
+    `permissionMode` feeds the mode tracker below.
     `permissionDecision` (2.1.295, on a line that carries `tool_result`
-    blocks: `decision`, `source`, `reasonType`, other keys possible)
-    becomes one `system` row after that line's `tool_result` rows,
-    `permission decision: <decision> source=<source> reason=<reasonType>`
-    (`-` for a missing key), followed by the object's compact JSON when it
-    has other keys; its `tool_use_id` is the line's first `tool_result`
-    block's and `tool_name` is empty, as on `tool_result` rows. The same
-    line's `toolDenialKind` and `userFeedback` (no value set recorded,
-    printed as they are) are appended as ` toolDenialKind=<kind>
-    userFeedback=<text>` when present; a line with either key and no
-    `permissionDecision` gets the row with `-` for the three decision
-    keys. The `plan_mode`, `plan_mode_exit`, `plan_mode_reentry` and
-    `auto_mode` attachments are not read: their field shapes are not
-    recorded in the research.
+    blocks: `decision`, `source`, `reasonType`; 2.1.309 adds `grantScope`
+    and `reasonCode`) becomes one `system` row after that line's
+    `tool_result` rows, `permission decision: <decision> source=<source>
+    reason=<reasonType>` (`-` for a missing key), followed by the object's
+    compact JSON when it has other keys, so `grantScope` and `reasonCode`
+    are in that JSON; its `tool_use_id` is the line's first `tool_result`
+    block's and `tool_name` is empty, as on `tool_result` rows. Values seen
+    on 2.1.309: `decision` `accept`, `reject`; `source` `config` (the mode
+    or the auto-mode classifier allowed it), `user_temporary` (approved
+    once), `user_permanent` (the allow-always answer), `user_reject`;
+    `reasonType` `classifier`, `mode`, `other` (absent on a user's
+    answer); `grantScope` `once` (only on a one-time approval);
+    `reasonCode` `other`, `unknown`, `subcommandResults` (a piped command
+    approved as a whole). The same line's `toolDenialKind` (`user-rejected`
+    on 2.1.309) and `userFeedback` (the reason the person typed) are
+    appended as ` toolDenialKind=<kind> userFeedback=<text>` when present;
+    a line with either key and no `permissionDecision` gets the row with
+    `-` for the three decision keys. A declined plan is a rejected
+    `ExitPlanMode` call and gets the same row.
   - `assistant` records: `message.model` and `requestedModel` (2.1.295);
     `wireToolInputs[<tool_use id>]`
     is the input as the model sent it, used for the Bash command because
@@ -51,15 +84,34 @@ evidence is in `research/claude-code.md`. Files:
   - `system` records: `subtype` and `content`; `turn_duration` uses
     `durationMs` and `messageCount`; a subtype without `content`
     (`api_error`, `memory_saved`, ...) is shown with the compact JSON of
-    its fields other than the envelope.
+    its fields other than the envelope. Subtypes seen on 2.1.309:
+    `turn_duration`, `away_summary`, `local_command` (`commandRun`),
+    `compact_boundary` (`compactMetadata`), `bridge_status` (`url`, read
+    for the sync row below) and `scheduled_task_fire` (`cron`, `prompt`,
+    `taskId`), each a `<subtype>: <content>` row.
   - `attachment` records, by `attachment.type`: `queued_command`
     (`prompt`, `origin.kind`) is a `user` row when `origin.kind` is human,
     else a labelled `system` row; `hook_system_message` (`hookName`,
     `content`) is `hook:`; `edited_text_file` (`filename`; the `snippet`
-    is not shown) is `edited file:`. Every other attachment type is
-    runtime context (system prompt, tool lists, reminders, environment
-    snapshot, `remote_session_change` with the session's PR and commit)
-    and is skipped.
+    is not shown) is `edited file:`. `environment` (`snapshot`, and on the
+    VS Code extension also `changes`) is read for one key,
+    `snapshot.scratchpadDirectory`, the session's scratchpad under the
+    temp root (`%LOCALAPPDATA%\\Temp\\claude\\<slug>\\<session>\\scratchpad`
+    on Windows): once per session and path a `system` row
+    `scratch directory: <path> (session scratchpad, from the environment
+    attachment)` whose `project_path` is that path, so inventory.json
+    lists it under `scratch_directories` (issue 149). Every other
+    attachment type is runtime context (system prompt, tool lists,
+    reminders, `remote_session_change` with the session's PR and commit,
+    `command_permissions`, `file`, `plan_file_reference`, `task_reminder`)
+    and is skipped. So are the mode attachments, whose 2.1.309 shapes are
+    now known (issue 98): `auto_mode` (`autoModeConsentFlow`, `bashFirst`,
+    `bashFirstSteer`, `bypass`, `finishExposedWork`, `steerOnly`) is the
+    turn's auto-mode configuration, not a decision, and `plan_mode`
+    (`isSubAgent`, `planExists`, `planFilePath`, `reminderType`),
+    `plan_mode_exit` (`planExists`, `planFilePath`) and `auto_mode_exit`
+    mark a mode change that the `permission mode:` rows already show;
+    `plan_mode_reentry` was not observed.
   - Session-state records carry no `timestamp`, `cwd` or `gitBranch`; their
     rows take the latest timestamp, cwd and branch seen in the file (the
     first ones when none has been seen yet). `ai-title` (`aiTitle`),
@@ -74,9 +126,31 @@ evidence is in `research/claude-code.md`. Files:
     same file delivers: the prompt text stays on that record's row, and the
     enqueue keeps the time it was typed as `prompt queued: delivered at
     line N` (the first delivering line after the enqueue, else the first).
-    The other state types (mode, last-prompt, cost-state,
-    file-history-snapshot, file-history-delta, bridge-session, atis-latch,
-    ...) are skipped.
+    `continued-in` (`continuedInSessionId`, `sessionId`, `timestamp`;
+    2.1.309), written in a console session's file when the session daemon
+    hands the session to a worker, becomes `session continued in:
+    <continuedInSessionId>`, so the console file names the worker's
+    session file that holds the later turns. `bridge-session`
+    (`bridgeSessionId`, `lastSequenceNum`, `ownerAccountUuid`,
+    `ownerOrganizationUuid`, `sessionId`; Remote Control) becomes `remote
+    control: bridge session <bridgeSessionId or none> lastSequenceNum=<n>`
+    once per change of the two values (`none` is the detach, when
+    `bridgeSessionId` is null); the owner UUIDs are identity values and
+    are not printed. The first `bridge-session` record of a session that
+    names a bridge id also gives `session synced: remote control bridge
+    <bridgeSessionId> url <url>`, the URL being the `url` key of the
+    nearest `bridge_status` system record at or before the line (else
+    the file's first, else `-`): the bridge puts the session on
+    claude.ai, so `records_sync` is set and a session without the row is
+    `synced` `no`. The other state types (mode, last-prompt, cost-state,
+    file-history-snapshot, file-history-delta, atis-latch, and the
+    2.1.309 request-capture lines `api-request`, `api-request-shape` and
+    `api-request-blob`, which repeat the prompt inside the request they
+    record) are skipped.
+  - Deletion. A `/clear` starts a new session file in the same process;
+    the new file's `system` `local_command` record (`commandRun`,
+    `content`) is its `local_command:` row, and the old file is left
+    unmarked, so no deletion row is written.
   - Permission mode and model (issue 93). A `permission-mode` record
     (`permissionMode`, `sessionId`, no `timestamp`) and the `permissionMode`
     key of a `user` record feed one tracker per session id: the first value
@@ -102,16 +176,26 @@ evidence is in `research/claude-code.md`. Files:
   ids match no other file reliably, so those rows are kept; its
   `<fork-boilerplate>` block is the `subagent task:` row.
 * `~/.claude/projects/<slug>/<session>/tool-results/<name>.txt`: the full
-  output of a tool result too large to keep inline. The tool_result text is
-  then a stub, `<persisted-output>` ... `Full output saved to: <path>` ...,
-  and the `tool_result` row carries the file's text instead. The file is
-  looked up only in the transcript's own session directory (the stub's
-  directory name must equal it) and never through a symlink; when it is
-  missing the stub is kept with a note.
-* `~/.claude/history.jsonl`: `{display, project, sessionId, timestamp}` per
-  prompt, `timestamp` in epoch milliseconds. A secondary source: the
-  timeline drops a line whose event the session file also records
-  (`dedup.py`), and keeps the rest, since it survives session deletion.
+  output of a tool result too large to keep inline (`<name>` is nine
+  base-36 characters on 2.1.309). The tool_result text is then a stub,
+  `<persisted-output>` ... `Full output saved to: <path>` ..., and the
+  `tool_result` row carries the file's text instead. 2.1.309 also names
+  the file in the line's `toolUseResult.persistedOutputPath` (beside
+  `persistedOutputSize`, not read); when that key is set and the line has
+  one tool_result block, the path is taken from it, else from the stub's
+  text. The file is looked up only in the transcript's own session
+  directory (the path's directory names must be `<session>/tool-results`)
+  and never through a symlink; when it is missing the stub is kept with a
+  note.
+* `~/.claude/history.jsonl`: `{display, pastedContents, project, sessionId,
+  timestamp}` per prompt, `timestamp` in epoch milliseconds. A secondary
+  source: the timeline drops a line whose event the session file also
+  records (`dedup.py`), and keeps the rest, since it survives session
+  deletion. `pastedContents` (2.1.309: `{"<n>": {contentHash, id, type}}`
+  for a long paste, the text itself in `paste-cache/<contentHash>.txt`)
+  is not read; the row is `display`, as before. The transcript's `user`
+  line carries the pasted text inline. A prompt sent through a console
+  attached with `claude agents` is not a history line.
 
 * `~/.claude/sessions/<pid>.json`: the per-process registry the CLI keeps
   while it runs (2.1.295 keys observed on Linux and macOS). Read: `pid`,
@@ -166,8 +250,11 @@ collect those two files from a moved config home; only the
 `permissions` object would be read if one were offered. A config home
 anywhere else is not collected.
 
-Not read: the `.meta.json` subagent sidecars, the `sessions/<pid>.*.key`
-files and `paste-cache/` (excluded by the collector).
+Not read: the `.meta.json` subagent sidecars, `custom-title.json` beside a
+session (the `custom-title` line holds the same title), the
+`sessions/<pid>.*.key` files, `paste-cache/`, `file-history/`, `plans/`,
+the session daemon's `daemon/` and `jobs/` trees and the MCP logs of the
+CLI cache directory.
 """
 
 from __future__ import annotations
@@ -178,7 +265,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from ..inputs import Artifact
-from ..model import Row, compact
+from ..model import SCRATCH_PREFIX, SYNCED_PREFIX, Row, compact
 from ..timeutil import to_utc
 from .base import (
     Options,
@@ -247,6 +334,12 @@ ORIGIN_LABELS = {
 
 TITLE_FIELDS = {"ai-title": "aiTitle", "custom-title": "customTitle", "agent-name": "agentName"}
 
+# `promptSource` and `turnOrigin` values of a prompt the person typed; any
+# other value gets a `prompt trigger:` row (2.1.309, research/claude-code.md,
+# Record schema).
+TYPED_SOURCES = ("", "typed")
+HUMAN_ORIGINS = ("", "human")
+
 # Envelope fields of a system record, left out of its detail JSON.
 SYSTEM_ENVELOPE = frozenset(
     (
@@ -268,6 +361,7 @@ SYSTEM_ENVELOPE = frozenset(
         "agentId",
         "isMeta",
         "content",
+        "sessionKind",
     )
 )
 
@@ -325,17 +419,26 @@ def session_dir(artifact: Artifact) -> Path:
     return p.with_suffix("")
 
 
-def persisted_text(artifact: Artifact, stub: str) -> str:
-    """The full text of a `<persisted-output>` stub's file, or the stub with
-    a note when the file is not in this session's `tool-results/`."""
-    m = PERSISTED_RX.search(stub)
-    if not m:
-        return stub
-    parts = re.split(r"[/\\]", m.group(1))
+def persisted_text(artifact: Artifact, stub: str, path: str = "") -> str:
+    """The full text of a persisted tool output's file, or the stub with a
+    note when the file is not in this session's `tool-results/`. `path` is
+    the line's `toolUseResult.persistedOutputPath` (2.1.309); without it the
+    path is read from a `<persisted-output>` stub's text."""
+    if not path:
+        m = PERSISTED_RX.search(stub)
+        if not m:
+            return stub
+        path = m.group(1)
+    parts = re.split(r"[/\\]", path)
     name = parts[-1]
     sdir = session_dir(artifact)
     note = "%s\n[persisted output not found: tool-results/%s]" % (stub, name)
-    if len(parts) < 3 or parts[-3] != sdir.name or name in (".", ".."):
+    if (
+        len(parts) < 3
+        or parts[-2] != "tool-results"
+        or parts[-3] != sdir.name
+        or name in ("", ".", "..")
+    ):
         return note
     tdir = sdir / "tool-results"
     f = tdir / name
@@ -351,6 +454,8 @@ class ClaudeCodeParser(Parser):
     agent = "claude-code"
     name = "claude-code"
     has_secondary = True
+    # A Remote Control bridge puts the session on claude.ai (issue 256).
+    records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
@@ -486,14 +591,17 @@ class ClaudeCodeParser(Parser):
                     yield self._standing_row(artifact, ts, str(path), key, proj[key])
 
     @staticmethod
-    def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str]:
+    def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str, list]:
         """The lines that deliver each prompt by an attachment or a user
         record (so a queue enqueue can point at them instead of repeating the
-        text), whether the file is a fork, and the first cwd and branch (for
-        state records before any transcript one)."""
+        text), whether the file is a fork, the first cwd and branch (for
+        state records before any transcript one), and the `(line, url)` of
+        each `bridge_status` system record (for the sync row of a
+        `bridge-session` record, which has no URL of its own)."""
         delivered: dict[str, list[int]] = {}
         fork = False
         cwd = branch = ""
+        bridge_urls: list[tuple[int, str]] = []
 
         def deliver(text: str, n: int) -> None:
             if text:
@@ -505,6 +613,8 @@ class ClaudeCodeParser(Parser):
                 cwd = str(rec.get("cwd"))
             if not branch and rec.get("gitBranch"):
                 branch = str(rec.get("gitBranch"))
+            if rtype == "system" and rec.get("subtype") == "bridge_status" and rec.get("url"):
+                bridge_urls.append((n, str(rec.get("url"))))
             if rtype == "attachment":
                 att = rec.get("attachment") or {}
                 if isinstance(att, dict) and att.get("type") == "queued_command":
@@ -520,11 +630,11 @@ class ClaudeCodeParser(Parser):
                             deliver(t, n)
                             if t.lstrip().startswith(FORK_MARK):
                                 fork = True
-        return delivered, fork, cwd, branch
+        return delivered, fork, cwd, branch, bridge_urls
 
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
-        delivered, is_fork, first_cwd, first_branch = self._prescan(artifact)
+        delivered, is_fork, first_cwd, first_branch, bridge_urls = self._prescan(artifact)
         sub = SUBAGENT_RX.search(artifact.rel)
         file_agent_id = sub.group(1) if sub else ""
         header_done = not sub
@@ -538,6 +648,10 @@ class ClaudeCodeParser(Parser):
         seen_title: set = set()
         modes: dict[str, str] = {}
         models: dict[str, str] = {}
+        surface = ""
+        seen_scratch: set = set()
+        bridges: dict[str, tuple] = {}
+        seen_sync: set = set()
 
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             rtype = rec.get("type")
@@ -577,6 +691,15 @@ class ClaudeCodeParser(Parser):
                 )
                 yield row
 
+            entrypoint = rec.get("entrypoint")
+            if isinstance(entrypoint, str) and entrypoint and entrypoint != surface:
+                yield state_row(
+                    "session surface: %s -> %s" % (surface, entrypoint)
+                    if surface
+                    else "session surface: " + entrypoint
+                )
+                surface = entrypoint
+
             mode = rec.get("permissionMode") if rtype in ("user", "permission-mode") else None
             if isinstance(mode, str) and mode and modes.get(session_id) != mode:
                 old = modes.get(session_id)
@@ -610,6 +733,23 @@ class ClaudeCodeParser(Parser):
                 row = self._attachment(rec, base)
                 if row is not None:
                     yield row
+                scratch = self._scratchpad(rec)
+                if scratch and (session_id, scratch) not in seen_scratch:
+                    seen_scratch.add((session_id, scratch))
+                    row = state_row(
+                        "%s %s (session scratchpad, from the environment attachment)"
+                        % (SCRATCH_PREFIX, scratch)
+                    )
+                    row.project_path = scratch
+                    yield row
+            elif rtype == "continued-in":
+                yield state_row(
+                    "session continued in: %s" % (rec.get("continuedInSessionId") or "-")
+                )
+            elif rtype == "bridge-session":
+                yield from self._bridge(
+                    rec, n, state_row, session_id, bridges, seen_sync, bridge_urls
+                )
             elif rtype in TITLE_FIELDS:
                 title = str(rec.get(TITLE_FIELDS[rtype]) or "")
                 if title and (session_id, title) not in seen_title:
@@ -657,8 +797,50 @@ class ClaudeCodeParser(Parser):
         row.text = compact(text)
         return row
 
+    @staticmethod
+    def _bridge(rec, n: int, state_row, session_id: str, bridges, seen_sync, urls) -> Iterator[Row]:
+        """The rows of a `bridge-session` record: `remote control: bridge
+        session ...` when the bridge id or sequence number changes, and the
+        `session synced:` row the first time a session names a bridge id,
+        with the URL of the nearest `bridge_status` record at or before the
+        line (else the file's first)."""
+        bridge = rec.get("bridgeSessionId")
+        seq = rec.get("lastSequenceNum")
+        if bridges.get(session_id) != (bridge, seq):
+            bridges[session_id] = (bridge, seq)
+            yield state_row(
+                "remote control: bridge session %s lastSequenceNum=%s"
+                % (bridge or "none", "-" if seq in (None, "") else seq)
+            )
+        if bridge and (session_id, bridge) not in seen_sync:
+            seen_sync.add((session_id, bridge))
+            before = [u for x, u in urls if x <= n]
+            url = before[-1] if before else (urls[0][1] if urls else "-")
+            yield state_row("%s remote control bridge %s url %s" % (SYNCED_PREFIX, bridge, url))
+
+    @staticmethod
+    def _scratchpad(rec) -> str:
+        """An `environment` attachment's `snapshot.scratchpadDirectory`."""
+        att = rec.get("attachment")
+        if not isinstance(att, dict) or att.get("type") != "environment":
+            return ""
+        snap = att.get("snapshot")
+        path = snap.get("scratchpadDirectory") if isinstance(snap, dict) else None
+        return path if isinstance(path, str) else ""
+
     def _user(self, rec, base, artifact: Artifact, opts: Options, is_task: bool) -> Iterator[Row]:
         yield from self._user_blocks(rec, base, artifact, is_task)
+        source = rec.get("promptSource")
+        origin = rec.get("turnOrigin")
+        source = "" if source is None else str(source)
+        origin = "" if origin is None else str(origin)
+        if source not in TYPED_SOURCES or origin not in HUMAN_ORIGINS:
+            row = base()
+            row.turn_type = "system"
+            row.text = compact(
+                "prompt trigger: promptSource=%s turnOrigin=%s" % (source or "-", origin or "-")
+            )
+            yield row
         decision = rec.get("permissionDecision")
         denial = any(rec.get(k) not in (None, "") for k in DENIAL_KEYS)
         if decision is not None or denial:
@@ -734,6 +916,14 @@ class ClaudeCodeParser(Parser):
         if not isinstance(content, list):
             yield text_row(text_of(content))
             return
+        # 2.1.309 names the persisted output's file in `toolUseResult`; the
+        # key belongs to the line's one tool call, so it is used only when
+        # the line has one tool_result block.
+        tur = rec.get("toolUseResult")
+        saved = tur.get("persistedOutputPath") if isinstance(tur, dict) else None
+        results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
+        if not isinstance(saved, str) or len(results) != 1:
+            saved = ""
         for block in content:
             if not isinstance(block, dict):
                 continue
@@ -743,7 +933,9 @@ class ClaudeCodeParser(Parser):
                 row.turn_type = "tool_result"
                 row.tool_use_id = str(block.get("tool_use_id") or "")
                 text = result_text(block.get("content"))
-                if text.lstrip().startswith(PERSISTED_MARK):
+                if saved:
+                    text = persisted_text(artifact, text, saved)
+                elif text.lstrip().startswith(PERSISTED_MARK):
                     text = persisted_text(artifact, text)
                 if block.get("is_error"):
                     text = "[error] " + text
