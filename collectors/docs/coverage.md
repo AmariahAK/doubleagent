@@ -925,7 +925,9 @@ the full pattern list.
   the background, and `.claude/daemon/roster.json`, which holds each
   worker's terminal and attach auth values; and
   `.claude/backups/.claude.json.backup.<epoch ms>`, the dated copies of
-  `.claude.json` Claude Code writes at start and exit, each with the same
+  `.claude.json` Claude Code writes at start and exit, and the
+  `.claude.json.corrupted.<timestamp>` copy it keeps of a config it could
+  not parse (the glob is `.claude/backups/.claude.json.*`), each with the same
   account and MCP server settings as the flagged `.claude.json`, as do the
   older `.claude.json.backup*` files beside `.claude.json` in the home or
   a `~/.claude-<name>` config home.

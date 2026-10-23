@@ -498,7 +498,8 @@ install):
   `.claude/daemon/pipe.key`, `.claude/daemon/roster.json` and their `.claude-*/` forms).
 - `backups/.claude.json.backup.<epoch ms>` ([Files that hold evidence](#files-that-hold-evidence)):
   each a full copy of `.claude.json` with its sign-in details, flagged `secret: true` since this
-  round (`.claude/backups/.claude.json.backup.*` and the `.claude-*/` form). The home-level
+  round (`.claude/backups/.claude.json.*` and the `.claude-*/` form, which also takes the
+  `.claude.json.corrupted.<ts>` copy of [Per-user storage](#per-user-storage)). The home-level
   `.claude.json.backup*` files of the older layout, beside `~/.claude.json`, are flagged with them.
 - The GitHub account Claude Code acts through is not in its own files: the `gh` tool keeps it
   ([Source-host integration](#source-host-integration)).

@@ -1351,6 +1351,7 @@ Mk 'Users/alice/.claude/daemon/control.key' '0123456789abcdef0123456789abcdef'
 Mk 'Users/alice/.claude/daemon/pipe.key' '0123456789abcdef'
 Mk 'Users/alice/.claude/daemon/roster.json' "{`"proto`":1,`"workers`":{}}`n"
 Mk 'Users/alice/.claude/backups/.claude.json.backup.1792800000000' "{`"oauthAccount`":{}}`n"
+Mk 'Users/alice/.claude/backups/.claude.json.corrupted.2026-10-23T17-00-00-000Z' "{`"oauthAccount`":{}}`n"
 Mk 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' "pasted text`n"
 Mk 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json' "{`"plugins`":[]}`n"
 Mk "$g253/info/exclude" "# git ls-files --others --exclude-from=.git/info/exclude`n.claude/scheduled_tasks.lock`n"
@@ -2012,6 +2013,7 @@ Check '#256 Claude Code Windows temp root collected as claude-code' { (Is113 "$t
 Check '#256 home-level .claude.json.backup flagged secret' { Is113 'Users/alice/.claude.json.backup' 'claude-code' $true }
 Check '#256 Claude Code daemon keys and roster flagged secret' { (Is113 'Users/alice/.claude/daemon/control.key' 'claude-code' $true) -and (Is113 'Users/alice/.claude/daemon/pipe.key' 'claude-code' $true) -and (Is113 'Users/alice/.claude/daemon/roster.json' 'claude-code' $true) }
 Check '#256 Claude Code .claude.json backup flagged secret' { Is113 'Users/alice/.claude/backups/.claude.json.backup.1792800000000' 'claude-code' $true }
+Check '#256 Claude Code corrupted .claude.json copy flagged secret' { Is113 'Users/alice/.claude/backups/.claude.json.corrupted.2026-10-23T17-00-00-000Z' 'claude-code' $true }
 Check '#256 Claude Code paste-cache collected' { Is113 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' 'claude-code' $false }
 Check '#256 Claude Code plugin directory cache excluded' { (StatusOf 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json') -eq 'skipped_excluded' }
 Check '#256 project git info/exclude collected as project' { Is253 @('info/exclude') }

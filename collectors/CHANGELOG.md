@@ -34,8 +34,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   patterns for its own files, is collected as `project` ([#256]).
 - Claude Code's session daemon files `.claude/daemon/control.key`,
   `.claude/daemon/pipe.key` and `.claude/daemon/roster.json`, and the
-  `.claude.json` copies in `.claude/backups/.claude.json.backup.*`, are
-  flagged `secret: true` ([#256]).
+  `.claude.json` copies in `.claude/backups/` (`.claude.json.backup.<epoch>`
+  and `.claude.json.corrupted.<timestamp>`, glob `.claude/backups/.claude.json.*`),
+  are flagged `secret: true` ([#256]).
 - The older home-level `.claude.json.backup*` files, which the
   `.claude.json*` catalog line collects and which hold the same account
   and MCP server settings as `.claude.json`, are flagged `secret: true`,

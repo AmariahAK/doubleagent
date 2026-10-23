@@ -1311,7 +1311,7 @@ SECRET_GLOBS='.claude/.credentials.json
 .claude/daemon/control.key
 .claude/daemon/pipe.key
 .claude/daemon/roster.json
-.claude/backups/.claude.json.backup.*
+.claude/backups/.claude.json.*
 .claude.json
 .claude.json.backup*
 .claude-*/.credentials.json
@@ -1323,7 +1323,7 @@ SECRET_GLOBS='.claude/.credentials.json
 .claude-*/daemon/control.key
 .claude-*/daemon/pipe.key
 .claude-*/daemon/roster.json
-.claude-*/backups/.claude.json.backup.*
+.claude-*/backups/.claude.json.*
 .claude-*/.claude.json
 .claude-*/.claude.json.backup*
 Library/Application Support/Claude*/config.json
