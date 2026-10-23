@@ -108,7 +108,7 @@ The clean virtual machines that the
 development tools their snapshots hold so an agent's use of them can be
 recorded, the install commands that rebuild them on Windows, macOS and
 Ubuntu, what the host decides, and Docker's requirements in each. See
-[Lab VMs](development.md).
+[Lab VMs](lab-vms.md).
 
 ## Contributing
 

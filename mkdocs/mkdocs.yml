@@ -183,5 +183,5 @@ nav:
       - research/zed.md
       - research/frameworks.md
   - Agent lab: lab/README.md
-  - Lab VMs: docs/development.md
+  - Lab VMs: docs/lab-vms.md
   - Contributing: AGENTS.md

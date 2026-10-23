@@ -82,7 +82,7 @@ lab/                           Docker sandbox for running CLI agents against a s
 docs/index.md                  the documentation site's home page; the root README.md is
                                the GitHub overview and is not a site page
 docs/agents.md                 every catalog agent with its parse status, files and evidence
-docs/development.md            the lab VMs: the development tools in their clean snapshots,
+docs/lab-vms.md                the lab VMs: the development tools in their clean snapshots,
                                the commands that rebuild them, Docker's requirements per VM
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
@@ -1055,7 +1055,7 @@ macOS) are the pattern; each found something the bundle research had not:
 an uncollected data directory, two unflagged keys, a feature that writes
 nothing locally. The VMs, the development tools in their clean snapshots,
 the commands that rebuild them and what the host lets a guest run are in
-[`docs/development.md`](docs/development.md).
+[`docs/lab-vms.md`](docs/lab-vms.md).
 
 A round is not an optional check: it is a required step in three cases,
 adding an agent to the catalog, extending the coverage of an agent already
