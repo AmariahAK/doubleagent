@@ -141,11 +141,15 @@ class JsonlTests(ShapeBase):
         out = shape(self.root / "s.jsonl")
         self.assertIn("== s.jsonl (", out)
         self.assertIn("jsonl, 5 lines)", out)
-        self.assertIn("  type=user: 1\n    keys: message, type, uuid\n", out)
+        self.assertRegex(out, r"  type=user: 1 \(\d+ bytes\)\n    keys: message, type, uuid\n")
         self.assertIn("    content blocks: text\n", out)
-        self.assertIn("  type=assistant: 1\n    keys: message, type\n", out)
+        self.assertRegex(out, r"  type=assistant: 1 \(\d+ bytes\)\n    keys: message, type\n")
+        self.assertIn("    message.content[].name: Bash=1\n", out)
         self.assertIn("    content blocks: text, tool_use\n", out)
-        self.assertIn("  type=system: 2\n    keys: content, error, level, subtype, type\n", out)
+        self.assertRegex(
+            out, r"  type=system: 2 \(\d+ bytes\)\n    keys: content, error, level, subtype, type\n"
+        )
+        self.assertIn("    subtype: api_error=1, compact_boundary=1\n", out)
         self.assertIn("    subtype=api_error: 1\n      keys: error, level, subtype, type\n", out)
         self.assertIn("    subtype=compact_boundary: 1\n      keys: content, subtype, type\n", out)
         self.assertIn("  bad lines 1\n", out)
@@ -154,7 +158,7 @@ class JsonlTests(ShapeBase):
         out = shape(self.root / "s.jsonl")
         self.assertNotIn(PROMPT, out)
         self.assertNotIn("billing", out)
-        self.assertNotIn("Bash", out)
+        self.assertNotIn("command", out)
         self.assertNotIn(UUID, out)
         self.assertNotIn("cut mid", out)
 
@@ -163,7 +167,7 @@ class JsonlTests(ShapeBase):
             '{"display": "x", "ts": 1}\n{"ts": 2, "display": "y"}\n', encoding="utf-8"
         )
         out = shape(self.root / "h.jsonl")
-        self.assertIn("  keys{display,ts}: 2\n", out)
+        self.assertRegex(out, r"  keys\{display,ts\}: 2 \(\d+ bytes\)\n    keys: display, ts\n")
 
 
 class RedactionTests(ShapeBase):
