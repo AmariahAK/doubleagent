@@ -63,8 +63,7 @@ except the Visual Studio Build Tools bootstrapper, which is x64 and
 installs the ARM64 compilers itself. Run from an elevated PowerShell:
 
 ```powershell
-winget install --id Python.PythonInstallManager -e --accept-package-agreements --accept-source-agreements
-py install 3.13
+winget install --id Python.Python.3.13 -e --accept-package-agreements --accept-source-agreements
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
 winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
@@ -82,14 +81,6 @@ Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion 1.25.0 -Forc
 pwsh -NoProfile -Command 'Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion 1.25.0 -Force'
 ```
 
-- Python comes through the Python Install Manager, python.org's current
-  Windows distribution, which `py install <version>` then uses to fetch
-  any release, with `py install 3.15` for the current one. The full
-  installer that the `Python.Python.3.<minor>` ids wrap is deprecated
-  since 3.14 and is not produced for 3.16 or later, and on Windows on ARM
-  the manager is what installs the native ARM64 build. The manager is
-  also on winget's Store source as `9NQ7512CXL7T`, the id python.org's
-  own documentation gives; the community id above is the same package.
 - The Build Tools go first, because rustup's default toolchain on Windows
   is the MSVC one (Microsoft's C and C++ compiler and linker) and wants
   the linker present. The `--override` string
@@ -313,7 +304,7 @@ date, checked against the release pages and the package indexes.
 
 | Tool | Windows (winget id) | macOS (Homebrew) | Line |
 | --- | --- | --- | --- |
-| Python | `Python.PythonInstallManager` 26.4, then `py install 3.13` | `python@3.13` 3.13.17 | 3.13 on every VM; 3.15.0 is the current release, from 2026-10-09 |
+| Python | `Python.Python.3.13` 3.13.15 | `python@3.13` 3.13.17 | 3.13; 3.14 and 3.15 exist, and winget has no 3.15 yet, so 3.13 keeps the VMs matched |
 | Git | `Git.Git` 2.55 | `git` 2.56 | current |
 | GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
 | Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
