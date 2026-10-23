@@ -604,6 +604,14 @@ printf '{"type":"user","cwd":"/srv/ccwork","message":{"role":"user","content":"h
 printf '{"display":"hi","project":"/srv/cchist","timestamp":1790848800000}\n' >"$CCW/history.jsonl"
 printf '{"projects":{"/srv/ccwork":{"allowedTools":[]}}}\n' >"$CCW/.claude.json"
 printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat-SECRET"}}\n' >"$CCW/.credentials.json"
+# 2026-10-23 (#256): the session key, the daemon files and the .claude.json
+# backup of a relocated home are collected by name and flagged secret.
+CCW_K="$CCW/sessions/4343.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.key"
+mkdir -p "$CCW/sessions" "$CCW/daemon" "$CCW/backups"
+printf 'session key\n' >"$CCW_K"
+printf '0123456789abcdef0123456789abcdef' >"$CCW/daemon/control.key"
+printf '{"workers":{}}\n' >"$CCW/daemon/roster.json"
+printf '{"oauthAccount":{}}\n' >"$CCW/backups/.claude.json.backup.1792800000000"
 printf '{"PORT":3456}\n' >"$H/.claude-code-router/config.json"
 printf '{}\n' >"$ROOT/srv/ccwork/.claude/settings.json"
 printf '{}\n' >"$ROOT/srv/cchist/.claude/settings.json"
@@ -1645,6 +1653,8 @@ check "relocated claude home session collected as claude-code" "row \"$CCW_S\" |
 check "relocated claude home history collected as claude-code" "row \"$CCW/history.jsonl\" | grep -q '\"agent\":\"claude-code\".*\"status\":\"collected\"'"
 check "relocated claude home credentials flagged secret" "row \"$CCW/.credentials.json\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
 check "relocated claude home .claude.json flagged secret" "row \"$CCW/.claude.json\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
+# 2026-10-23 (#256)
+check "#256 relocated claude home session key, daemon files and backup flagged secret" "row \"$CCW_K\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$CCW/daemon/control.key\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$CCW/daemon/roster.json\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$CCW/backups/.claude.json.backup.1792800000000\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
 check "claude-code-router not collected" "! grep -q '/.claude-code-router/' \"\$M\""
 check "relocated .claude.json projects key discovers project" "row \"$ROOT/srv/ccwork/.claude/settings.json\" | grep -q '\"user\":\"alice\".*\"agent\":\"claude-code\".*\"status\":\"collected\"'"
 check "relocated history.jsonl discovers project" "row \"$ROOT/srv/cchist/.claude/settings.json\" | grep -q '\"user\":\"alice\".*\"agent\":\"claude-code\".*\"status\":\"collected\"'"
@@ -2006,6 +2016,7 @@ check "#230 Qwen Code session registry skipped without secrets" "[ \"\$(status_o
 
 # 2026-10-23 claude-code Windows round (#256)
 check "#256 Claude Code daemon keys and .claude.json backup skipped without secrets" "[ \"\$(status_of \"$H/.claude/daemon/control.key\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.claude/daemon/roster.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.claude/backups/.claude.json.backup.1792800000000\")\" = skipped_secret ]"
+check "#256 relocated claude home session key, daemon key and backup skipped without secrets" "[ \"\$(status_of \"$CCW_K\")\" = skipped_secret ] && [ \"\$(status_of \"$CCW/daemon/control.key\")\" = skipped_secret ] && [ \"\$(status_of \"$CCW/backups/.claude.json.backup.1792800000000\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

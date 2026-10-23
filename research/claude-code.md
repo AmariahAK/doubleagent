@@ -410,8 +410,10 @@ The catalog covers a relocated home only when it is a `.claude-<name>` directory
 as `~/.claude-work`, and only through the Claude-specific names inside it: `.claude-*/projects`,
 `.claude-*/file-history`, `.claude-*/history.jsonl`, `.claude-*/.claude.json*`,
 `.claude-*/.credentials.json`, `.claude-*/hfi-auth.json`, `.claude-*/.session_ingress_token`,
-`.claude-*/remote/.oauth_token` and `.claude-*/remote/.api_key`. A bare `.claude-*` entry would
-claim other tools' directories that share the prefix:
+`.claude-*/remote/.oauth_token`, `.claude-*/remote/.api_key`, `.claude-*/sessions/*.*.key` (the
+`<pid>.<sha256>.key` shape), `.claude-*/daemon/control.key`, `.claude-*/daemon/pipe.key`,
+`.claude-*/daemon/roster.json` and `.claude-*/backups/.claude.json.*`. A bare `.claude-*` entry
+would claim other tools' directories that share the prefix:
 
 - claude-code-router: `~/.claude-code-router` on macOS and Linux, `%APPDATA%\claude-code-router` on
   Windows
@@ -439,9 +441,10 @@ claim other tools' directories that share the prefix:
   ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L16),
   [`state.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/state.go#L12-L13)).
 
-Not collected from a relocated home: `settings.json`, `settings.local.json`, `sessions/`, `todos/`,
-`plans/`, `tasks/`, `session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and
-any config home outside the home directory or not named `.claude-<name>`.
+Not collected from a relocated home: `settings.json`, `settings.local.json`, the `<pid>.json`
+registry files of `sessions/` (its `*.key` files are), `todos/`, `plans/`, `tasks/`,
+`session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and any config home
+outside the home directory or not named `.claude-<name>`.
 
 #### Used by other agents
 
@@ -1478,7 +1481,7 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | `queue-operation` | `system`, `queue <operation>: <content>`; an `enqueue` whose `content` a `queued_command` attachment or a `user` record of the file delivers is `prompt queued: delivered at line N` at the enqueue's own timestamp, N being the first delivering line after it (else the first), so the typing time is kept and the prompt text appears once, on the delivering row |
 | every other type ([Record schema](#record-schema) table) | skip |
 | `history.jsonl` line | `user` |
-| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([Remote Control](#remote-control)) |
+| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([Remote Control](#remote-control)), and the file then gives a second `system` row, `session synced: remote control bridge <bridgeSessionId> url - (from <path>, file mtime)`, at the file's modification time ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
 | `settings.json`, `settings.local.json` (user, `.claude-<name>`, or a project's) | one `system` row per `permissions.allow`, `deny`, `ask` and `additionalDirectories` entry, then one for `permissions.defaultMode` and `permissions.disableBypassPermissionsMode` when set: `permission setting: permissions.<key>=<value> (from <path relative to the home or project>, file mtime)`, a non-string value as compact JSON; `timestamp_utc` the manifest `mtime`, else the file's own; `session_id` empty; `project_path` the project directory for a `project` artifact, else empty; `source_line` 1; no other key read; a file that is not a JSON object is one `system` row `parser: settings file is not a JSON object` |
 | `.claude.json`, `.claude-<name>/.claude.json` | per `projects.<path>`: one row per `allowedTools` entry, then one each for `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` when present, `permission setting: <key>=<value> (from .claude.json, file mtime)`, `project_path` the `<path>` key, times as above; nothing else in the file is read (it holds the account's OAuth details); `.claude.json.backup*` is not wanted |
 
@@ -1561,9 +1564,12 @@ nearest `bridge_status` system line at or before it, else the file's first, else
 `records_sync`, so `sessions.jsonl` `synced` reads `yes` or `no` for this agent's sessions. The
 row rests on the `bridge_status` URL (`https://claude.ai/code/session_<id>`) naming the session on
 claude.ai while the bridge is up; whether claude.ai keeps the transcript after the detach was not
-determined. The registry's `bridgeSessionId` alone yields no sync row: the `bridge=` value of a
-`sessions/<pid>.json` row only says the process was under Remote Control when the collector ran
-([Remote Control](#remote-control)). The daemon handover is local and is a `session continued in:`
+determined. A `sessions/<pid>.json` registry file that names a `bridgeSessionId` gives the same
+marker, `session synced: remote control bridge <bridgeSessionId> url - (from <path>, file mtime)`,
+at the file's modification time, because the id says the process was under Remote Control when
+the collector ran ([Remote Control](#remote-control)); it is the marker that is left when the
+transcript is gone, and a session with both keeps both rows, which `sessions.jsonl` counts once
+as `synced` `yes`. The daemon handover is local and is a `session continued in:`
 row, not a sync row. The agent records no relay, and the parser sets neither `records_relay` nor
 `records_origin`: a cloud session could not be started from the CLI on the Windows round, and the
 files the bundle names for one (`.session_ingress_token`, `remote/`, `server-sessions.json`,

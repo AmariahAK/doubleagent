@@ -162,6 +162,29 @@ class JsonlTests(ShapeBase):
         self.assertNotIn(UUID, out)
         self.assertNotIn("cut mid", out)
 
+    def test_ids_and_paths_in_enum_values_redacted(self):
+        # Values at the enum paths that fit the token shape but are identifiers
+        # print as their class, never verbatim.
+        hexid = "0123456789abcdef0123456789abcdef"
+        lines = [
+            {"type": "system", "subtype": UUID},
+            {
+                "type": "user",
+                "sessionKind": hexid,
+                "entrypoint": "https://example.test/cb",
+                "message": {"role": "user", "model": "/Users/alice/private-model", "content": []},
+            },
+        ]
+        body = "".join(json.dumps(r) + "\n" for r in lines)
+        (self.root / "ids.jsonl").write_text(body, encoding="utf-8")
+        out = shape(self.root / "ids.jsonl")
+        self.assertIn("    subtype: <uuid>=1\n", out)
+        self.assertIn("    sessionKind: <hex>=1\n", out)
+        self.assertIn("    entrypoint: <url>=1\n", out)
+        self.assertIn("    message.model: <abs-path>=1\n", out)
+        for raw in (UUID, hexid, "example.test", "private-model", "alice"):
+            self.assertNotIn(raw, out)
+
     def test_untyped_lines(self):
         (self.root / "h.jsonl").write_text(
             '{"display": "x", "ts": 1}\n{"ts": 2, "display": "y"}\n', encoding="utf-8"

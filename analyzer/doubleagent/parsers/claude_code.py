@@ -205,7 +205,11 @@ evidence is in `research/claude-code.md`. Files:
   entrypoint=<entrypoint> bridge=<bridgeSessionId or none>
   host_session=<hostSessionId or none>`. `bridgeSessionId` is patched into
   the file while Remote Control is attached, so its presence means the
-  process was under Remote Control when the collector ran; a record can
+  process was under Remote Control when the collector ran, and a file
+  that names one also gives `session synced: remote control bridge
+  <bridgeSessionId> url - (from <path>, file mtime)` at the file's
+  modification time, the marker that is left when the transcript is
+  gone, so a registry-only session reads `synced` `yes`; a record can
   outlive a crashed process until the CLI's housekeeping sweep, so pair it
   with the EDR's process list. The `<pid>.<sha256>.key` sibling is a
   secret and is never read. A file that is not a JSON object is one
@@ -521,6 +525,20 @@ class ClaudeCodeParser(Parser):
             val("hostSessionId", "none"),
         )
         yield row
+        bridge = rec.get("bridgeSessionId")
+        if isinstance(bridge, str) and bridge:
+            sync = self.base_row(artifact)
+            sync.source_line = 1
+            sync.turn_type = "system"
+            sync.timestamp_utc = file_mtime(artifact)
+            sync.session_id = row.session_id
+            sync.project_path = row.project_path
+            sync.text = "%s remote control bridge %s url - (from %s, file mtime)" % (
+                SYNCED_PREFIX,
+                bridge,
+                artifact.rel,
+            )
+            yield sync
 
     def _standing_row(self, artifact: Artifact, ts: str, project: str, key: str, value) -> Row:
         row = self.base_row(artifact)

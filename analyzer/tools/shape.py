@@ -29,7 +29,9 @@ What it prints, per file, in sorted path order:
   per top-level key set), the union of top-level keys per type, the values
   of the enum-like keys in `ENUM_PATHS` (modes, kinds, decisions, model ids,
   tool and attachment names; a value prints only when it is a short token,
-  never free text), the key sets of the nested objects in `NESTED_KEYS`
+  never free text, and a token that is a UUID, a long hex id, an absolute
+  path or a URL prints as `<uuid>`, `<hex>`, `<abs-path>` or `<url>`), the
+  key sets of the nested objects in `NESTED_KEYS`
   (an `attachment` per `attachment.type`, a `permissionDecision`, a
   `toolUseResult`), the `subtype` breakdown of `system` lines, the content
   block types of `user` and `assistant` messages, and the count of lines
@@ -208,8 +210,9 @@ class Shaper:
 # Dotted key paths whose values are enum-like (a mode, a kind, a decision, a model id, a
 # tool name) and are counted per line type in a JSONL summary. A value is counted only
 # when it is a short token of letters, digits, `_`, `-`, `.`, `:` and `/`, so free text
-# and ids never print; `message.content[].name` and `attachment.type` are the tool
-# names and the attachment kinds of Claude Code's transcripts.
+# never prints, and a token that is a UUID, a long hex id, an absolute path or a URL
+# is redacted to its class; `message.content[].name` and `attachment.type` are the
+# tool names and the attachment kinds of Claude Code's transcripts.
 ENUM_PATHS: tuple[str, ...] = (
     "attachment.type",
     "entrypoint",
@@ -272,7 +275,9 @@ def enum_at(rec: object, path: str) -> str | None:
     if isinstance(node, bool):
         return "true" if node else "false"
     if isinstance(node, str) and ENUM_VALUE_RE.match(node):
-        return node
+        # A UUID, a long hex id, an absolute path or a URL fits the token shape too;
+        # it prints as its class, as a key would, never as the value.
+        return redact_key(node)
     return None
 
 

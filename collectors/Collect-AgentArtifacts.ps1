@@ -164,6 +164,11 @@ claude-code|.claude-*/hfi-auth.json
 claude-code|.claude-*/.session_ingress_token
 claude-code|.claude-*/remote/.oauth_token
 claude-code|.claude-*/remote/.api_key
+claude-code|.claude-*/sessions/*.*.key
+claude-code|.claude-*/daemon/control.key
+claude-code|.claude-*/daemon/pipe.key
+claude-code|.claude-*/daemon/roster.json
+claude-code|.claude-*/backups/.claude.json.*
 claude-code|.local/share/claude
 # Claude Code CLI cache: MCP server logs per project (#81). The Windows
 # entry names the children of Cache/: the PowerShell exclusion match ignores

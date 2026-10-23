@@ -581,6 +581,13 @@ Mk "Users/$CcwS" '{"type":"user","cwd":"C:\\ccwork","message":{"role":"user","co
 Mk 'Users/alice/.claude-work/history.jsonl' '{"display":"hi","project":"C:\\cchist","timestamp":1790848800000}'
 Mk 'Users/alice/.claude-work/.claude.json' '{"projects":{"C:\\ccwork":{"allowedTools":[]}}}'
 Mk 'Users/alice/.claude-work/.credentials.json' '{"claudeAiOauth":{"accessToken":"sk-ant-oat-SECRET"}}'
+# 2026-10-23 (#256): the session key, the daemon files and the .claude.json
+# backup of a relocated home are collected by name and flagged secret.
+$CcwK = 'Users/alice/.claude-work/sessions/4343.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.key'
+Mk $CcwK 'session key'
+Mk 'Users/alice/.claude-work/daemon/control.key' '0123456789abcdef0123456789abcdef'
+Mk 'Users/alice/.claude-work/daemon/roster.json' '{"workers":{}}'
+Mk 'Users/alice/.claude-work/backups/.claude.json.backup.1792800000000' "{`"oauthAccount`":{}}`n"
 Mk 'Users/alice/.claude-code-router/config.json' '{"PORT":3456}'
 Mk 'ccwork/.claude/settings.json' '{}'
 Mk 'cchist/.claude/settings.json' '{}'
@@ -1677,6 +1684,9 @@ $r = Row 'alice/.claude-work/.credentials.json'
 Check 'relocated claude home credentials flagged secret' { $r -and $r.agent -eq 'claude-code' -and $r.secret -eq $true -and $r.status -eq 'collected' }
 $r = Row 'alice/.claude-work/.claude.json'
 Check 'relocated claude home .claude.json flagged secret' { $r -and $r.agent -eq 'claude-code' -and $r.secret -eq $true -and $r.status -eq 'collected' }
+# 2026-10-23 (#256)
+$r = Row $CcwK; $r2 = Row 'alice/.claude-work/daemon/control.key'; $r3 = Row 'alice/.claude-work/daemon/roster.json'; $r4 = Row 'alice/.claude-work/backups/.claude.json.backup.1792800000000'
+Check '#256 relocated claude home session key, daemon files and backup flagged secret' { $r -and $r2 -and $r3 -and $r4 -and @(@($r, $r2, $r3, $r4) | Where-Object { $_.agent -ne 'claude-code' -or $_.secret -ne $true -or $_.status -ne 'collected' }).Count -eq 0 }
 Check 'claude-code-router not collected' { $null -eq (Row 'alice/.claude-code-router/config.json') }
 $r = Row 'ccwork/.claude/settings.json'
 Check 'relocated .claude.json projects key discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
@@ -2250,6 +2260,7 @@ Check '#230 Qwen Code session registry skipped without secrets' { (StatusOf 'Use
 
 # 2026-10-23 claude-code Windows round (#256)
 Check '#256 Claude Code daemon keys and .claude.json backup skipped without secrets' { (StatusOf 'Users/alice/.claude/daemon/control.key') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude/daemon/roster.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude/backups/.claude.json.backup.1792800000000') -eq 'skipped_secret' }
+Check '#256 relocated claude home session key, daemon key and backup skipped without secrets' { (StatusOf $CcwK) -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude-work/daemon/control.key') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.claude-work/backups/.claude.json.backup.1792800000000') -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

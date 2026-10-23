@@ -17,8 +17,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Windows round: the Windows temp root `AppData/Local/Temp/claude` and the
   project's `.git/info/exclude` are detected, `.claude/paste-cache` is no
   longer excluded, `.claude/plugins/plugin-directory-cache*` is, and the
-  session daemon's keys and the `.claude.json` backups are secrets
-  ([#256]).
+  session daemon's keys and the `.claude.json` backups are secrets, in
+  `.claude` and, with the session keys, in a `~/.claude-<name>` config
+  home ([#256]).
+- The `claude-code` parser yields `session synced: remote control bridge
+  <bridgeSessionId> url - (from <path>, file mtime)` from a
+  `.claude/sessions/<pid>.json` registry file that names a bridge id, at
+  the file's modification time, so a session whose transcript is gone but
+  whose registry file shows Remote Control attached reads `synced` `yes`
+  in `sessions.jsonl` rather than `no` ([#256]).
 - The bundled catalog copy has the collector's seven new project lines,
   `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`, `.git/packed-refs`,
   `.git/refs`, `.git/logs` and `.git/worktrees`, and its exclusion of

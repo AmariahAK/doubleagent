@@ -41,6 +41,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.claude.json*` catalog line collects and which hold the same account
   and MCP server settings as `.claude.json`, are flagged `secret: true`,
   in the home and in a `~/.claude-<name>` config home ([#256]).
+- A `~/.claude-<name>` config home's session keys, session daemon files
+  and `.claude.json` backups are collected and flagged `secret: true`
+  through catalog lines of their own, `.claude-*/sessions/*.*.key`,
+  `.claude-*/daemon/control.key`, `.claude-*/daemon/pipe.key`,
+  `.claude-*/daemon/roster.json` and `.claude-*/backups/.claude.json.*`,
+  since such a home is collected only by its Claude-specific names and a
+  secret glob alone collects nothing ([#256]).
 - `.claude/plugins/plugin-directory-cache*`, Claude Code's downloaded copy
   of the plugin directory, is excluded ([#256]).
 

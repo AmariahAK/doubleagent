@@ -241,7 +241,9 @@ the per-process registry `.claude/sessions/<pid>.json` (one `system` row
 per running process at `startedAt`: `claude-code process <pid> <kind>
 status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none>
 host_session=<hostSessionId or none>`, a `bridge=` value meaning the
-process was under Remote Control when the collector ran; the
+process was under Remote Control when the collector ran and giving a
+`session synced: remote control bridge <id> url - (from <path>, file
+mtime)` row as well; the
 `<pid>.<sha256>.key` sibling is never read); a 2.1.295
 `permissionDecision` on a tool-result line is a `system` row after its
 `tool_result` rows, `permission decision: <decision> source=<source>

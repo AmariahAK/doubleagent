@@ -590,16 +590,29 @@ class ClaudeCode295Tests(ParserBase):
         self.assertEqual(sessions, {r.session_id})
         rows = self.rows_for(ClaudeCodeParser(), self.BRIDGE)
         self.assertEqual(
-            [(x.text, x.session_id, x.timestamp_utc) for x in rows],
+            [(x.text, x.session_id, x.project_path, x.turn_type) for x in rows],
             [
                 (
                     "claude-code process 4343 interactive status=busy entrypoint=cli "
                     "bridge=cse_0123456789abcdef host_session=none",
                     CLAUDE_BRIDGE_SESSION,
-                    "2026-10-01T12:00:00.000Z",
-                )
+                    "/srv/proj",
+                    "system",
+                ),
+                (
+                    "session synced: remote control bridge cse_0123456789abcdef url - "
+                    "(from %s, file mtime)" % self.BRIDGE,
+                    CLAUDE_BRIDGE_SESSION,
+                    "/srv/proj",
+                    "system",
+                ),
             ],
         )
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-01T12:00:00.000Z")
+        # The sync marker is timestamped by the registry file's mtime, never left empty.
+        self.assertRegex(rows[1].timestamp_utc, r"^\d{4}-\d{2}-\d{2}T.*Z$")
+        # A registry file without a bridge id gives no sync marker.
+        self.assertEqual(len(self.rows_for(ClaudeCodeParser(), self.REG)), 1)
 
     def test_registry_missing_keys(self):
         (self.home / self.REG).write_text('{"pid": 4242}', encoding="utf-8")
@@ -1078,6 +1091,13 @@ class ClaudeCode309Tests(ParserBase):
         )
         synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"claude-code"}))}
         self.assertEqual(synced, {CLAUDE_309_SESSION: "yes", CLAUDE_296_SESSION: "no"})
+        # A session known only from its registry file, whose bridge id is the one
+        # trace of Remote Control left, is synced too; one without a bridge id is not.
+        rows = self.rows_for(p, ClaudeCode295Tests.BRIDGE) + self.rows_for(
+            p, ClaudeCode295Tests.REG
+        )
+        synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"claude-code"}))}
+        self.assertEqual(synced, {CLAUDE_BRIDGE_SESSION: "yes", CLAUDE_295_SESSION: "no"})
 
     def test_surface_change(self):
         self._append(

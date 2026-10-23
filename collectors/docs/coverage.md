@@ -134,6 +134,9 @@ names collected there:
 | `.session_ingress_token` | yes |
 | `remote/.oauth_token` | yes |
 | `remote/.api_key` | yes |
+| `sessions/*.*.key` (the `<pid>.<sha256>.key` session keys) | yes |
+| `daemon/control.key`, `daemon/pipe.key`, `daemon/roster.json` | yes |
+| `backups/.claude.json.*` | yes |
 
 The rest of a relocated home (`settings.json`, `todos/`, `plans/`,
 `shell-snapshots/` and the other subdirectories) is not collected, because
