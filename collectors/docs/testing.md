@@ -1,7 +1,14 @@
 # Testing
 
-The collectors' smoke tests, the catalog drift check and what CI runs; for
-developers changing the collectors.
+The collectors are tested end to end. `tests/smoke.sh` and `tests/smoke.ps1`
+build a fake disk image with two users, awkward file names, credentials,
+excluded directories, an oversized file and symlinks, run the collector
+over it in image mode and check the manifest rows, the archive and each
+option; `tests/catalog-sync.sh` checks that the five catalog tables agree
+between the two scripts and the analyzer's copy. A change to a collector
+runs the sh smoke test under every shell the script must support, the
+PowerShell one under PowerShell 7 and Windows PowerShell 5.1, and the drift
+check before it is pushed, and CI runs the same matrix.
 
 Run from the `collectors/` directory:
 

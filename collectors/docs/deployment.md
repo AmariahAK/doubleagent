@@ -1,12 +1,18 @@
 # Deployment through an EDR
 
-Running the collectors through an EDR remote shell, for a collection or a
-fleet inventory.
+During an incident the collector usually reaches a host through the
+remote shell of the EDR (endpoint detection and response) product the
+responder already has, not a terminal on the host: the responder uploads
+the one script file, runs it once, and retrieves the archive it wrote, or
+runs it in inventory mode across the fleet and keeps what it printed. The
+consoles hold the script's output until it ends and bound how long one
+command may run, so a collection through one is planned around those
+limits.
 
 ## Collection
 
-An EDR (endpoint detection and response) product's remote shell is the
-usual way to reach a host: CrowdStrike Falcon RTR (Real Time Response),
+An EDR product's remote shell is the usual way to reach a host:
+CrowdStrike Falcon RTR (Real Time Response),
 SentinelOne RemoteOps (Remote Operations, which runs a script on a host as
 a console task), Microsoft Defender for Endpoint Live Response, or Palo
 Alto Networks Cortex XDR (extended detection and response) Live Terminal.

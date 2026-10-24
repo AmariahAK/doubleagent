@@ -1,7 +1,14 @@
 # Output
 
-What `detect` prints, the files `timeline` writes, and the
-`inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas.
+The analyzer answers two questions about an input, and each has its own
+command and output. `detect` says which agents left state in it, for
+which users, and whether a parser exists for each, on stdout; nothing is
+written. `timeline` reads every transcript it can parse and writes three
+files into `-o`: `timeline.jsonl`, one record per turn, tool call, tool
+result or system event; `sessions.jsonl`, one record per session; and
+`inventory.json`, what was detected and parsed. The JSONL records are the
+interface for everything downstream, so their fields, order and types are
+fixed and documented in full here, and a record always has every field.
 
 ## detect
 

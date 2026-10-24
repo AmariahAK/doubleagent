@@ -1,11 +1,11 @@
 # What gets collected
 
-Which files the collectors take, from which homes and projects, and which
-they exclude or flag as credentials.
-
-The catalog is the table of agents and the paths under a home directory
-where each keeps its state; it is the same table in both collectors and in
-the analyzer, and `--list` prints it in full. Every catalog entry is tried
+The collectors decide what to take from a table, not from code. The
+catalog is the table of agents and the paths under a home directory where
+each keeps its state; it is the same table in both collectors and in the
+analyzer, and `--list` prints it in full, so a responder can see before a
+run which files will be taken, which subtrees are excluded and which files
+are flagged as credentials. Every catalog entry is tried
 against every home directory, so macOS, Linux and Windows paths coexist and a Windows image
 mounted on a Linux workstation is collected correctly. The evidence for every
 catalog entry, with citations and the level each claim rests on, is one

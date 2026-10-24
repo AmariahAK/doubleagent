@@ -1,8 +1,13 @@
 # Inputs and detection
 
-What the analyzer accepts as input, how it attributes files to users and
-agents and routes them to parsers, and what it does with inputs it cannot
-read.
+The analyzer reads whatever a responder has: an archive from either
+collector, a collection already extracted, or a loose tree such as a
+copied home directory or a mounted disk image. A collection carries a
+manifest, so every file's host, user, home and agent come from it. A loose
+tree carries nothing, so the analyzer finds homes and agents with the
+collectors' own catalog and infers the user from the path, and its output
+says that it did. A file or directory it cannot read is reported as a
+problem, never skipped in silence.
 
 ## Inputs
 

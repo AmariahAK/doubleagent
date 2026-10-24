@@ -1,12 +1,11 @@
 # Privileges
 
-What a run without root or Administrator still collects, and how it records
-what it could not read.
-
 Run as root (sh) or from an elevated PowerShell (Windows) to collect every
-user. Without that privilege, a live run still finishes and exits `0`. The
-log gets a `WARNING: not running as root` (or `as Administrator`) line,
-and:
+user. A responder does not always have that, and a run without it is still
+useful: it collects everything the account can read, finishes, exits `0`,
+and records each home, directory and file it could not read as a manifest
+row, so the gaps in the archive are visible instead of silent. The log
+gets a `WARNING: not running as root` (or `as Administrator`) line, and:
 
 - A home the responder cannot list or enter is still listed in `users`,
   gets one `error_read` row (`agent` empty, `path` and `home` the home

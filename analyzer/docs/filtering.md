@@ -1,10 +1,9 @@
 # Filtering the timeline
 
-The `--since`, `--until`, `--keep-undated` and `--match` options of
-`timeline`, and the `WHEN` forms they accept.
-
 `timeline` can write only part of the timeline, which keeps the output of a
-busy host to the incident window:
+busy host to the incident window. A time window is set with `--since` and
+`--until`, rows without a timestamp are kept with `--keep-undated`, and a
+pattern over the row text is set with `--match`:
 
 - `--since WHEN` and `--until WHEN` keep rows with `since <= timestamp_utc
   <= until`. Either may be given alone. Rows without a timestamp are

@@ -1,8 +1,12 @@
 # Options
 
-Every option of both collectors in full, the exit codes, and the environment
-variables each one reads. The short table is in the
-[collectors README](../README.md#options).
+Both collectors take the same options, spelled as `--long` flags in the sh
+script and as `-Parameter` names in the PowerShell one, and a run with no
+options collects every user on the live host into the current directory.
+The options below are every one, with what each changes in the output,
+the exit codes a console task can test, and the environment variables
+each script reads; the short table in the
+[collectors README](../README.md#options) is enough for a first run.
 
 ## Option reference
 

@@ -1681,7 +1681,17 @@ the start of this section).
   for the reader, or by a paragraph that tells the reader what the
   content means for them (the two sections of the
   [agents page](docs/agents.md) open that way), not by a paragraph about
-  what the section lists. A count in prose ("three sources have a wider
+  what the section lists. The page's own opening paragraph, under its
+  title, follows the same rule: it says what the thing is and when the
+  reader uses it, in sentences with verbs, and never lists the page's
+  topics with the audience after a semicolon ("..., and adding a parser;
+  for developers changing the analyzer"), which is a brief for an agent,
+  not an introduction; who the page is for shows in what it says, not in
+  a tag. The lab VMs page of [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259)
+  opened that way, as did the development, testing and deployment pages
+  and, in a shorter one-line form before a real paragraph, ten more that
+  the pass of October 2026 had left; all were rewritten on 2026-10-23.
+  A count in prose ("three sources have a wider
   window") goes stale at the next addition; name the items or say
   "some". The pass of October 2026 that removed such sentences from
   twenty pages found three stale facts beside them, so maintainer prose

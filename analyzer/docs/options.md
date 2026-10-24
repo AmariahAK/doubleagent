@@ -1,7 +1,11 @@
 # Options
 
-Every subcommand and option in full, and the exit codes. The short table is
-in the [analyzer README](../README.md#options).
+`doubleagent` has three subcommands: `detect` reports which agents left
+state in an input, `timeline` parses the transcripts into JSONL files
+under `-o`, and `inventory` merges the collectors' inventory output from a
+fleet into one CSV. The options below are every one each subcommand
+accepts, with the exit codes a script can test; the short table in the
+[analyzer README](../README.md#options) is enough for a first run.
 
 ## Synopsis
 
