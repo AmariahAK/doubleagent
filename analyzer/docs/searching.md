@@ -1,15 +1,15 @@
 # Reading and searching the output
 
-Recipes for reading and searching a large `timeline.jsonl` or
-`sessions.jsonl` with jq, grep, DuckDB, Python and PowerShell.
-
 A timeline from a busy host can run to gigabytes, because `text` holds full
-tool output. Each line is one complete record, so the tools below stream
-the file line by line and use little memory however large it is. The
-examples run in the `-o` directory. A spreadsheet is the wrong viewer for
-these files: Excel stops at 1,048,576 rows and 32,767 characters per cell.
-Export a filtered, shortened subset to CSV instead, as shown at the end of
-the jq examples.
+tool output, and the analyzer never shortens it: cutting the output down to
+the rows and columns a question needs is the analyst's step, done with the
+tools already on the workstation. Each line of `timeline.jsonl` and
+`sessions.jsonl` is one complete record, so jq, grep, DuckDB, Python and
+PowerShell all stream the file line by line and use little memory however
+large it is; the recipes below cover each. The examples run in the `-o`
+directory. A spreadsheet is the wrong viewer for these files: Excel stops
+at 1,048,576 rows and 32,767 characters per cell. Export a filtered,
+shortened subset to CSV instead, as shown at the end of the jq examples.
 
 **[jq](https://jqlang.org)** reads one record at a time. Never pass `-s`
 (slurp) on a large file, which loads the whole file into memory.

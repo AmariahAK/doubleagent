@@ -1,7 +1,14 @@
 # Windows
 
-How the PowerShell collector writes its archive, recreates symlinks and
-reparse points, and copies locked or long paths.
+Windows gives the PowerShell collector three problems the sh collector
+never meets. A Windows host may lack `tar.exe`, so the collector carries
+two more archivers and records which one wrote the archive. NTFS has
+reparse points, symbolic links and junctions among them, which must be
+recorded without being followed. And a file held open by a running
+editor, or a path longer than 260 characters, must still be copied under
+Windows PowerShell 5.1 with no host setting changed. Each is handled as
+described below, and an analyst reading a Windows archive or manifest
+finds the traces of each here.
 
 ## Archiver: `tar.exe`, the PowerShell tar writer or `ZipFile`
 

@@ -1,10 +1,10 @@
 # Inventory mode
 
-What `--inventory` (sh) and `-Inventory` (PowerShell) walk and the JSON
-Lines they print.
-
-Inventory mode answers a fleet question, which users have used which agents
-on which hosts, without collecting anything. Run the script on every host
+Inventory mode, `--inventory` in the sh collector and `-Inventory` in the
+PowerShell one, answers a fleet question, which users have used which
+agents on which hosts, without collecting anything: the script walks what
+a collection would take and prints one JSON line for the host and one per
+user and agent found instead of copying a file. Run the script on every host
 through the EDR console and keep what it prints: stdout is the whole result
 (see [deployment.md](deployment.md#fleet-inventory)). Nothing is created,
 copied, hashed or written, not even a log, and `-o` is ignored. When `-o` or

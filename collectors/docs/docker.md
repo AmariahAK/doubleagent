@@ -1,12 +1,14 @@
 # Docker volumes
 
-How the collectors find and collect agents deployed in Docker or Podman
-named volumes, and what they record for Docker Desktop.
-
 Several agents are commonly deployed in containers with their state in a
 named volume rather than a home directory: Agent Zero's README runs it with
 `-v a0_usr:/a0/usr`, Local Deep Research's compose file keeps its data in
 `ldr_data`, and Ollama's Docker instructions use a volume named `ollama`.
+A home-directory walk never sees that state, so both collectors also look
+for Docker and Podman named volumes on the host, collect the ones whose
+names match an agent as if each were a home, record the ones they do not
+recognise, and say so when Docker Desktop keeps its volumes inside a
+virtual machine disk that neither collector can reach.
 
 The volume name patterns in `DOCKER_VOLUMES`, in table order (the first
 match wins):

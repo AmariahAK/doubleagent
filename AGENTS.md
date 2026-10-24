@@ -1689,8 +1689,9 @@ the start of this section).
   not an introduction; who the page is for shows in what it says, not in
   a tag. The lab VMs page of [pull request 259](https://github.com/seanthegeek/doubleagent/pull/259)
   opened that way, as did the development, testing and deployment pages
-  the pass of October 2026 had left, and all four were rewritten on
-  2026-10-23. A count in prose ("three sources have a wider
+  and, in a shorter one-line form before a real paragraph, ten more that
+  the pass of October 2026 had left; all were rewritten on 2026-10-23.
+  A count in prose ("three sources have a wider
   window") goes stale at the next addition; name the items or say
   "some". The pass of October 2026 that removed such sentences from
   twenty pages found three stale facts beside them, so maintainer prose
