@@ -12,8 +12,9 @@ snapshot is the starting point of every round, so what it holds decides
 what the agent can do and what the round can see.
 
 The sections below say why development tools are in the snapshots, what
-the host machine must provide for the VMs to do their job, how each VM is
-built from a clean install, and which versions the snapshots hold.
+the host machine must provide for the VMs to do their job, how the main
+session reaches each VM over SSH, how each VM is built from a clean
+install, and which versions the snapshots hold.
 
 ## Why the VMs hold development tools
 
@@ -81,6 +82,71 @@ Four things about the host decide what the VMs can do:
   external disk needs the host kept awake while it runs, because a bus
   sleep under a running VM or a merging snapshot damages the bundle.
 
+## SSH access
+
+During a round the main session runs `ssh` and `scp` from its tool calls:
+the listing script after every step, copying `analyzer/tools/shape.py` and
+the collector into the VM, pulling the archive and the probe output out,
+and deleting the outputs it left behind. The person at the VM uses its
+console; the agent never does.
+
+A tool call has no terminal, so a password or passphrase prompt cannot be
+answered and the command hangs or fails, and an agent cannot be relied on
+to reach a running `ssh-agent` either. The lab therefore uses one
+dedicated ed25519 key with no passphrase, generated for the lab alone.
+What limits the exposure: the key is authorized only for the lab user in
+VMs on a host-only network that are reverted after every round, so it
+opens nothing a revert does not erase; `IdentitiesOnly yes` means the
+agent never offers the developer's other keys to the VMs; the private key
+is mode 600 under `~/.ssh` on the host, outside any repository, and never
+enters a VM; and revoking it is removing the public key from the VM's
+authorized file and retaking the snapshot. Generate it on the host:
+
+```sh
+ssh-keygen -t ed25519 -N '' -C doubleagent-lab -f ~/.ssh/doubleagent_lab
+```
+
+The connection flags live in an ssh config file passed with `-F` rather
+than typed per call: one file keeps every call identical, and fish does
+not word-split a flag string held in a variable. The file sits with the
+round's other tooling outside the repository, holds one `Host` alias per
+VM, and points `UserKnownHostsFile` at a known-hosts file of its own,
+because a rebuilt VM gets new host keys and would leave a stale entry in
+the developer's own file:
+
+```text
+# ssh -F <this file> <alias>
+Host winvm
+  HostName <address the hypervisor gave the Windows VM>
+  User <lab user>
+  IdentityFile ~/.ssh/doubleagent_lab
+  IdentitiesOnly yes
+  UserKnownHostsFile <lab directory>/known_hosts
+  StrictHostKeyChecking accept-new
+
+Host macvm
+  HostName <address the hypervisor gave the macOS VM>
+  User <lab user>
+  IdentityFile ~/.ssh/doubleagent_lab
+  IdentitiesOnly yes
+  UserKnownHostsFile <lab directory>/known_hosts
+  StrictHostKeyChecking accept-new
+
+Host ubuvm
+  HostName <address the hypervisor gave the Ubuntu VM>
+  User <lab user>
+  IdentityFile ~/.ssh/doubleagent_lab
+  IdentitiesOnly yes
+  UserKnownHostsFile <lab directory>/known_hosts
+  StrictHostKeyChecking accept-new
+```
+
+The SSH server and the authorized public key are part of each clean
+snapshot, so a round's first listing can be taken before the agent is
+installed; the snapshot holds no lab directory, which the round creates
+and deletes before the VM is released. What each OS needs is under its
+heading below, the server first and the key after it.
+
 ## Windows
 
 Windows 11. Everything comes from the community source of `winget`, the
@@ -131,6 +197,47 @@ py -m pipx ensurepath
   matrix.
 `winget show --id <id>` prints the installer URL and hash a package would
 install, for checking a package before trusting it.
+
+### SSH
+
+Windows ships an OpenSSH server as an optional capability, off by default.
+In the VM, from an elevated PowerShell, install it, start it at every
+boot, and make sure the inbound rule the capability normally creates is
+there:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd
+Set-Service -Name sshd -StartupType Automatic
+if (-not (Get-NetFirewallRule -Name OpenSSH-Server-In-TCP -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -Name OpenSSH-Server-In-TCP -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+}
+```
+
+The lab user is an administrator, so the collector can run elevated and
+the SSH session holds the backup privilege that reads other users'
+profiles. That changes where the key goes: for a member of Administrators,
+sshd reads `C:\ProgramData\ssh\administrators_authorized_keys` and
+ignores the user's own `~\.ssh\authorized_keys`, and it refuses the
+file unless Administrators and SYSTEM are the only accounts that can read
+it. Password authentication is on by default, which is what the first
+copy uses. From the host, with the password once:
+
+```sh
+scp -F <lab directory>/sshconfig ~/.ssh/doubleagent_lab.pub winvm:C:/ProgramData/ssh/administrators_authorized_keys
+```
+
+Back in the VM, from an elevated PowerShell, set the permissions sshd
+requires:
+
+```powershell
+icacls.exe C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F'
+```
+
+Then `ssh -F <lab directory>/sshconfig winvm hostname` from the host
+prints the VM's name without a prompt. The login shell is cmd.exe, so
+anything with a pipe or nested quotes goes in a `.ps1` file under the lab
+directory and runs with `powershell -File`.
 
 ## macOS
 
@@ -210,6 +317,25 @@ Not every hypervisor snapshots a macOS guest. When the VM has no
 snapshot control, the finished VM is cloned as the clean copy and
 reverted by cloning it again.
 
+### SSH
+
+macOS ships the server and calls it Remote Login. Turn it on in System
+Settings under General, then Sharing, or from the VM's Terminal:
+
+```sh
+sudo systemsetup -setremotelogin on
+```
+
+From the host, with the password once; `ssh-copy-id` creates `~/.ssh`
+and `authorized_keys` in the VM with the modes sshd requires:
+
+```sh
+ssh-copy-id -i ~/.ssh/doubleagent_lab.pub -o IdentitiesOnly=yes <lab user>@<address>
+```
+
+Then `ssh -F <lab directory>/sshconfig macvm hostname` from the host
+prints the VM's name without a prompt.
+
 ## Ubuntu
 
 Ubuntu, where `sh` is dash and bash and busybox are a package away, so
@@ -236,6 +362,25 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
   behind.
 - Docker Engine comes from Docker's own apt repository, under
   [Docker](#docker).
+
+### SSH
+
+Ubuntu Desktop installs no SSH server (Ubuntu Server offers one during
+installation). In the VM:
+
+```sh
+sudo apt install openssh-server
+sudo systemctl enable --now ssh
+```
+
+From the host, with the password once:
+
+```sh
+ssh-copy-id -i ~/.ssh/doubleagent_lab.pub -o IdentitiesOnly=yes <lab user>@<address>
+```
+
+Then `ssh -F <lab directory>/sshconfig ubuvm hostname` from the host
+prints the VM's name without a prompt.
 
 ## Docker
 
