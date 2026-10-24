@@ -1,8 +1,19 @@
 # Lab VMs
 
-The clean virtual machines that the [real-install rounds](../AGENTS.md#real-install-rounds)
-start from, what is installed in their snapshots and why, and the install
-commands that rebuild them; for a contributor running a round.
+Three virtual machines, one each for Windows, macOS and Ubuntu, are where
+the project watches what an AI agent writes to a real system. Each is kept
+as a clean snapshot that holds what a developer's machine has and nothing
+else. A [real-install round](../AGENTS.md#real-install-rounds) reverts the
+VM to that snapshot, installs the agent under test, exercises it one step
+at a time while a listing of the agent's directories is taken over SSH
+after each step, runs the collector inside the VM, pulls the archive to
+the analyst machine, and reverts the VM again before the next agent. The
+snapshot is the starting point of every round, so what it holds decides
+what the agent can do and what the round can see.
+
+The sections below say why development tools are in the snapshots, what
+the host machine must provide for the VMs to do their job, how each VM is
+built from a clean install, and which versions the snapshots hold.
 
 ## Why the VMs hold development tools
 
