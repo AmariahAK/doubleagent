@@ -161,7 +161,7 @@ compilers. Run from an elevated PowerShell:
 
 ```powershell
 winget install --id Python.PythonInstallManager -e --accept-package-agreements --accept-source-agreements
-py install 3.15
+py install default
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
 winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
@@ -180,11 +180,11 @@ py -m pipx ensurepath
 - `Python.PythonInstallManager` is the Python install manager, the way
   python.org now installs Python on Windows: the 3.15 documentation marks
   the full `.exe` installer and the old `py` launcher deprecated. Its `py`
-  command downloads a runtime from python.org's index, so `py install
-  3.15` pins the line and installs the guest's ARM64 or x64 build; the
-  first install offers to add `%LocalAppData%\Python\bin`, the directory
-  of the `python3.15` aliases, to the user PATH, and `py` works without
-  it. The python.org documentation installs the same package through
+  command downloads a runtime from python.org's index, and `py install
+  default` takes the current stable release in the guest's ARM64 or x64
+  build; the first install offers to add `%LocalAppData%\Python\bin`,
+  the directory of the versioned `python3.<minor>` aliases, to the user
+  PATH, and `py` works without it. The python.org documentation installs the same package through
   winget's Microsoft Store source as `9NQ7512CXL7T`.
 - The Build Tools go first, because rustup's default toolchain on Windows
   is the MSVC one (Microsoft's C and C++ compiler and linker) and wants
@@ -290,7 +290,7 @@ brew analytics off
 Then:
 
 ```sh
-brew install python@3.15 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
+brew install python git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
 brew install --cask visual-studio-code
 brew link --overwrite node@24
 echo 'export PATH="$(brew --prefix)/lib/ruby/gems/4.0.0/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
@@ -319,11 +319,12 @@ brew cleanup -s
   `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than
   `openjdk` for the same reason, since `openjdk` is the current non-LTS
   Java.
-- `python@3.15` is the Python the `pipx` formula depends on, so Homebrew
-  installs it with `pipx` whether or not the line names it. Naming an
-  older Python instead (`python@3.13`) installs two: both land under
-  `opt/`, and `python3` in Homebrew's `bin` is the newer one, since only
-  the current formula links the unversioned names.
+- `python` is Homebrew's alias for the current Python formula,
+  `python@3.15` on 2026-10-25, and the one `pipx` depends on, so the line
+  installs one Python. Naming an older versioned formula instead
+  (`python@3.13`) installs two: both land under `opt/`, and `python3` in
+  Homebrew's `bin` is the newer one, since only the current formula links
+  the unversioned names.
 - `powershell` is a formula, not a cask: the `powershell` cask was
   disabled on 2026-09-01 because its package fails Homebrew's Gatekeeper
   check, and the formula has arm64 bottles for macOS 26.
@@ -504,7 +505,7 @@ release pages and the package indexes on 2026-10-23, the Python line on
 
 | Tool | Windows (winget id) | macOS (Homebrew) | Line |
 | --- | --- | --- | --- |
-| Python | `Python.PythonInstallManager` 26.4, then `py install 3.15` 3.15.1 | `python@3.15` 3.15.1 | 3.15, the current release since 2026-10-09, on Windows and macOS; 3.14 on Ubuntu, the `python3` of 26.04's archive |
+| Python | `Python.PythonInstallManager` 26.4, then `py install default` 3.15.1 | `python` 3.15.1 | current, unpinned, on Windows and macOS (3.15.1 on 2026-10-25); 3.14 on Ubuntu, the `python3` of 26.04's archive |
 | Git | `Git.Git` 2.55 | `git` 2.56 | current |
 | GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
 | Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
