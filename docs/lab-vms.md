@@ -373,15 +373,15 @@ each. Most of the toolchain is in Ubuntu's own archive; the rest comes from the
 vendor's documented route:
 
 ```sh
-sudo apt install git python3 python3-pip pipx ruby-full golang-go default-jdk
+sudo apt install git python3 python3-pip pipx nodejs npm ruby-full golang-go default-jdk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ```
 
-- `gh` comes from GitHub's own apt repository, Node from NodeSource's
-  repository for the current line, and VS Code from Microsoft's `.deb`,
-  each as the vendor's install page documents for Ubuntu. `default-jdk`
-  is the archive's default Java for the release.
+- `gh` comes from GitHub's own apt repository and VS Code from
+  Microsoft's `.deb`, each as the vendor's install page documents for
+  Ubuntu. `nodejs`, `npm` and `default-jdk` are the archive's own, so
+  the release decides their versions, as it does for `python3`.
 - PowerShell: Microsoft's apt repository ships amd64 packages only, so an
   arm64 VM takes the `.deb` published on the PowerShell GitHub release
   (`powershell_<version>-1.deb_arm64.deb`) and installs it with
@@ -512,7 +512,7 @@ when the line is superseded, the id changes.
 | Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | the current release; Ubuntu's archive sets its own |
 | Git | `Git.Git` | `git` | `git` | the current release; Ubuntu's archive sets its own |
 | GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | the current release |
-| Node | `OpenJS.NodeJS` | `node` | NodeSource's repository, current line | the current release |
+| Node | `OpenJS.NodeJS` | `node` | `nodejs` and `npm` | the current release; Ubuntu's archive sets its own |
 | VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | the current release |
 | Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | the current release |
 | Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain |
