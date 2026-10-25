@@ -500,27 +500,27 @@ needs a container is exercised on a Mac that is not a VM.
 
 ## Versions
 
-Nothing in the snapshots is pinned to a build. Each id below resolves to
-the vendor's current release when the package manager runs it, so a
-rebuild installs whatever is current that day and this page stays right
-without an edit. A few ids name a line instead, because the package
-source offers nothing else, and those are the one thing a rebuild checks:
-when the line is superseded, the id changes.
+Each VM takes what its platform gives by default: the current release
+from winget and Homebrew, the release's own packages from Ubuntu's
+archive. Nothing is pinned to a build and the versions differ between the
+VMs, so a rebuild installs what is current that day and this page needs
+no edit for it. The exceptions are ids that can only name a line, noted
+in the table; when such a line is superseded, the id changes.
 
-| Tool | Windows (winget id) | macOS (Homebrew) | Ubuntu | Follows |
+| Tool | Windows (winget id) | macOS (Homebrew) | Ubuntu | Notes |
 | --- | --- | --- | --- | --- |
-| Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | the current release; Ubuntu's archive sets its own |
-| Git | `Git.Git` | `git` | `git` | the current release; Ubuntu's archive sets its own |
-| GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | the current release |
-| Node | `OpenJS.NodeJS` | `node` | `nodejs` and `npm` | the current release; Ubuntu's archive sets its own |
-| VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | the current release |
-| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | the current release |
-| Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain |
-| Go | `GoLang.Go` | `go` | `golang-go` | the current release; Ubuntu's archive sets its own |
-| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` | `ruby` | `ruby-full` | the current release; the winget id names a line, since RubyInstaller publishes one package per line |
-| OpenJDK | `Microsoft.OpenJDK.25` | `openjdk` | `default-jdk` | the current release on macOS; the winget id names the newest long-term support line Microsoft builds, since every JDK id on winget names a line; Ubuntu's archive sets its default |
-| PowerShell | `Microsoft.PowerShell` | `powershell` | the `.deb` of the GitHub release | the current release |
-| uv | `astral-sh.uv` | `uv` | astral.sh's installer | the current release |
-| pipx | pip | `pipx` | `pipx` | the current release; Ubuntu's archive sets its own |
-| Docker Desktop | `Docker.DockerDesktop` | `docker-desktop` | not used | the current release; only on a host with nested virtualization |
-| Docker Engine | not available | not available | Docker's apt repository | the current release |
+| Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | |
+| Git | `Git.Git` | `git` | `git` | |
+| GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | |
+| Node | `OpenJS.NodeJS` | `node` | `nodejs` and `npm` | |
+| VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | |
+| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | |
+| Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain on all three |
+| Go | `GoLang.Go` | `go` | `golang-go` | |
+| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` | `ruby` | `ruby-full` | the winget id names a line, since RubyInstaller publishes one package per line |
+| OpenJDK | `Microsoft.OpenJDK.25` | `openjdk` | `default-jdk` | the winget id names the newest long-term support line Microsoft builds, since every JDK id on winget names a line |
+| PowerShell | `Microsoft.PowerShell` | `powershell` | the `.deb` of the GitHub release | |
+| uv | `astral-sh.uv` | `uv` | astral.sh's installer | |
+| pipx | pip | `pipx` | `pipx` | |
+| Docker Desktop | `Docker.DockerDesktop` | `docker-desktop` | not used | only on a host with nested virtualization |
+| Docker Engine | not available | not available | Docker's apt repository | |
