@@ -278,7 +278,7 @@ brew analytics off
 Then:
 
 ```sh
-brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
+brew install python@3.15 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
 brew install --cask visual-studio-code
 brew link --overwrite node@24
 echo 'export PATH="$(brew --prefix)/lib/ruby/gems/4.0.0/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
@@ -486,7 +486,7 @@ date, checked against the release pages and the package indexes.
 
 | Tool | Windows (winget id) | macOS (Homebrew) | Line |
 | --- | --- | --- | --- |
-| Python | `Python.Python.3.13` 3.13.15 | `python@3.13` 3.13.17 | 3.13 on every VM; 3.15.0 is the current release, from 2026-10-09 |
+| Python | `Python.Python.3.13` 3.13.15 | `python@3.15` 3.15.1 | 3.13 on Windows and Ubuntu; 3.15, the current release since 2026-10-09, on macOS |
 | Git | `Git.Git` 2.55 | `git` 2.56 | current |
 | GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
 | Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
