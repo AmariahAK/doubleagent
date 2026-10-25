@@ -164,7 +164,7 @@ winget install --id Python.PythonInstallManager -e --accept-package-agreements -
 py install default
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
-winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
+winget install --id OpenJS.NodeJS -e --accept-package-agreements --accept-source-agreements
 winget install --id Microsoft.VisualStudioCode -e --accept-package-agreements --accept-source-agreements
 winget install --id Microsoft.VisualStudio.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --includeRecommended"
 winget install --id Rustlang.Rustup -e --accept-package-agreements --accept-source-agreements
@@ -178,7 +178,7 @@ py -m pipx ensurepath
 ```
 
 - `Python.PythonInstallManager` is the Python install manager, the way
-  python.org now installs Python on Windows: the 3.15 documentation marks
+  python.org now installs Python on Windows: python.org's documentation marks
   the full `.exe` installer and the old `py` launcher deprecated. Its `py`
   command downloads a runtime from python.org's index, and `py install
   default` takes the current stable release in the guest's ARM64 or x64
@@ -193,9 +193,9 @@ py -m pipx ensurepath
   itself; the VCTools workload alone installs the x64 and x86 compilers,
   hence the explicit ARM64 component, which an x64 guest can leave out.
   This is the largest install of the set.
-- `Microsoft.VisualStudio.BuildTools` is the 2026 release (version 18);
-  the ids with a year, such as `Microsoft.VisualStudio.2022.BuildTools`,
-  are the older lines.
+- `Microsoft.VisualStudio.BuildTools` is the current release; the ids
+  with a year, such as `Microsoft.VisualStudio.2022.BuildTools`, are the
+  older lines.
 - RubyInstaller is the Windows distribution that ruby-lang.org links, and
   its ARM64 package exists from 3.4.1-2 on; the DevKit's compilers are
   native and its MSYS2 half runs as x64 under emulation. winget does not
@@ -290,38 +290,35 @@ brew analytics off
 Then:
 
 ```sh
-brew install python git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
+brew install python git gh node go rustup ruby openjdk pipx uv powershell
 brew install --cask visual-studio-code
-brew link --overwrite node@24
-echo 'export PATH="$(brew --prefix)/lib/ruby/gems/4.0.0/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
+echo "export PATH=\"$(gem env gemdir)/bin:/opt/homebrew/opt/rustup/bin:\$PATH\"" >> ~/.zprofile
 . ~/.zprofile
 rustup default stable
-sudo ln -sfn "$(brew --prefix)/opt/openjdk@25/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-25.jdk
+sudo ln -sfn /opt/homebrew/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
 brew cleanup -s
 ```
 
-- `node@24`, `openjdk@25` and `rustup` are keg-only: Homebrew installs
-  them under its `opt/` directory without linking them into its `bin`,
-  because macOS ships its own Java, the versioned Node would shadow the
-  `node` formula, and `rustup` conflicts with the `rust` formula. `ruby`
-  is linked, and Homebrew's `bin` comes before Apple's Ruby 2.6 in
-  `/usr/bin` on the PATH, but the commands that `gem install` adds go
-  into `lib/ruby/gems/4.0.0/bin` under the prefix, which nothing links.
-  Each formula says so in the caveats it prints after installing, and
-  the `link`, PATH and `ln` lines are those caveats' instructions: they
-  make the kegs and the gem directory the ones a shell finds, the PATH
-  line is read back into the current shell before `rustup default
-  stable` needs it, and the `ln` line is Homebrew's documented way to
-  register a JDK with `java_home`. Without the PATH line, `cargo` and
-  `rustc`, which live in rustup's keg, are not found.
-- `node@24` rather than `node`: Homebrew's `node` formula tracks the
-  current release, and `node@24` is the long-term support line, the one
-  `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than
-  `openjdk` for the same reason, since `openjdk` is the current non-LTS
-  Java.
-- `python` is Homebrew's alias for the current Python formula,
-  `python@3.15` on 2026-10-25, and the one `pipx` depends on, so the line
-  installs one Python. Naming an older versioned formula instead
+- `openjdk` and `rustup` are keg-only: Homebrew installs them under its
+  `opt/` directory without linking them into its `bin`, because macOS
+  ships its own Java wrappers and `rustup` conflicts with the `rust`
+  formula. `ruby` and `node` are linked, and Homebrew's `bin` comes
+  before Apple's older Ruby in `/usr/bin` on the PATH, but the commands
+  that `gem install` adds go into the gem directory under the prefix,
+  the one `gem env gemdir` prints, which nothing links. Each formula
+  says so in the caveats it prints after installing, and the PATH and
+  `ln` lines are those caveats' instructions: the PATH line is written
+  with the gem directory and rustup's keg resolved, then read back into
+  the current shell before `rustup default stable` needs it, and the
+  `ln` line is Homebrew's documented way to register a JDK with
+  `java_home`. Without the PATH line, `cargo` and `rustc`, which live
+  in rustup's keg, are not found.
+- `node` and `openjdk` are the unversioned formulas, which follow the
+  current release, like `OpenJS.NodeJS` on Windows. A versioned formula
+  (`node@24`, `openjdk@25`) pins a line and is keg-only, so it would
+  also need a `brew link` or PATH line of its own.
+- `python` is Homebrew's alias for the current Python formula, the one
+  `pipx` depends on, so the line installs one Python. Naming an older versioned formula instead
   (`python@3.13`) installs two: both land under `opt/`, and `python3` in
   Homebrew's `bin` is the newer one, since only the current formula links
   the unversioned names.
@@ -371,14 +368,15 @@ each. Most of the toolchain is in Ubuntu's own archive; the rest comes from the
 vendor's documented route:
 
 ```sh
-sudo apt install git python3 python3-pip pipx ruby-full golang-go openjdk-25-jdk
+sudo apt install git python3 python3-pip pipx ruby-full golang-go default-jdk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ```
 
 - `gh` comes from GitHub's own apt repository, Node from NodeSource's
-  repository for the LTS line, and VS Code from Microsoft's `.deb`, each
-  as the vendor's install page documents for Ubuntu.
+  repository for the current line, and VS Code from Microsoft's `.deb`,
+  each as the vendor's install page documents for Ubuntu. `default-jdk`
+  is the archive's default Java for the release.
 - PowerShell: Microsoft's apt repository ships amd64 packages only, so an
   arm64 VM takes the `.deb` published on the PowerShell GitHub release
   (`powershell_<version>-1.deb_arm64.deb`) and installs it with
@@ -418,14 +416,13 @@ VM runs containers on any host, and is where the
 [agent lab](../lab/README.md) and the container-deployed agents are
 exercised; the Windows and macOS lines below belong in those VMs'
 snapshots only on a host that gives them nested virtualization, and are
-recorded with their requirements for a host that does. The versions are
-the current releases on 2026-10-23.
+recorded with their requirements for a host that does.
 
 ### Docker Engine on Ubuntu
 
-Docker's apt repository carries Docker Engine for Ubuntu 26.10, 26.04 LTS,
-24.04 LTS and 22.04 LTS, on amd64, arm64, armhf, s390x and ppc64le, and
-ahead of Ubuntu's own `docker.io` package. The repository setup is the one
+Docker's apt repository carries Docker Engine for the current Ubuntu
+release and the supported LTS releases, on amd64 and arm64 among other
+architectures, and ahead of Ubuntu's own `docker.io` package. The repository setup is the one
 Docker's install page gives:
 
 ```sh
@@ -498,29 +495,27 @@ needs a container is exercised on a Mac that is not a VM.
 
 ## Versions
 
-The builds in the snapshots and the ids that pin them. Each is the
-vendor's current stable or long-term support release, checked against the
-release pages and the package indexes on 2026-10-23, the Python line on
-2026-10-25.
+Nothing in the snapshots is pinned to a build. Each id below resolves to
+the vendor's current release when the package manager runs it, so a
+rebuild installs whatever is current that day and this page stays right
+without an edit. A few ids name a line instead, because the package
+source offers nothing else, and those are the one thing a rebuild checks:
+when the line is superseded, the id changes.
 
-| Tool | Windows (winget id) | macOS (Homebrew) | Line |
-| --- | --- | --- | --- |
-| Python | `Python.PythonInstallManager` 26.4, then `py install default` 3.15.1 | `python` 3.15.1 | current, unpinned, on Windows and macOS (3.15.1 on 2026-10-25); 3.14 on Ubuntu, the `python3` of 26.04's archive |
-| Git | `Git.Git` 2.55 | `git` 2.56 | current |
-| GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
-| Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
-| VS Code | `Microsoft.VisualStudioCode` 1.142 | `visual-studio-code` 1.143 | current |
-| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` 18.11 | not needed | 2026 |
-| Rust | `Rustlang.Rustup` 1.29 | `rustup` 1.29 | stable toolchain |
-| Go | `GoLang.Go` 1.27 | `go` 1.27 | current |
-| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` 4.0.7 | `ruby` 4.0.9 | 4.0 |
-| OpenJDK | `Microsoft.OpenJDK.25` 25.0.4 | `openjdk@25` 25.0.5 | LTS |
-| PowerShell | `Microsoft.PowerShell` 7.6.8 | `powershell` 7.6.8 | 7.6, the LTS line until November 2028; 7.4 LTS ends 2026-11-10 |
-| uv | `astral-sh.uv` 0.13 | `uv` 0.13 | current |
-| pipx | pip, 1.18 | `pipx` 1.18 | current |
-| Docker Desktop | `Docker.DockerDesktop` 4.96.3 | `docker-desktop` 4.96.3 | current; only on a host with nested virtualization |
-| Docker Engine | not available | not available | 29.9 on Ubuntu, from Docker's apt repository |
-
-A rebuild of a snapshot checks the current versions first: a line that
-has moved (Node's LTS, Java's LTS, a PowerShell line reaching the end of
-support) changes the id to install, not only the number.
+| Tool | Windows (winget id) | macOS (Homebrew) | Ubuntu | Follows |
+| --- | --- | --- | --- | --- |
+| Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | the current release; Ubuntu's archive sets its own |
+| Git | `Git.Git` | `git` | `git` | the current release; Ubuntu's archive sets its own |
+| GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | the current release |
+| Node | `OpenJS.NodeJS` | `node` | NodeSource's repository, current line | the current release |
+| VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | the current release |
+| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | the current release |
+| Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain |
+| Go | `GoLang.Go` | `go` | `golang-go` | the current release; Ubuntu's archive sets its own |
+| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` | `ruby` | `ruby-full` | the current release; the winget id names a line, since RubyInstaller publishes one package per line |
+| OpenJDK | `Microsoft.OpenJDK.25` | `openjdk` | `default-jdk` | the current release on macOS; the winget id names the newest long-term support line Microsoft builds, since every JDK id on winget names a line; Ubuntu's archive sets its default |
+| PowerShell | `Microsoft.PowerShell` | `powershell` | the `.deb` of the GitHub release | the current release |
+| uv | `astral-sh.uv` | `uv` | astral.sh's installer | the current release |
+| pipx | pip | `pipx` | `pipx` | the current release; Ubuntu's archive sets its own |
+| Docker Desktop | `Docker.DockerDesktop` | `docker-desktop` | not used | the current release; only on a host with nested virtualization |
+| Docker Engine | not available | not available | Docker's apt repository | the current release |
