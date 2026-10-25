@@ -154,11 +154,14 @@ package manager Windows ships, whose manifests download each installer
 from the vendor's own release host and pin its SHA-256, and `winget` picks
 the build for the guest's architecture. On an Apple silicon host the guest
 is Windows 11 on ARM, and the ids below all have native ARM64 builds
-except the Visual Studio Build Tools bootstrapper, which is x64 and
-installs the ARM64 compilers itself. Run from an elevated PowerShell:
+except two x64 packages that install the native ARM64 pieces themselves:
+the Python install manager, which fetches the ARM64 runtime, and the
+Visual Studio Build Tools bootstrapper, which installs the ARM64
+compilers. Run from an elevated PowerShell:
 
 ```powershell
-winget install --id Python.Python.3.13 -e --accept-package-agreements --accept-source-agreements
+winget install --id Python.PythonInstallManager -e --accept-package-agreements --accept-source-agreements
+py install default
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
 winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
@@ -174,6 +177,20 @@ py -m pip install --user pipx
 py -m pipx ensurepath
 ```
 
+- `Python.PythonInstallManager` is the Python install manager, the way
+  python.org now installs Python on Windows: python.org's documentation marks
+  the full `.exe` installer and the old `py` launcher deprecated. Its `py`
+  command downloads a runtime from python.org's index, and `py install
+  default` takes the current stable release in the guest's ARM64 or x64
+  build. The first install ends by naming `%LocalAppData%\Python\bin`,
+  the directory of the versioned `python3.<minor>` aliases, as a
+  directory to add to the user PATH; `py`, `python` and `python3` work
+  without it, through the app execution aliases the package registers.
+  The runtime is managed by `py`, not winget, but `winget list` still
+  shows it, under the nearest `Python.Python.3.<n>` id it knows, because
+  winget matches the Add or Remove Programs entry to a manifest by name.
+  The python.org documentation installs the same package through
+  winget's Microsoft Store source as `9NQ7512CXL7T`.
 - The Build Tools go first, because rustup's default toolchain on Windows
   is the MSVC one (Microsoft's C and C++ compiler and linker) and wants
   the linker present. The `--override` string
@@ -181,9 +198,9 @@ py -m pipx ensurepath
   itself; the VCTools workload alone installs the x64 and x86 compilers,
   hence the explicit ARM64 component, which an x64 guest can leave out.
   This is the largest install of the set.
-- `Microsoft.VisualStudio.BuildTools` is the 2026 release (version 18);
-  the ids with a year, such as `Microsoft.VisualStudio.2022.BuildTools`,
-  are the older lines.
+- `Microsoft.VisualStudio.BuildTools` is the current release; the ids
+  with a year, such as `Microsoft.VisualStudio.2022.BuildTools`, are the
+  older lines.
 - RubyInstaller is the Windows distribution that ruby-lang.org links, and
   its ARM64 package exists from 3.4.1-2 on; the DevKit's compilers are
   native and its MSYS2 half runs as x64 under emulation. winget does not
@@ -260,44 +277,69 @@ rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
 
 Homebrew's installer asks for the sudo password once, so it runs in the
 VM's own Terminal. It does not put Homebrew on the PATH itself: its
-"Next steps" print the two lines that do, for the login file and for
-the current shell, and they come before the first `brew` call:
+"Next steps" print the three lines that do, a blank line and the
+`shellenv` line for the login file, then the same `shellenv` line for
+the current shell, and they come before the first `brew` call. When
+`~/.zprofile` already holds the line, after a second run of the
+installer or when the line was added first, the installer prints only
+the last of the three, since the next login shell is covered:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-eval "$(/opt/homebrew/bin/brew shellenv)"
+echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv zsh)"
 brew analytics off
 ```
 
-Then:
+Then, one formula per command, because a single `brew install` of the
+whole set downloads and unpacks the bottles together and froze a VM with
+little memory; one at a time, each finishes before the next starts:
 
 ```sh
-brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
+brew install python
+brew install git
+brew install gh
+brew install node
+brew install go
+brew install rustup
+brew install ruby
+brew install openjdk
+brew install pipx
+brew install uv
+brew install powershell
 brew install --cask visual-studio-code
-brew link --overwrite node@24
-echo 'export PATH="$(brew --prefix)/opt/ruby/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
+echo "export PATH=\"$(gem env gemdir)/bin:/opt/homebrew/opt/rustup/bin:\$PATH\"" >> ~/.zprofile
 . ~/.zprofile
 rustup default stable
-sudo ln -sfn "$(brew --prefix)/opt/openjdk@25/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-25.jdk
+sudo ln -sfn /opt/homebrew/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
 brew cleanup -s
 ```
 
-- `node@24`, `ruby`, `openjdk@25` and `rustup` are keg-only: Homebrew
-  installs them under its `opt/` directory without linking them into its
-  `bin`, because macOS ships its own Ruby and Java, the versioned Node
-  would shadow the `node` formula, and `rustup` conflicts with the `rust`
-  formula. The `link`, PATH and `ln` lines make them the ones a shell
-  finds, and the PATH line is read back into the current shell before
-  `rustup default stable` needs it; the `ln` line is Homebrew's
-  documented way to register a JDK with `java_home`. Without the PATH
-  line, Apple's Ruby 2.6 in `/usr/bin` wins and `cargo` and `rustc`,
-  which live in rustup's keg, are not found.
-- `node@24` rather than `node`: Homebrew's `node` formula tracks the
-  current release, and `node@24` is the long-term support line, the one
-  `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than
-  `openjdk` for the same reason, since `openjdk` is the current non-LTS
-  Java.
+- `openjdk` and `rustup` are keg-only: Homebrew installs them under its
+  `opt/` directory without linking them into its `bin`, because macOS
+  ships its own Java wrappers and `rustup` conflicts with the `rust`
+  formula. `ruby` and `node` are linked, and Homebrew's `bin` comes
+  before Apple's older Ruby in `/usr/bin` on the PATH, but the commands
+  that `gem install` adds go into the gem directory under the prefix,
+  the one `gem env gemdir` prints, which nothing links. Each formula
+  says so in the caveats it prints after installing, and the PATH and
+  `ln` lines are those caveats' instructions: the PATH line is written
+  with the gem directory and rustup's keg resolved, then read back into
+  the current shell before `rustup default stable` needs it, and the
+  `ln` line is Homebrew's documented way to register a JDK with
+  `java_home`. Without the PATH line, `cargo` and `rustc`, which live
+  in rustup's keg, are not found.
+- `node` and `openjdk` are the unversioned formulas, which follow the
+  current release; Homebrew has no formula that follows Node's
+  long-term support line the way `OpenJS.NodeJS.LTS` does on Windows. A
+  versioned formula (`node@24`, `openjdk@25`) pins a line and is
+  keg-only, so it would also need a `brew link` or PATH line of its own.
+- `python` is Homebrew's alias for the current Python formula, the one
+  `pipx` depends on, so the line installs one Python. Naming an older versioned formula instead
+  (`python@3.13`) installs two: both land under `opt/`, and `python3` in
+  Homebrew's `bin` is the newer one, since only the current formula links
+  the unversioned names.
 - `powershell` is a formula, not a cask: the `powershell` cask was
   disabled on 2026-09-01 because its package fails Homebrew's Gatekeeper
   check, and the formula has arm64 bottles for macOS 26.
@@ -344,14 +386,15 @@ each. Most of the toolchain is in Ubuntu's own archive; the rest comes from the
 vendor's documented route:
 
 ```sh
-sudo apt install git python3 python3-pip pipx ruby-full golang-go openjdk-25-jdk
+sudo apt install git python3 python3-pip pipx nodejs npm ruby-full golang-go default-jdk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ```
 
-- `gh` comes from GitHub's own apt repository, Node from NodeSource's
-  repository for the LTS line, and VS Code from Microsoft's `.deb`, each
-  as the vendor's install page documents for Ubuntu.
+- `gh` comes from GitHub's own apt repository and VS Code from
+  Microsoft's `.deb`, each as the vendor's install page documents for
+  Ubuntu. `nodejs`, `npm` and `default-jdk` are the archive's own, so
+  the release decides their versions, as it does for `python3`.
 - PowerShell: Microsoft's apt repository ships amd64 packages only, so an
   arm64 VM takes the `.deb` published on the PowerShell GitHub release
   (`powershell_<version>-1.deb_arm64.deb`) and installs it with
@@ -391,14 +434,13 @@ VM runs containers on any host, and is where the
 [agent lab](../lab/README.md) and the container-deployed agents are
 exercised; the Windows and macOS lines below belong in those VMs'
 snapshots only on a host that gives them nested virtualization, and are
-recorded with their requirements for a host that does. The versions are
-the current releases on 2026-10-23.
+recorded with their requirements for a host that does.
 
 ### Docker Engine on Ubuntu
 
-Docker's apt repository carries Docker Engine for Ubuntu 26.10, 26.04 LTS,
-24.04 LTS and 22.04 LTS, on amd64, arm64, armhf, s390x and ppc64le, and
-ahead of Ubuntu's own `docker.io` package. The repository setup is the one
+Docker's apt repository carries Docker Engine for the current Ubuntu
+release and the supported LTS releases, on amd64 and arm64 among other
+architectures, and ahead of Ubuntu's own `docker.io` package. The repository setup is the one
 Docker's install page gives:
 
 ```sh
@@ -471,28 +513,27 @@ needs a container is exercised on a Mac that is not a VM.
 
 ## Versions
 
-The builds in the snapshots on 2026-10-23, and the ids that pin them.
-Each is the vendor's current stable or long-term support release on that
-date, checked against the release pages and the package indexes.
+Each VM takes what its platform gives by default: the current release
+from winget and Homebrew, the release's own packages from Ubuntu's
+archive. Nothing is pinned to a build and the versions differ between the
+VMs, so a rebuild installs what is current that day and this page needs
+no edit for it. The exceptions are ids that can only name a line, noted
+in the table; when such a line is superseded, the id changes.
 
-| Tool | Windows (winget id) | macOS (Homebrew) | Line |
-| --- | --- | --- | --- |
-| Python | `Python.Python.3.13` 3.13.15 | `python@3.13` 3.13.17 | 3.13 on every VM; 3.15.0 is the current release, from 2026-10-09 |
-| Git | `Git.Git` 2.55 | `git` 2.56 | current |
-| GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
-| Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
-| VS Code | `Microsoft.VisualStudioCode` 1.142 | `visual-studio-code` 1.143 | current |
-| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` 18.11 | not needed | 2026 |
-| Rust | `Rustlang.Rustup` 1.29 | `rustup` 1.29 | stable toolchain |
-| Go | `GoLang.Go` 1.27 | `go` 1.27 | current |
-| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` 4.0.7 | `ruby` 4.0.9 | 4.0 |
-| OpenJDK | `Microsoft.OpenJDK.25` 25.0.4 | `openjdk@25` 25.0.5 | LTS |
-| PowerShell | `Microsoft.PowerShell` 7.6.8 | `powershell` 7.6.8 | 7.6, the LTS line until November 2028; 7.4 LTS ends 2026-11-10 |
-| uv | `astral-sh.uv` 0.13 | `uv` 0.13 | current |
-| pipx | pip, 1.18 | `pipx` 1.18 | current |
-| Docker Desktop | `Docker.DockerDesktop` 4.96.3 | `docker-desktop` 4.96.3 | current; only on a host with nested virtualization |
-| Docker Engine | not available | not available | 29.9 on Ubuntu, from Docker's apt repository |
-
-A rebuild of a snapshot checks the current versions first: a line that
-has moved (Node's LTS, Java's LTS, a PowerShell line reaching the end of
-support) changes the id to install, not only the number.
+| Tool | Windows (winget id) | macOS (Homebrew) | Ubuntu | Notes |
+| --- | --- | --- | --- | --- |
+| Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | |
+| Git | `Git.Git` | `git` | `git` | |
+| GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | |
+| Node | `OpenJS.NodeJS.LTS` | `node` | `nodejs` and `npm` | the winget id follows the long-term support line nodejs.org recommends and moves with it; `OpenJS.NodeJS` is the current line |
+| VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | |
+| Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | |
+| Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain on all three |
+| Go | `GoLang.Go` | `go` | `golang-go` | |
+| Ruby | `RubyInstallerTeam.RubyWithDevKit.4.0` | `ruby` | `ruby-full` | the winget id names a line, since RubyInstaller publishes one package per line |
+| OpenJDK | `Microsoft.OpenJDK.25` | `openjdk` | `default-jdk` | the winget id names the newest long-term support line Microsoft builds, since every JDK id on winget names a line |
+| PowerShell | `Microsoft.PowerShell` | `powershell` | the `.deb` of the GitHub release | |
+| uv | `astral-sh.uv` | `uv` | astral.sh's installer | |
+| pipx | pip | `pipx` | `pipx` | |
+| Docker Desktop | `Docker.DockerDesktop` | `docker-desktop` | not used | only on a host with nested virtualization |
+| Docker Engine | not available | not available | Docker's apt repository | |
