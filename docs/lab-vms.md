@@ -164,7 +164,7 @@ winget install --id Python.PythonInstallManager -e --accept-package-agreements -
 py install default
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
-winget install --id OpenJS.NodeJS -e --accept-package-agreements --accept-source-agreements
+winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
 winget install --id Microsoft.VisualStudioCode -e --accept-package-agreements --accept-source-agreements
 winget install --id Microsoft.VisualStudio.BuildTools -e --accept-package-agreements --accept-source-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --includeRecommended"
 winget install --id Rustlang.Rustup -e --accept-package-agreements --accept-source-agreements
@@ -331,9 +331,10 @@ brew cleanup -s
   `java_home`. Without the PATH line, `cargo` and `rustc`, which live
   in rustup's keg, are not found.
 - `node` and `openjdk` are the unversioned formulas, which follow the
-  current release, like `OpenJS.NodeJS` on Windows. A versioned formula
-  (`node@24`, `openjdk@25`) pins a line and is keg-only, so it would
-  also need a `brew link` or PATH line of its own.
+  current release; Homebrew has no formula that follows Node's
+  long-term support line the way `OpenJS.NodeJS.LTS` does on Windows. A
+  versioned formula (`node@24`, `openjdk@25`) pins a line and is
+  keg-only, so it would also need a `brew link` or PATH line of its own.
 - `python` is Homebrew's alias for the current Python formula, the one
   `pipx` depends on, so the line installs one Python. Naming an older versioned formula instead
   (`python@3.13`) installs two: both land under `opt/`, and `python3` in
@@ -524,7 +525,7 @@ in the table; when such a line is superseded, the id changes.
 | Python | `Python.PythonInstallManager`, then `py install default` | `python` | `python3` | |
 | Git | `Git.Git` | `git` | `git` | |
 | GitHub CLI | `GitHub.cli` | `gh` | GitHub's apt repository | |
-| Node | `OpenJS.NodeJS` | `node` | `nodejs` and `npm` | |
+| Node | `OpenJS.NodeJS.LTS` | `node` | `nodejs` and `npm` | the winget id follows the long-term support line nodejs.org recommends and moves with it; `OpenJS.NodeJS` is the current line |
 | VS Code | `Microsoft.VisualStudioCode` | `visual-studio-code` | Microsoft's `.deb` | |
 | Visual Studio Build Tools | `Microsoft.VisualStudio.BuildTools` | not needed | not needed | |
 | Rust | `Rustlang.Rustup` | `rustup` | rustup.rs | rustup's stable toolchain on all three |
