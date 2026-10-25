@@ -378,6 +378,32 @@ ssh-copy-id -i ~/.ssh/doubleagent_lab.pub -o IdentitiesOnly=yes <lab user>@<addr
 Then `ssh -F <lab directory>/sshconfig macvm hostname` from the host
 prints the VM's name without a prompt.
 
+### sudo without a password
+
+The remote shell of an endpoint detection and response (EDR) tool runs
+as root, and the collector is written to be run through one (see
+[Deployment](../collectors/docs/deployment.md)), so the collector run in
+the VM from the host over SSH has to run as root too, with nobody at the
+host end to type a password. The Windows lab user has that as an
+administrator. The macOS lab user is an administrator too, but the
+`admin` group's sudo rule still asks for a password, so the clean
+snapshot lets the lab user run sudo without one. In the VM's Terminal:
+
+```sh
+echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/lab-nopasswd
+sudo chmod 0440 /etc/sudoers.d/lab-nopasswd
+sudo visudo -cf /etc/sudoers.d/lab-nopasswd
+```
+
+macOS ships `/etc/sudoers.d` empty, and its `/etc/sudoers` includes the
+directory with the line `#includedir /private/etc/sudoers.d`, the older
+spelling of Ubuntu's `@includedir` and not a comment (`/etc` is a symlink
+to `/private/etc`), so the file takes effect on its own; `visudo -cf`
+prints `parsed OK` for it. Then
+`ssh -F <lab directory>/sshconfig macvm sudo -n id -u` from the host
+prints `0` without a prompt. The grant belongs to a VM with one account
+that is reverted after every round, not to a workstation.
+
 ## Ubuntu
 
 Ubuntu, where `sh` is dash and bash and busybox are a package away, so
@@ -424,6 +450,27 @@ ssh-copy-id -i ~/.ssh/doubleagent_lab.pub -o IdentitiesOnly=yes <lab user>@<addr
 
 Then `ssh -F <lab directory>/sshconfig ubuvm hostname` from the host
 prints the VM's name without a prompt.
+
+### sudo without a password
+
+The collector run in the VM from the host over SSH has to run as root
+with nobody at the host end to type a password, for the reason given
+under macOS. The Ubuntu installer puts the first user in the `sudo`
+group, which still asks for one, so the clean snapshot lets the lab user
+run sudo without a password. In the VM:
+
+```sh
+echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/lab-nopasswd
+sudo chmod 0440 /etc/sudoers.d/lab-nopasswd
+sudo visudo -cf /etc/sudoers.d/lab-nopasswd
+```
+
+Ubuntu's `/etc/sudoers` ends by including every file in `/etc/sudoers.d`
+whose name has no dot or tilde, so the file takes effect on its own, and
+`visudo -cf` prints `parsed OK` for it. Then
+`ssh -F <lab directory>/sshconfig ubuvm sudo -n id -u` from the host
+prints `0` without a prompt. The grant belongs to a VM with one account
+that is reverted after every round, not to a workstation.
 
 ## Docker
 
