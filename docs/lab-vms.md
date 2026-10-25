@@ -260,13 +260,18 @@ rm /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
 
 Homebrew's installer asks for the sudo password once, so it runs in the
 VM's own Terminal. It does not put Homebrew on the PATH itself: its
-"Next steps" print the two lines that do, for the login file and for
-the current shell, and they come before the first `brew` call:
+"Next steps" print the three lines that do, a blank line and the
+`shellenv` line for the login file, then the same `shellenv` line for
+the current shell, and they come before the first `brew` call. When
+`~/.zprofile` already holds the line, after a second run of the
+installer or when the line was added first, the installer prints only
+the last of the three, since the next login shell is covered:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-eval "$(/opt/homebrew/bin/brew shellenv)"
+echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv zsh)"
 brew analytics off
 ```
 
@@ -276,23 +281,27 @@ Then:
 brew install python@3.13 git gh node@24 go rustup ruby openjdk@25 pipx uv powershell
 brew install --cask visual-studio-code
 brew link --overwrite node@24
-echo 'export PATH="$(brew --prefix)/opt/ruby/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
+echo 'export PATH="$(brew --prefix)/lib/ruby/gems/4.0.0/bin:$(brew --prefix)/opt/node@24/bin:$(brew --prefix)/opt/rustup/bin:$PATH"' >> ~/.zprofile
 . ~/.zprofile
 rustup default stable
 sudo ln -sfn "$(brew --prefix)/opt/openjdk@25/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-25.jdk
 brew cleanup -s
 ```
 
-- `node@24`, `ruby`, `openjdk@25` and `rustup` are keg-only: Homebrew
-  installs them under its `opt/` directory without linking them into its
-  `bin`, because macOS ships its own Ruby and Java, the versioned Node
-  would shadow the `node` formula, and `rustup` conflicts with the `rust`
-  formula. The `link`, PATH and `ln` lines make them the ones a shell
-  finds, and the PATH line is read back into the current shell before
-  `rustup default stable` needs it; the `ln` line is Homebrew's
-  documented way to register a JDK with `java_home`. Without the PATH
-  line, Apple's Ruby 2.6 in `/usr/bin` wins and `cargo` and `rustc`,
-  which live in rustup's keg, are not found.
+- `node@24`, `openjdk@25` and `rustup` are keg-only: Homebrew installs
+  them under its `opt/` directory without linking them into its `bin`,
+  because macOS ships its own Java, the versioned Node would shadow the
+  `node` formula, and `rustup` conflicts with the `rust` formula. `ruby`
+  is linked, and Homebrew's `bin` comes before Apple's Ruby 2.6 in
+  `/usr/bin` on the PATH, but the commands that `gem install` adds go
+  into `lib/ruby/gems/4.0.0/bin` under the prefix, which nothing links.
+  Each formula says so in the caveats it prints after installing, and
+  the `link`, PATH and `ln` lines are those caveats' instructions: they
+  make the kegs and the gem directory the ones a shell finds, the PATH
+  line is read back into the current shell before `rustup default
+  stable` needs it, and the `ln` line is Homebrew's documented way to
+  register a JDK with `java_home`. Without the PATH line, `cargo` and
+  `rustc`, which live in rustup's keg, are not found.
 - `node@24` rather than `node`: Homebrew's `node` formula tracks the
   current release, and `node@24` is the long-term support line, the one
   `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than
