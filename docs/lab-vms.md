@@ -292,10 +292,22 @@ eval "$(/opt/homebrew/bin/brew shellenv zsh)"
 brew analytics off
 ```
 
-Then:
+Then, one formula per command, because a single `brew install` of the
+whole set downloads and unpacks the bottles together and froze a VM with
+little memory; one at a time, each finishes before the next starts:
 
 ```sh
-brew install python git gh node go rustup ruby openjdk pipx uv powershell
+brew install python
+brew install git
+brew install gh
+brew install node
+brew install go
+brew install rustup
+brew install ruby
+brew install openjdk
+brew install pipx
+brew install uv
+brew install powershell
 brew install --cask visual-studio-code
 echo "export PATH=\"$(gem env gemdir)/bin:/opt/homebrew/opt/rustup/bin:\$PATH\"" >> ~/.zprofile
 . ~/.zprofile
