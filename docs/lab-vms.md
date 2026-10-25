@@ -182,9 +182,14 @@ py -m pipx ensurepath
   the full `.exe` installer and the old `py` launcher deprecated. Its `py`
   command downloads a runtime from python.org's index, and `py install
   default` takes the current stable release in the guest's ARM64 or x64
-  build; the first install offers to add `%LocalAppData%\Python\bin`,
-  the directory of the versioned `python3.<minor>` aliases, to the user
-  PATH, and `py` works without it. The python.org documentation installs the same package through
+  build. The first install ends by naming `%LocalAppData%\Python\bin`,
+  the directory of the versioned `python3.<minor>` aliases, as a
+  directory to add to the user PATH; `py`, `python` and `python3` work
+  without it, through the app execution aliases the package registers.
+  The runtime is managed by `py`, not winget, but `winget list` still
+  shows it, under the nearest `Python.Python.3.<n>` id it knows, because
+  winget matches the Add or Remove Programs entry to a manifest by name.
+  The python.org documentation installs the same package through
   winget's Microsoft Store source as `9NQ7512CXL7T`.
 - The Build Tools go first, because rustup's default toolchain on Windows
   is the MSVC one (Microsoft's C and C++ compiler and linker) and wants
