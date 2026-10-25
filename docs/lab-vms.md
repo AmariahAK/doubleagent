@@ -307,6 +307,11 @@ brew cleanup -s
   `OpenJS.NodeJS.LTS` installs on Windows. `openjdk@25` rather than
   `openjdk` for the same reason, since `openjdk` is the current non-LTS
   Java.
+- `python@3.15` is the Python the `pipx` formula depends on, so Homebrew
+  installs it with `pipx` whether or not the line names it. Naming an
+  older Python instead (`python@3.13`) installs two: both land under
+  `opt/`, and `python3` in Homebrew's `bin` is the newer one, since only
+  the current formula links the unversioned names.
 - `powershell` is a formula, not a cask: the `powershell` cask was
   disabled on 2026-09-01 because its package fails Homebrew's Gatekeeper
   check, and the formula has arm64 bottles for macOS 26.
