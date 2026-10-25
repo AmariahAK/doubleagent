@@ -154,11 +154,14 @@ package manager Windows ships, whose manifests download each installer
 from the vendor's own release host and pin its SHA-256, and `winget` picks
 the build for the guest's architecture. On an Apple silicon host the guest
 is Windows 11 on ARM, and the ids below all have native ARM64 builds
-except the Visual Studio Build Tools bootstrapper, which is x64 and
-installs the ARM64 compilers itself. Run from an elevated PowerShell:
+except two x64 packages that install the native ARM64 pieces themselves:
+the Python install manager, which fetches the ARM64 runtime, and the
+Visual Studio Build Tools bootstrapper, which installs the ARM64
+compilers. Run from an elevated PowerShell:
 
 ```powershell
-winget install --id Python.Python.3.13 -e --accept-package-agreements --accept-source-agreements
+winget install --id Python.PythonInstallManager -e --accept-package-agreements --accept-source-agreements
+py install 3.15
 winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
 winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
 winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements
@@ -174,6 +177,15 @@ py -m pip install --user pipx
 py -m pipx ensurepath
 ```
 
+- `Python.PythonInstallManager` is the Python install manager, the way
+  python.org now installs Python on Windows: the 3.15 documentation marks
+  the full `.exe` installer and the old `py` launcher deprecated. Its `py`
+  command downloads a runtime from python.org's index, so `py install
+  3.15` pins the line and installs the guest's ARM64 or x64 build; the
+  first install offers to add `%LocalAppData%\Python\bin`, the directory
+  of the `python3.15` aliases, to the user PATH, and `py` works without
+  it. The python.org documentation installs the same package through
+  winget's Microsoft Store source as `9NQ7512CXL7T`.
 - The Build Tools go first, because rustup's default toolchain on Windows
   is the MSVC one (Microsoft's C and C++ compiler and linker) and wants
   the linker present. The `--override` string
@@ -485,13 +497,14 @@ needs a container is exercised on a Mac that is not a VM.
 
 ## Versions
 
-The builds in the snapshots on 2026-10-23, and the ids that pin them.
-Each is the vendor's current stable or long-term support release on that
-date, checked against the release pages and the package indexes.
+The builds in the snapshots and the ids that pin them. Each is the
+vendor's current stable or long-term support release, checked against the
+release pages and the package indexes on 2026-10-23, the Python line on
+2026-10-25.
 
 | Tool | Windows (winget id) | macOS (Homebrew) | Line |
 | --- | --- | --- | --- |
-| Python | `Python.Python.3.13` 3.13.15 | `python@3.15` 3.15.1 | 3.13 on Windows and Ubuntu; 3.15, the current release since 2026-10-09, on macOS |
+| Python | `Python.PythonInstallManager` 26.4, then `py install 3.15` 3.15.1 | `python@3.15` 3.15.1 | 3.15, the current release since 2026-10-09, on Windows and macOS; 3.14 on Ubuntu, the `python3` of 26.04's archive |
 | Git | `Git.Git` 2.55 | `git` 2.56 | current |
 | GitHub CLI | `GitHub.cli` 2.103 | `gh` 2.103 | current |
 | Node | `OpenJS.NodeJS.LTS` 24.22 | `node@24` 24.22 | LTS; Node 26 becomes LTS on 2026-10-28, after which `OpenJS.NodeJS.LTS` moves to it |
