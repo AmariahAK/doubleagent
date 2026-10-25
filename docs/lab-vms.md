@@ -396,9 +396,10 @@ sudo visudo -cf /etc/sudoers.d/lab-nopasswd
 ```
 
 macOS ships `/etc/sudoers.d` empty, and its `/etc/sudoers` includes the
-directory with an `#includedir` line, the older spelling of Ubuntu's
-`@includedir` and not a comment, so the file takes effect on its own;
-`visudo -cf` prints `parsed OK` for it. Then
+directory with the line `#includedir /private/etc/sudoers.d`, the older
+spelling of Ubuntu's `@includedir` and not a comment (`/etc` is a symlink
+to `/private/etc`), so the file takes effect on its own; `visudo -cf`
+prints `parsed OK` for it. Then
 `ssh -F <lab directory>/sshconfig macvm sudo -n id -u` from the host
 prints `0` without a prompt. The grant belongs to a VM with one account
 that is reverted after every round, not to a workstation.
