@@ -1917,6 +1917,39 @@ class ClaudeCodeMacTests(ParserBase):
         self.assertEqual(dropped["claude-code"], 1)
         self.assertEqual([(r.project_path, r.recovered) for r in rows[1:]], [("/b", "yes")])
 
+    def test_history_bounds_cover_narrower_scopes(self):
+        # A session-less line of project P is bounded by a later line of a
+        # session of P: with only that session's record left, the earlier
+        # line may not take it, so it stays under its own time and the
+        # session's line pairs with its record.
+        block = (
+            "slash command: <command-name>/model</command-name>\n<command-message>model"
+            "</command-message>\n<command-args></command-args>"
+        )
+
+        def row(turn_type, text, t, session, source):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                turn_type=turn_type,
+                text=text,
+                timestamp_utc="2026-10-01T11:00:%02d.000Z" % t,
+                project_path="/srv/proj",
+                session_id=session,
+                source_file=source,
+            )
+
+        primary = [row("system", block, 50, "s1", "t")]
+        no_session = row("user", "/model", 7, "", "h")
+        in_session = row("user", "/model", 23, "s1", "h")
+        rows, dropped = deduplicate(primary, [(no_session, 2.0), (in_session, 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        kept = rows[len(primary) :]
+        self.assertEqual(
+            [(r.timestamp_utc, r.recovered) for r in kept], [("2026-10-01T11:00:07.000Z", "yes")]
+        )
+
     def test_widened_window_stays_between_history_files(self):
         # Two history files of one session each hold a `/model` a minute
         # apart; only the later one's record survives. The earlier line is

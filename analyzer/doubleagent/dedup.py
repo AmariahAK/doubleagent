@@ -37,8 +37,9 @@ widening is forward only and against primary rows only: the row keeps
 its source's window backwards (a record is never written before its
 line was typed) and among secondary sources, and it may not take a
 primary row recorded at or after the next secondary row of the same
-text in its scope, so an earlier history line whose own record is
-missing never claims a later line's record.
+text in its scope (its session, or for a row without one its project,
+whatever the others' sessions), so an earlier history line whose own
+record is missing never claims a later line's record.
 
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
@@ -350,26 +351,35 @@ def _scope(r: Row) -> tuple:
 
 def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, int]:
     """For each widened secondary row with a timestamp, the epoch ms of the
-    next later secondary row of the same match text in the same scope
-    (`_scope`, the one it matches under), when there is one: the row may
-    not take a primary row recorded at or after it, so the later line
-    keeps the later record."""
-    stamped: dict[tuple, list[tuple[int, int]]] = {}
+    next strictly later secondary row of the same match text within its
+    scope (`_scope`): the rows of its session; for a row without a
+    session, every row of its project, whatever their session; for a row
+    with neither, every row of that text. A copy at the same time (the
+    same line in two history files) does not bound it. The row may not
+    take a primary row recorded at or after that time, so the later line
+    keeps the later record. One sorted pass per group, backwards, so the
+    cost is linear in the rows of the group."""
+    groups: dict[tuple, list[tuple[int, int]]] = {}
+    scopes: dict[int, tuple] = {}
     for j, (r, _) in enumerate(secondary):
         ms = epoch_ms(r.timestamp_utc)
         if ms is None or _is_parser_row(r):
             continue
-        stamped.setdefault((_by_text(r), _scope(r)), []).append((ms, j))
+        text = _by_text(r)
+        scopes[j] = (text, _scope(r))
+        for scope in (("session", r.session_id), ("project", r.project_path), ("any",)):
+            if scope[0] == "any" or scope[1]:
+                groups.setdefault((text, scope), []).append((ms, j))
     bounds: dict[int, int] = {}
-    for items in stamped.values():
+    for key, items in groups.items():
         items.sort()
-        for n, (ms, j) in enumerate(items):
-            if j not in widened:
-                continue
-            # The next strictly later time, past any copies of this row at
-            # the same time (the same line in two history files).
-            later = next((t for t, _ in items[n + 1 :] if t > ms), None)
-            if later is not None:
+        later: int | None = None
+        prev: int | None = None
+        for ms, j in reversed(items):
+            if prev is not None and prev > ms:
+                later = prev
+            prev = ms
+            if later is not None and j in widened and scopes[j] == key:
                 bounds[j] = later
     return bounds
 
