@@ -56,6 +56,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `claude-code`, at the same paths under the home on Linux and Windows
   (observed with Claude Code 2.1.310 on Ubuntu 26.04, October 2026)
   ([#256]).
+- Claude Code's macOS URL handler, `~/Applications/Claude Code URL Handler.app`,
+  which registers the `claude-cli:` URL scheme and whose executable is a
+  symbolic link to `~/.local/bin/claude` (recorded as a `symlink` row), is
+  collected as `claude-code` (observed with Claude Code 2.1.310 on macOS
+  26.6, October 2026) ([#256]).
+- Claude Code's `.claude/ide/<port>.lock`, the editor connection file that
+  holds an `authToken` while an IDE session runs, and
+  `.claude/bridge-spawn/<id>/mcp.json`, the Remote Control bridge's
+  definition of its remote MCP server with session-bound headers, are
+  flagged `secret: true`; a `~/.claude-<name>` config home's copies are
+  collected through catalog lines of their own,
+  `.claude-*/ide/*.lock` and `.claude-*/bridge-spawn/*/mcp.json`, and
+  flagged too ([#256]).
 
 ### Changed
 
