@@ -367,9 +367,13 @@ def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, 
             continue
         text = _by_text(r)
         scopes[j] = (text, _scope(r))
-        for scope in (("session", r.session_id), ("project", r.project_path), ("any",)):
-            if scope[0] == "any" or scope[1]:
-                groups.setdefault((text, scope), []).append((ms, j))
+        scopes_of: list[tuple] = [("any",)]
+        if r.project_path:
+            scopes_of.append(("project", r.project_path))
+        if r.session_id:
+            scopes_of.append(("session", r.session_id))
+        for scope in scopes_of:
+            groups.setdefault((text, scope), []).append((ms, j))
     bounds: dict[int, int] = {}
     for key, items in groups.items():
         items.sort()
