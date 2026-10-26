@@ -23,6 +23,13 @@ dropped when a primary row has
   `TOLERANCE_SECONDS`), the bound included; when it has none, any time or
   none.
 
+An agent whose secondary source writes an event in another form than its
+primary store registers a match form in `MATCH_FORMS`, and its rows match
+on the `(turn_type, text)` that function returns instead of their own:
+Claude Code's `history.jsonl` keeps a slash command as typed and a paste as
+expanded text, where the transcript has a tag-form `slash command:` row
+and the prompt joined differently (`claude_code.match_form`).
+
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
 excluded by size or truncated is still recovered from its history lines.
@@ -88,12 +95,20 @@ from __future__ import annotations
 
 from bisect import bisect_left, insort
 from collections import Counter
-from collections.abc import Container
+from collections.abc import Callable, Container
 
 from .model import Row
 from .timeutil import epoch_ms
 
 TOLERANCE_SECONDS = 2.0
+
+# The match form per agent: a function of a row that returns the
+# `(turn_type, text)` the row is matched under in place of its own. A
+# parser registers one when its secondary source records an event in
+# another form than its primary store does (Claude Code's history line
+# `/model` for the transcript's tag-form `slash command:` row); the rows of
+# every other agent match on their own `turn_type` and `text`.
+MATCH_FORMS: dict[str, Callable[[Row], tuple[str, str]]] = {}
 
 _Dated = list[tuple[int, int]]  # (epoch ms, row index), sorted
 
@@ -117,7 +132,9 @@ def _has_id(r: Row) -> bool:
 
 
 def _by_text(r: Row) -> tuple[str, ...]:
-    return (r.host, r.user, r.agent, r.turn_type, "text", r.text)
+    form = MATCH_FORMS.get(r.agent)
+    turn_type, text = form(r) if form else (r.turn_type, r.text)
+    return (r.host, r.user, r.agent, turn_type, "text", text)
 
 
 def _by_id(r: Row) -> tuple[str, ...]:
