@@ -37,10 +37,10 @@ widening is forward only and against primary rows only: the row keeps
 its source's window backwards (a record is never written before its
 line was typed) and among secondary sources, and it may not take a
 primary row recorded at or after the next secondary row of the same
-text that could take the same records (its session's rows, the
-session-less rows of its project, and the rows with neither; a row of
-another session never counts), so an earlier history line whose own
-record is missing never claims a later line's record.
+text that could take that same record (for a record of a session: the
+session's rows, the session-less rows of its project and the rows with
+neither; a row of another session never counts), so an earlier history
+line whose own record is missing never claims a later line's record.
 
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
@@ -129,6 +129,7 @@ MATCH_FORMS: dict[str, Callable[[Row], tuple[str, str]]] = {}
 MATCH_TOLERANCES: dict[str, Callable[[Row], float | None]] = {}
 
 _Dated = list[tuple[int, int]]  # (epoch ms, row index), sorted
+_Upper = Callable[[int], int | None]  # a candidate's row index -> its bound (epoch ms)
 
 _TOOL_TYPES = ("tool_use", "tool_result")
 
@@ -217,19 +218,25 @@ def _nearest(
     back_ms: int,
     forward_ms: int,
     used: Container[int],
-    upper: int | None = None,
+    upper: _Upper | None = None,
 ) -> int | None:
     """The index of the unused row in `dated` nearest to `ms`, no more
     than `back_ms` before it or `forward_ms` after it, the earlier one on
-    a tie, and before `upper` (an epoch ms) when one is given; None when
-    there is none."""
+    a tie, and, when `upper` is given, before the epoch ms it returns for
+    that candidate's index (None for no bound); None when there is none.
+    The bound is the candidate's own (`_Bounds.upper`), so the scan runs
+    to the end of the window rather than stopping at one time."""
     best: tuple[int, int] | None = None
     k = bisect_left(dated, (ms - back_ms, -1))
     while k < len(dated) and dated[k][0] <= ms + forward_ms:
         t, i = dated[k]
         k += 1
-        if i in used or (upper is not None and t >= upper):
+        if i in used:
             continue
+        if upper is not None:
+            limit = upper(i)
+            if limit is not None and t >= limit:
+                continue
         if best is None or abs(t - ms) < best[0]:
             best = (abs(t - ms), i)
     return best[1] if best else None
@@ -252,12 +259,13 @@ def _pair(
     r: Row,
     tolerance: float,
     used: Container[int],
-    upper: int | None = None,
+    upper: _Upper | None = None,
     forward: float | None = None,
 ) -> int | None:
     """The candidate in `bucket` not in `used` that secondary row `r` pairs
     with under the time rule (`tolerance` either way, or `forward` after
-    `r` when given), before `upper` when one is given, or None."""
+    `r` when given), before the candidate's bound from `upper` when one
+    is given, or None."""
     if bucket is None:
         return None
     ms = epoch_ms(r.timestamp_utc)
@@ -327,11 +335,12 @@ def _find(
     tolerance: float,
     unavailable: _Unavailable,
     broaden: bool,
-    upper: int | None = None,
+    upper: _Upper | None = None,
     forward: float | None = None,
 ) -> int | None:
     """The candidate row `r` pairs with, trying its lookups in order,
-    before `upper` and within `forward` seconds after `r` when given."""
+    before each candidate's bound from `upper` and within `forward`
+    seconds after `r` when given."""
     for key, broad, idless in _lookups(r, broaden):
         unavailable.broad, unavailable.idless = broad, idless
         i = _pair(buckets.get(key), r, tolerance, unavailable, upper, forward)
@@ -350,56 +359,51 @@ def _scope(r: Row) -> tuple:
     return ("any",)
 
 
-def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, int]:
-    """For each widened secondary row with a timestamp, the epoch ms of the
-    next strictly later secondary row of the same match text that could
-    take the same primary rows: for a row of a session, the rows of that
-    session, the rows of its project with no session, and the rows with
-    neither; for a row of a project with no session, every row of that
-    project and the rows with neither; for a row with neither, every row
-    of that text. Rows of a different session never bound it. A copy at
-    the same time (the same line in two history files) does not bound it.
-    The row may not take a primary row recorded at or after that time, so
-    the later line keeps the later record. Each index is sorted once and
-    searched by bisection, so the cost is near linear."""
-    by_session: dict[tuple, list[int]] = {}
-    by_project: dict[tuple, list[int]] = {}
-    by_project_free: dict[tuple, list[int]] = {}
-    by_none: dict[tuple, list[int]] = {}
-    by_text: dict[tuple, list[int]] = {}
-    rows: list[tuple[int, Row, int, tuple]] = []
-    for j, (r, _) in enumerate(secondary):
-        ms = epoch_ms(r.timestamp_utc)
-        if ms is None or _is_parser_row(r):
-            continue
-        text = _by_text(r)
-        rows.append((j, r, ms, text))
-        by_text.setdefault(text, []).append(ms)
-        if r.session_id:
-            by_session.setdefault((text, r.session_id), []).append(ms)
-        if r.project_path:
-            by_project.setdefault((text, r.project_path), []).append(ms)
-            if not r.session_id:
-                by_project_free.setdefault((text, r.project_path), []).append(ms)
-        if not r.session_id and not r.project_path:
-            by_none.setdefault(text, []).append(ms)
-    for index in (by_session, by_project, by_project_free, by_none, by_text):
-        for times in index.values():
-            times.sort()
-    bounds: dict[int, int] = {}
-    for j, r, ms, text in rows:
-        if j not in widened:
-            continue
-        if r.session_id:
-            lists = [
-                by_session.get((text, r.session_id)),
-                by_project_free.get((text, r.project_path)) if r.project_path else None,
-                by_none.get(text),
-            ]
-        elif r.project_path:
-            lists = [by_project.get((text, r.project_path)), by_none.get(text)]
-        else:
-            lists = [by_text.get(text)]
+class _Bounds:
+    """The times of the secondary rows by match text and scope, for the
+    next-line bound of a widened row (`upper`): a widened row may not take
+    a primary row recorded at or after the next strictly later secondary
+    row of the same text that could take that same primary row, so the
+    later line keeps the later record. Which rows could take it depends on
+    the candidate: a primary row of a session can be taken by that
+    session's rows, by its project's rows with no session and by the rows
+    with neither; one of a project with no session by the project's
+    session-less rows and the rows with neither; one with neither by the
+    rows with neither. A row of a different session never counts, and a
+    copy at the same time (the same line in two history files) does not
+    bound. Built only when some row is widened; each index is sorted once
+    and searched by bisection."""
+
+    __slots__ = ("by_none", "by_project_free", "by_session")
+
+    def __init__(self, secondary: list[tuple[Row, float]]) -> None:
+        self.by_session: dict[tuple, list[int]] = {}
+        self.by_project_free: dict[tuple, list[int]] = {}
+        self.by_none: dict[tuple, list[int]] = {}
+        for r, _ in secondary:
+            ms = epoch_ms(r.timestamp_utc)
+            if ms is None or _is_parser_row(r):
+                continue
+            text = _by_text(r)
+            if r.session_id:
+                self.by_session.setdefault((text, r.session_id), []).append(ms)
+            elif r.project_path:
+                self.by_project_free.setdefault((text, r.project_path), []).append(ms)
+            else:
+                self.by_none.setdefault(text, []).append(ms)
+        for index in (self.by_session, self.by_project_free, self.by_none):
+            for times in index.values():
+                times.sort()
+
+    def upper(self, text: tuple, ms: int, candidate: Row) -> int | None:
+        """The bound for a widened row of match `text` at `ms` against
+        `candidate`, a primary row: the next time after `ms` among the
+        secondary rows that could take `candidate`, or None."""
+        lists = [self.by_none.get(text)]
+        if candidate.session_id:
+            lists.append(self.by_session.get((text, candidate.session_id)))
+        if candidate.project_path:
+            lists.append(self.by_project_free.get((text, candidate.project_path)))
         later: int | None = None
         for times in lists:
             if not times:
@@ -407,21 +411,29 @@ def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, 
             k = bisect_right(times, ms)
             if k < len(times) and (later is None or times[k] < later):
                 later = times[k]
-        if later is not None:
-            bounds[j] = later
-    return bounds
+        return later
+
+
+def _candidate_bound(bounds: _Bounds, primary: list[Row], r: Row) -> _Upper | None:
+    """The bound function for widened secondary row `r` over the rows of
+    `primary`, by candidate index; None when `r` has no timestamp."""
+    ms = epoch_ms(r.timestamp_utc)
+    if ms is None:
+        return None
+    text = _by_text(r)
+    return lambda i: bounds.upper(text, ms, primary[i])
 
 
 def _against_primary(
     primary: list[Row],
     secondary: list[tuple[Row, float]],
-    bounds: dict[int, int] | None = None,
+    bounds: _Bounds | None = None,
     forward: dict[int, float] | None = None,
 ) -> list[int]:
     """The indices of the secondary rows that pair with a primary row,
-    each looking only under its own scope, for a row in `bounds` only
-    before the time it maps to, and for a row in `forward` up to that many
-    seconds after it instead of its tolerance."""
+    each looking only under its own scope, and for a row in `forward` up
+    to that many seconds after it instead of its tolerance, taking no
+    candidate at or after the bound `bounds` gives for it."""
     buckets: dict[tuple, _Bucket] = {}
     for i, r in enumerate(primary):
         if not _is_parser_row(r):
@@ -430,8 +442,8 @@ def _against_primary(
     matched: list[int] = []
     for j in _processing_order(secondary, by_scope=True):
         r, tolerance = secondary[j]
-        upper = bounds.get(j) if bounds else None
         fwd = forward.get(j) if forward else None
+        upper = _candidate_bound(bounds, primary, r) if bounds and fwd is not None else None
         i = _find(buckets, r, tolerance, _Unavailable(primary, used, r, False), False, upper, fwd)
         if i is not None:
             used.add(i)
@@ -489,9 +501,9 @@ def deduplicate(
     row up to that function's window after it (its source's window still
     bounds the search backwards and among secondary rows), and not with a
     primary row recorded at or after the next secondary row of the same
-    text in its scope (`_bounds`)."""
+    text that could take that primary row (`_Bounds`)."""
     forward = _forward_windows(secondary)
-    bounds = _bounds(secondary, set(forward))
+    bounds = _Bounds(secondary) if forward else None
     matched = set(_against_primary(primary, secondary, bounds, forward))
     dropped = matched | set(_among_secondary(secondary, matched))
     counts: Counter[str] = Counter(secondary[j][0].agent for j in dropped)

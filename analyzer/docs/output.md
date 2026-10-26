@@ -2413,9 +2413,10 @@ secondary source is dropped when a row from the agent's primary store has
   its line by more than the source's own window), it applies against
   transcript records only (two history files keep their own window with
   each other), and within it a command line may not take a record
-  written at or after the next line of the same command in its scope, so
-  a line whose own record is missing stays, under its own time, rather
-  than taking a later line's record. A `/clear` (its history
+  written at or after the next line of the same command that could take
+  that record (a line of the record's session, a session-less line of its
+  project, or a line with neither), so a line whose own record is missing
+  stays, under its own time, rather than taking a later line's record. A `/clear` (its history
   line carries the ended session, its record the new one), a `/logout` and
   an `/exit` typed while a turn ran have no record to pair with and stay;
 - the same `session_id`, when the secondary row has one; when it has
