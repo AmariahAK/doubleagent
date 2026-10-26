@@ -1473,6 +1473,18 @@ printf '{"plugins":[]}\n' >"$H/.claude/plugins/plugin-directory-cache-v2.json"
 printf '# git ls-files --others --exclude-from=.git/info/exclude\n.claude/scheduled_tasks.lock\n' \
   >"$G253/info/exclude"
 
+# 2026-10-26 claude-code Linux round (#256)
+# Claude Code 2.1.310 on Ubuntu 26.04 (real install, 2026-10-25/26) holds
+# .local/state/claude/locks/<version>.lock, a JSON lock with acquiredAt,
+# execPath, pid and version, while a session runs, and creates
+# .cache/claude/staging/ at install; both directories are home-relative on
+# Windows too and are collected as claude-code. Checks follow the default
+# run below; the same files are in smoke.ps1 under alice.
+mkdir -p "$H/.local/state/claude/locks" "$H/.cache/claude/staging"
+printf '{"acquiredAt":1792800000000,"execPath":"/x","pid":1,"version":"2.1.310"}\n' \
+  >"$H/.local/state/claude/locks/2.1.310.lock"
+printf 'staged\n' >"$H/.cache/claude/staging/entry"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1963,6 +1975,10 @@ check "#256 Claude Code paste-cache collected" "row \"$H/.claude/paste-cache/012
 check "#256 Claude Code plugin directory cache excluded" "[ \"\$(status_of \"$H/.claude/plugins/plugin-directory-cache-v2.json\")\" = skipped_excluded ]"
 check "#256 project git info/exclude collected as project" "is253 info/exclude"
 
+# 2026-10-26 claude-code Linux round (#256)
+check "#256 Claude Code version lock collected as claude-code" "row \"$H/.local/state/claude/locks/2.1.310.lock\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
+check "#256 Claude Code cache staging collected as claude-code" "row \"$H/.cache/claude/staging/entry\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -2142,7 +2158,7 @@ check "inventory first line is the host line, keys in order" "head -n1 \"$OUT/in
 check "inventory host line counts" "head -n1 \"$OUT/inventory.stdout\" | grep -q '\"users_unreadable\":0,\"docker_volumes\":3}\$'"
 check "inventory every later line is an agent line, keys in order" "[ \"\$(sed 1d \"$OUT/inventory.stdout\" | grep -vc '$INV_AGENT_RE')\" = 0 ] && [ \"\$(grep -c . \"$OUT/inventory.stdout\")\" -gt 10 ]"
 check "inventory ollama line: history and manifest, excluded blobs not counted" "agent_line inventory ollama ollama | grep -q '\"files\":2,\"bytes\":25,\"first\":\"2026-09-14T00:00:00Z\",\"last\":\"2026-09-15T01:02:03Z\",\"projects\":0,\"evidence\":\".ollama\"}\$'"
-check "inventory claude-code evidence in catalog order" "agent_line inventory alice claude-code | grep -q '\"evidence\":\".claude,.claude.json\\*,.claude-\\*/projects,.claude-\\*/history.jsonl,.claude-\\*/.claude.json\\*,.claude-\\*/.credentials.json,.claude-\\*/sessions/\\*.\\*.key,.claude-\\*/daemon/control.key,.claude-\\*/daemon/roster.json,.claude-\\*/backups/.claude.json.\\*,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/\\*,AppData/Local/Temp/claude\"}\$'"
+check "inventory claude-code evidence in catalog order" "agent_line inventory alice claude-code | grep -q '\"evidence\":\".claude,.claude.json\\*,.claude-\\*/projects,.claude-\\*/history.jsonl,.claude-\\*/.claude.json\\*,.claude-\\*/.credentials.json,.claude-\\*/sessions/\\*.\\*.key,.claude-\\*/daemon/control.key,.claude-\\*/daemon/roster.json,.claude-\\*/backups/.claude.json.\\*,.local/state/claude,.cache/claude,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/\\*,AppData/Local/Temp/claude\"}\$'"
 check "inventory first and last set for alice claude-code" "agent_line inventory alice claude-code | grep -q '\"first\":\"20[0-9-]*T[0-9:]*Z\",\"last\":\"20[0-9-]*T[0-9:]*Z\"'"
 check "inventory nested entry claimed from the enclosing agent" "agent_line inventory alice antigravity | grep -q '\"evidence\":\"[^\"]*.gemini/antigravity-cli' && agent_line inventory alice gemini-cli | grep -q '\"evidence\":\".gemini\"'"
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"

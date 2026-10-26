@@ -1012,7 +1012,15 @@ and `hasClaudeMdExternalIncludesApproved` per project from `.claude.json`
 (with `project_path` the project key). Their `timestamp_utc` is the
 file's modification time (the manifest `mtime` when there is a
 manifest), not the time the entry was added, and their `session_id` is
-empty. A Claude Desktop session record adds ` permission_mode=<mode>
+empty. Two more rows come from the same files, timestamped the same way:
+`retention setting: cleanupPeriodDays=<n> (from <file>, file mtime)`
+after a settings file's permission rows, the number of days after which
+Claude Code's retention sweep deletes a transcript, and `source host:
+github status=<status> (from .claude.json, file mtime)` from the
+`githubWebConnectionStatusCache` object of `.claude.json` (written by
+Claude Code 2.1.310 once the GitHub app is connected; `connected` is the
+value seen), with an empty `project_path`. The account and organization
+UUIDs beside that status are not printed. A Claude Desktop session record adds ` permission_mode=<mode>
 effort=<effort>` to its row and one `permission grant: <key> <entry>` or
 `permission grant: <key>=<value>` row per session grant, timestamped at
 the record's `lastActivityAt` (else `createdAt`), which the text names as
@@ -1021,7 +1029,8 @@ the record's `lastActivityAt` (else `createdAt`), which the text names as
 `permission auto-approved:` and `permission auto-denied:` (the Claude
 Desktop audit log). On Claude Code 2.1.309 the decision object also has
 `grantScope` (`once` on a one-time approval) and `reasonCode` (`other`,
-`unknown`, `subcommandResults`), which the row carries in the compact
+`unknown`, `subcommandResults`, and on 2.1.310 `bashMiss:no-rule-match`
+for a shell command that matched no allow rule), which the row carries in the compact
 JSON after `reason=`, as `permission decision: accept
 source=user_temporary reason=-
 {"decision":"accept","grantScope":"once","reasonCode":"other","source":"user_temporary"}`.
