@@ -549,7 +549,7 @@ class ClaudeCode295Tests(ParserBase):
                 (
                     "system",
                     "toolu_95",
-                    "permission decision: - source=- reason=- toolDenialKind=user_rejected",
+                    "permission decision: reject (interrupted) toolDenialKind=user_rejected",
                 ),
             ],
         )
@@ -788,6 +788,7 @@ class ClaudeCode296Tests(ParserBase):
                 "permission setting: permissions.additionalDirectories=/srv/shared " + src,
                 "permission setting: permissions.defaultMode=acceptEdits " + src,
                 "permission setting: permissions.disableBypassPermissionsMode=disable " + src,
+                "model setting: model=opus " + src,
             ],
         )
         for r in rows:
@@ -882,6 +883,12 @@ class ClaudeCode296Tests(ParserBase):
     def test_settings_without_permissions_and_unreadable(self):
         path = self.home / ".claude/settings.json"
         path.write_text('{"model": "opus", "env": {"X": "y"}}', encoding="utf-8")
+        # Only the model alias is read; `env` is never printed.
+        self.assertEqual(
+            [r.text for r in self.rows_for(ClaudeCodeParser(), ".claude/settings.json")],
+            ["model setting: model=opus (from .claude/settings.json, file mtime)"],
+        )
+        path.write_text('{"env": {"X": "y"}}', encoding="utf-8")
         self.assertEqual(self.rows_for(ClaudeCodeParser(), ".claude/settings.json"), [])
         for body in ("[1]", "{not json"):
             path.write_text(body, encoding="utf-8")
@@ -1165,9 +1172,10 @@ class ClaudeCode309Tests(ParserBase):
         )
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
         self.assertEqual(
-            [(r.source_line, r.text) for r in rows[-3:]],
+            [(r.source_line, r.text) for r in rows[-4:]],
             [
                 (22, "session surface: cli -> claude-vscode"),
+                (22, "session origin: local (VS Code extension)"),
                 (22, "from the panel"),
                 (22, "prompt trigger: promptSource=sdk turnOrigin=human"),
             ],
@@ -1220,6 +1228,7 @@ class ClaudeCode309Tests(ParserBase):
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [
                 (1, "system", "session surface: claude-vscode"),
+                (1, "system", "session origin: local (VS Code extension)"),
                 (1, "system", "permission mode: auto"),
                 (1, "user", "Run python calc.py 6 1"),
                 (1, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
@@ -1234,7 +1243,8 @@ class ClaudeCode309Tests(ParserBase):
         self.assertEqual(rows[-1].project_path, scratch)
 
     def test_history_pasted_contents(self):
-        # `pastedContents` is not read: the row is the display text.
+        # The paste is named by its hash and no `paste-cache/<hash>.txt` is
+        # on disk, so the row keeps the placeholder as written.
         path = self.home / ".claude/history.jsonl"
         path.write_text(
             "".join(json.dumps(x) + "\n" for x in claude_309_history_records()), encoding="utf-8"
@@ -1400,6 +1410,7 @@ class ClaudeCode310Tests(ParserBase):
                 (1, "system", "queue enqueue:"),
                 (2, "system", "queue dequeue:"),
                 (3, "system", "session surface: claude-vscode"),
+                (3, "system", "session origin: local (VS Code extension)"),
                 (3, "system", "permission mode: auto"),
                 (3, "user", "Run python3 calc.py 6 1"),
                 (3, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
@@ -1421,7 +1432,14 @@ class ClaudeCode310Tests(ParserBase):
                     "",
                     "retention setting: cleanupPeriodDays=1 "
                     "(from .claude/settings.json, file mtime)",
-                )
+                ),
+                (
+                    "system",
+                    self.SETTINGS_TS,
+                    "",
+                    "",
+                    "model setting: model=opus (from .claude/settings.json, file mtime)",
+                ),
             ],
         )
 
@@ -1436,6 +1454,7 @@ class ClaudeCode310Tests(ParserBase):
             [
                 "permission setting: permissions.allow=Bash(python3 *) " + src,
                 "retention setting: cleanupPeriodDays=1 " + src,
+                "model setting: model=opus " + src,
             ],
         )
 
@@ -1483,7 +1502,8 @@ class ClaudeCode310Tests(ParserBase):
 
     def test_history_inline_paste(self):
         # A short paste is kept inline (`content`) in pastedContents; the row
-        # is the display text all the same.
+        # is the display text with the placeholder replaced by the paste, as
+        # the transcript's prompt holds it.
         line = {
             "display": "[Pasted text #1 +3 lines] Summarise the text above in one sentence",
             "pastedContents": {"1": {"content": "one\ntwo\nthree", "id": 1, "type": "text"}},
@@ -1493,7 +1513,10 @@ class ClaudeCode310Tests(ParserBase):
         }
         (self.home / ".claude/history.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
         rows = self.rows_for(ClaudeCodeParser(), ".claude/history.jsonl")
-        self.assertEqual([(r.turn_type, r.text) for r in rows], [("user", line["display"])])
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("user", "one\ntwo\nthree Summarise the text above in one sentence")],
+        )
 
     def test_debug_log_and_key_not_wanted(self):
         home = self.artifact(".claude/settings.json").home
@@ -1527,6 +1550,392 @@ class ClaudeCode310Tests(ParserBase):
             [(30, "user", "after the cut"), (29, "system", bad_line_text())],
         )
         self.assertEqual(rows[-1].session_id, CLAUDE_310_SESSION)
+
+
+from fixtures import (
+    CLAUDE_MAC_CLOUD_SCRATCH,
+    CLAUDE_MAC_LOCAL_SCRATCH,
+    CLAUDE_MAC_LONG_PASTE,
+    CLAUDE_MAC_PASTE_HASH,
+    CLAUDE_MAC_SESSION,
+    CLAUDE_MAC_SPAWN_SESSION,
+    CLAUDE_MAC_TELEPORT_SESSION,
+    claude_mac_global_config,
+    claude_mac_history_records,
+    claude_mac_records,
+    claude_mac_spawn_records,
+    claude_mac_teleport_records,
+)
+
+
+class ClaudeCodeMacTests(ParserBase):
+    """Claude Code 2.1.310, the macOS round (issue 256): denials recorded
+    as an interrupt with no decision, history lines that match their
+    transcript records across the command and paste forms, the origin rows
+    of a Remote Control spawn, a teleported cloud session and the VS Code
+    extension, `ccr-tip.json` and `bridge-pointer.json`, the `.claude.json`
+    Remote Control and cloud keys, and the scheduled-task firing."""
+
+    PROJ = ".claude/projects/-srv-proj/"
+    REL = PROJ + "%s.jsonl" % CLAUDE_MAC_SESSION
+    SPAWN_REL = PROJ + "%s.jsonl" % CLAUDE_MAC_SPAWN_SESSION
+    TELEPORT_REL = PROJ + "%s.jsonl" % CLAUDE_MAC_TELEPORT_SESSION
+    CCR_REL = PROJ + "%s/ccr-tip.json" % CLAUDE_MAC_SPAWN_SESSION
+    POINTER_REL = PROJ + "bridge-pointer.json"
+    MTIME_TS = "2026-10-01T09:00:00.000Z"
+    DENIED = "permission decision: reject (interrupted) toolDenialKind=user-rejected"
+    REFUSED = "The user doesn't want to proceed with this tool use."
+
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "system", "permission mode: default"),
+        (2, "system", "session surface: cli"),
+        (2, "user", "run python3 calc.py 2 3"),
+        (3, "system", "model: claude-fable-5-1"),
+        (3, "tool_use", "python3 calc.py 2 3"),
+        (4, "tool_result", REFUSED),
+        (4, "system", DENIED),
+        (5, "user", "Do not run it again."),
+        (6, "tool_use", '{"plan":"1. add subtract"}'),
+        (7, "tool_result", REFUSED),
+        (7, "system", DENIED),
+        (
+            8,
+            "system",
+            "slash command: <command-name>/model</command-name>\n"
+            "            <command-message>model</command-message>\n"
+            "            <command-args></command-args>",
+        ),
+        (
+            9,
+            "system",
+            "command output: <local-command-stdout>Set model to Fable 5.1 and saved as "
+            "your default for new sessions</local-command-stdout>",
+        ),
+        (10, "user", "one\ntwo\nthree\nfour\nSummarise the pasted text in one sentence."),
+        (11, "system", "scheduled task fired: a1b2c3d4 cron=*/1 * * * *"),
+        (12, "user", "echo hi"),
+        (12, "system", "prompt trigger: promptSource=system turnOrigin=scheduled"),
+        (
+            16,
+            "system",
+            "slash command: <command-name>/rename</command-name>\n"
+            "            <command-message>rename</command-message>\n"
+            "            <command-args>lab-round</command-args>",
+        ),
+        (17, "user", CLAUDE_MAC_LONG_PASTE + " Summarise again."),
+        (
+            18,
+            "system",
+            "slash command: <command-name>/model</command-name>\n"
+            "            <command-message>model</command-message>\n"
+            "            <command-args></command-args>",
+        ),
+    ]
+
+    def _write(self, rel, records):
+        path = self.home / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(records, str):
+            path.write_text(records, encoding="utf-8")
+        else:
+            path.write_text("".join(json.dumps(x) + "\n" for x in records), encoding="utf-8")
+        os.utime(path, (CLAUDE_SETTINGS_MTIME, CLAUDE_SETTINGS_MTIME))
+        home = self.artifact(".claude/settings.json").home
+        return Artifact(path, rel, rel, "claude-code", home)
+
+    def _rows(self, rel, records, **kw):
+        return list(ClaudeCodeParser().parse(self._write(rel, records), Options(**kw)))
+
+    def _history(self):
+        self._write(".claude/paste-cache/%s.txt" % CLAUDE_MAC_PASTE_HASH, CLAUDE_MAC_LONG_PASTE)
+        return self._rows(".claude/history.jsonl", claude_mac_history_records())
+
+    def test_rows(self):
+        rows = self._rows(self.REL, claude_mac_records())
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual(r.session_id, CLAUDE_MAC_SESSION)
+        # The denial rows join the denied calls.
+        self.assertEqual(
+            [r.tool_use_id for r in rows if r.text == self.DENIED], ["toolu_m1", "toolu_m2"]
+        )
+
+    def test_denial_with_feedback_keeps_its_form(self):
+        # A denial kind beside a decision record (the Linux form) is not an
+        # interrupt; only the kind alone is.
+        records = claude_mac_records()
+        records[3] = dict(
+            records[3],
+            permissionDecision={"decision": "reject", "source": "user_reject"},
+            userFeedback="no",
+        )
+        rows = self._rows(self.REL, records)
+        self.assertEqual(
+            [r.text for r in rows if r.source_line == 4][1],
+            "permission decision: reject source=user_reject reason=- "
+            "toolDenialKind=user-rejected userFeedback=no",
+        )
+
+    def test_history_expands_pastes(self):
+        rows = self._history()
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "run python3 calc.py 2 3",
+                "/model",
+                "one\ntwo\nthree\nfour Summarise the pasted text in one sentence.",
+                "/rename lab-round",
+                CLAUDE_MAC_LONG_PASTE + " Summarise again.",
+                "/model",
+                "/exit",
+            ],
+        )
+
+    def test_history_paste_not_followed_through_symlink(self):
+        cache = self.home / ".claude/paste-cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        target = self.tmp / "elsewhere.txt"
+        target.write_text("not the paste", encoding="utf-8")
+        (cache / ("%s.txt" % CLAUDE_MAC_PASTE_HASH)).symlink_to(target)
+        rows = self._rows(".claude/history.jsonl", claude_mac_history_records())
+        self.assertEqual(rows[4].text, "[Pasted text #2 +4 lines] Summarise again.")
+
+    def test_history_matches_transcript_commands_and_pastes(self):
+        # Rows 27a and 27b of the round: every history line but `/exit` is the
+        # same event as a transcript record; the two `/model` lines, at their
+        # own times, pair with their own command records.
+        primary = self._rows(self.REL, claude_mac_records())
+        secondary = [(r, 2.0) for r in self._history()]
+        rows, dropped = deduplicate(primary, secondary)
+        kept = rows[len(primary) :]
+        self.assertEqual([(r.text, r.recovered) for r in kept], [("/exit", "yes")])
+        self.assertEqual(dropped["claude-code"], 6)
+
+    def test_history_command_without_transcript_is_recovered(self):
+        # With the second `/model` record gone, its history line stays.
+        primary = [r for r in self._rows(self.REL, claude_mac_records()) if r.source_line != 18]
+        rows, _ = deduplicate(primary, [(r, 2.0) for r in self._history()])
+        self.assertEqual(
+            [r.text for r in rows[len(primary) :]],
+            ["/model", "/exit"],
+        )
+        self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:50.000Z")
+
+    def test_remote_control_spawn(self):
+        rows = self._rows(self.SPAWN_REL, claude_mac_spawn_records())
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "system", "prompt queued: delivered at line 3"),
+                (2, "system", "queue dequeue:"),
+                (3, "system", "session surface: sdk-cli"),
+                (3, "system", "session origin: remote (Remote Control, entrypoint sdk-cli)"),
+                (3, "system", "permission mode: default"),
+                (3, "user", "Run ls -la in this folder and tell me what files are here."),
+                (3, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
+                (4, "system", "model: claude-fable-5-1"),
+                (4, "tool_use", "ls -la"),
+                (5, "tool_result", "calc.py\nREADME.md"),
+                (5, "system", "permission decision: accept source=config reason=subcommandResults"),
+            ],
+        )
+
+    def test_sdk_cli_without_sdk_prompt_is_not_a_spawn(self):
+        records = claude_mac_spawn_records()
+        records[2] = dict(records[2], promptSource="typed")
+        rows = self._rows(self.SPAWN_REL, records)
+        self.assertFalse([r for r in rows if r.text.startswith("session origin:")])
+
+    def test_teleported_session(self):
+        rows = self._rows(self.TELEPORT_REL, claude_mac_teleport_records())
+        got = [(r.source_line, r.turn_type, r.text) for r in rows]
+        self.assertEqual(
+            got[:5],
+            [
+                (1, "system", "session surface: cli"),
+                (
+                    1,
+                    "system",
+                    "session origin: remote (teleport, cloud scratchpad %s)"
+                    % CLAUDE_MAC_CLOUD_SCRATCH,
+                ),
+                (2, "system", "session origin: remote (teleport, remoteSourced)"),
+                (2, "system", "permission mode: default"),
+                (2, "user", "Describe this repository in three sentences."),
+            ],
+        )
+        self.assertIn(
+            (
+                4,
+                "system",
+                "permission decision: accept source=config reason=rule "
+                '{"decision":"accept","reasonType":"rule","ruleSource":"cliArg","source":"config"}',
+            ),
+            got,
+        )
+        self.assertIn((6, "system", "informational: Session resumed"), got)
+        self.assertTrue(any(n == 5 and t.startswith("stop_hook_summary: ") for n, _, t in got))
+        # The local environment's scratchpad is this host's: a scratch row.
+        local = [r for r in rows if r.source_line == 7]
+        self.assertEqual(
+            [(r.text, r.project_path) for r in local],
+            [
+                (
+                    "scratch directory: %s (session scratchpad, from the environment"
+                    " attachment)" % CLAUDE_MAC_LOCAL_SCRATCH,
+                    CLAUDE_MAC_LOCAL_SCRATCH,
+                )
+            ],
+        )
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("session origin:")][1:],
+            ["session origin: remote (teleport, remoteSourced)"],
+        )
+
+    def test_foreign_scratchpad_without_remote_sourced_stays_scratch(self):
+        records = [r for r in claude_mac_teleport_records() if not r.get("remoteSourced")]
+        rows = self._rows(self.TELEPORT_REL, records)
+        self.assertFalse([r for r in rows if r.text.startswith("session origin:")])
+        self.assertIn(
+            CLAUDE_MAC_CLOUD_SCRATCH,
+            [r.project_path for r in rows if r.text.startswith("scratch directory:")],
+        )
+
+    def test_ccr_tip(self):
+        doc = {"eventId": "33333333-4444-4555-8666-777777777777", "updatedAt": 1790856300000}
+        art = self._write(self.CCR_REL, json.dumps(doc))
+        self.assertTrue(ClaudeCodeParser().wants(art))
+        self.assertFalse(ClaudeCodeParser().secondary(art))
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    self.MTIME_TS,
+                    CLAUDE_MAC_SPAWN_SESSION,
+                    "session synced: remote event 33333333-4444-4555-8666-777777777777 at "
+                    "1790856300000 (from %s, file mtime)" % self.CCR_REL,
+                )
+            ],
+        )
+
+    def test_ccr_tip_unreadable(self):
+        for body in ('{"eventId": "cut', "[1]"):
+            rows = self._rows(self.CCR_REL, body)
+            self.assertEqual(
+                [(r.turn_type, r.session_id, r.text) for r in rows],
+                [("system", CLAUDE_MAC_SPAWN_SESSION, "parser: ccr-tip.json is not a JSON object")],
+            )
+
+    def test_bridge_pointer(self):
+        doc = {
+            "environmentId": "env_0123456789abcdefghijkl",
+            "pid": 15081,
+            "procStart": "Mon Oct  1 12:00:00 2026",
+            "sessionId": "0123456789abcdef0123456789abcdef",
+            "source": "standalone",
+        }
+        rows = self._rows(self.POINTER_REL, json.dumps(doc))
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    self.MTIME_TS,
+                    "",
+                    "",
+                    "remote control: environment env_0123456789abcdefghijkl session "
+                    "0123456789abcdef0123456789abcdef source=standalone "
+                    "(from %s, file mtime)" % self.POINTER_REL,
+                )
+            ],
+        )
+        self.assertNotIn("15081", rows[0].text)
+
+    def test_bridge_pointer_unreadable(self):
+        rows = self._rows(self.POINTER_REL, "{cut mid-write")
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: bridge-pointer.json is not a JSON object")],
+        )
+
+    def test_global_config_remote_keys(self):
+        rows = self._rows(".claude.json", json.dumps(claude_mac_global_config()))
+        src = "(from .claude.json, file mtime)"
+        self.assertEqual(
+            [(r.text, r.project_path, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "permission setting: hasTrustDialogAccepted=true " + src,
+                    "/srv/proj",
+                    self.MTIME_TS,
+                ),
+                (
+                    "remote control: spawn mode same-dir for /srv/proj " + src,
+                    "/srv/proj",
+                    self.MTIME_TS,
+                ),
+                ("remote control: machine id set " + src, "", self.MTIME_TS),
+                ("cloud: hasRemoteEnvironment=true " + src, "", self.MTIME_TS),
+            ],
+        )
+        for r in rows:
+            self.assertNotIn("0000000000cc", r.text)
+
+    def test_session_summary_origin_and_sync(self):
+        rows = self._rows(self.REL, claude_mac_records())
+        rows += self._rows(self.SPAWN_REL, claude_mac_spawn_records())
+        rows += self._rows(self.TELEPORT_REL, claude_mac_teleport_records())
+        rows += self._rows(self.CCR_REL, json.dumps({"eventId": "e1", "updatedAt": "t"}))
+        p = ClaudeCodeParser()
+        self.assertTrue(p.records_origin and p.records_sync)
+        agents = frozenset({p.agent})
+        got = {
+            s.session_id: (s.origin, s.synced) for s in summarise(rows, agents, frozenset(), agents)
+        }
+        self.assertEqual(
+            got,
+            {
+                CLAUDE_MAC_SESSION: ("local", "no"),
+                CLAUDE_MAC_SPAWN_SESSION: ("remote", "yes"),
+                CLAUDE_MAC_TELEPORT_SESSION: ("remote", "no"),
+            },
+        )
+
+    def test_desktop_subclass_records_no_origin(self):
+        self.assertFalse(_ClaudeDesktopParser().records_origin)
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        art = self._write(self.SPAWN_REL, claude_mac_spawn_records())
+        write_bad_line(art.disk_path)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_MAC_SPAWN_SESSION)
+        with open(art.disk_path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        self.assertIn(
+            "session origin: remote (Remote Control, entrypoint sdk-cli)", [r.text for r in rows]
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[-2:]],
+            [(8, "user", "after the cut"), (7, "system", bad_line_text())],
+        )
+
+    def test_thinking_opt_in(self):
+        rows = self._rows(self.REL, claude_mac_records(), include_thinking=True)
+        self.assertEqual(len(rows), len(self.EXPECTED))
+
+    def test_sidecars_not_wanted(self):
+        home = self.artifact(".claude/settings.json").home
+        for rel in (
+            self.PROJ + "%s/custom-title.json" % CLAUDE_MAC_SESSION,
+            self.PROJ + "%s/subagents/agent-a1.meta.json" % CLAUDE_MAC_SESSION,
+            ".claude/paste-cache/%s.txt" % CLAUDE_MAC_PASTE_HASH,
+            ".claude/bridge-spawn/cse_01/mcp.json",
+            ".claude/ide/50123.lock",
+        ):
+            art = Artifact(self.home / rel, rel, rel, "claude-code", home)
+            self.assertFalse(ClaudeCodeParser().wants(art), rel)
 
 
 from fixtures import (
