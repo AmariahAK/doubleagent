@@ -338,17 +338,27 @@ cloud session and the VS Code extension; the evidence is in
   by the `paste-cache/<contentHash>.txt` file beside the history file
   (never through a symlink), else kept as written, since the retention
   sweep removes the cache. The transcript's `user` line carries the
-  pasted text in place of the placeholder, so the expanded row is the
-  same event. A slash command is a history line as typed (`/model`,
+  pasted text in place of the placeholder, inside a `<pasted_content
+  id="<4 hex>">` ... `</pasted_content>` wrapper on 2.1.310, so the
+  expanded row is the same event. A slash command is a history line as typed (`/model`,
   `/rename lab-round`) and a tag-form `user` record in the transcript;
   `match_form` gives `dedup.py` the form both match under (a `slash
-  command:` or `local_command:` row as the `user` text `/<name> <args>`,
-  a prompt with its ASCII whitespace removed), so only a line with no
-  transcript record, such as `/exit`, stays `recovered` (2.1.310 macOS,
-  rows 27a and 27b of the round). A `/clear` history line may carry the
-  ended session's id while its record is in the new file; it then stays
-  `recovered` (not determined from the round). A prompt sent through a
-  console attached with `claude agents` is not a history line.
+  command:` or `local_command:` row, `/help` being the latter, as the
+  `user` text `/<name>` plus ` <args>` when `<command-args>` is not
+  empty; a prompt with the transcript's `<pasted_content id="<4 hex>">`
+  ... `</pasted_content>` wrapper and its ASCII whitespace removed), and
+  `match_tolerance` widens a command line's window to
+  `COMMAND_TOLERANCE_SECONDS`, since a command that opens a picker or an
+  overlay (`/model`, `/help`, `/install-github-app`) is recorded when it
+  completes (2.1.310 macOS, rows 10, 27a and 27b of the round). Three
+  history lines have no transcript record to match and stay `recovered`,
+  by design: an `/exit` typed while a turn was still running, which
+  writes no transcript line; `/logout`, which ends the process before any
+  line is written; and `/clear`, whose history line carries the ended
+  session's `sessionId` while its command record is the first line of the
+  new session's file, so the two never meet within a session. A prompt
+  sent through a console attached with `claude agents` is not a history
+  line.
 
 * `~/.claude/sessions/<pid>.json`: the per-process registry the CLI keeps
   while it runs (2.1.295 keys observed on Linux and macOS). Read: `pid`,
@@ -461,7 +471,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from ..dedup import MATCH_FORMS
+from ..dedup import MATCH_FORMS, MATCH_TOLERANCES
 from ..inputs import Artifact
 from ..model import ORIGIN_PREFIX, SCRATCH_PREFIX, SYNCED_PREFIX, Row, compact
 from ..timeutil import to_utc
@@ -517,6 +527,17 @@ PASTE_HASH_RX = re.compile(r"^[0-9A-Za-z]+$")
 COMMAND_NAME_RX = re.compile(r"<command-name>(.*?)</command-name>", re.S)
 COMMAND_ARGS_RX = re.compile(r"<command-args>(.*?)</command-args>", re.S)
 ASCII_SPACE_RX = re.compile(r"[ \t\r\n\f\v]+")
+# The wrapper 2.1.310 puts around a paste in the transcript's prompt,
+# `<pasted_content id="<4 hex>">` ... `</pasted_content>`.
+PASTE_WRAPPER_RX = re.compile(r"</?pasted_content(?:\s[^>]*)?>")
+# A history line that is a slash command as typed (`/model`, `/rename x`).
+HISTORY_COMMAND_RX = re.compile(r"^/[A-Za-z][A-Za-z0-9:_-]*(?:[ \t]|$)")
+# How far a history command line may be from its transcript record: a
+# command that opens a picker, an overlay or a flow (`/model`, `/help`,
+# `/install-github-app`) is written to the transcript when it completes,
+# 27 seconds after the history line for the `/model` of the 2.1.310 macOS
+# round (rows 10 and 27a), where a typed prompt is within the default 2.
+COMMAND_TOLERANCE_SECONDS = 600.0
 PERSISTED_MARK = "<persisted-output>"
 PERSISTED_RX = re.compile(r"Full output saved to: ([^\r\n]*?tool-results[/\\][^/\\\r\n]+?\.txt)")
 
@@ -684,9 +705,13 @@ def match_form(row: Row) -> tuple[str, str]:
     (`<command-name>/rename</command-name>` ... `<command-args>lab-round
     </command-args>`), which is a `slash command:` row (or a `local_command:`
     row from a `system` record); both match as the `user` text `/<name>
-    <args>`. A prompt's text matches with ASCII whitespace removed, since the
-    history line's expanded paste and the transcript's prompt may join the
-    paste and the typed text differently. Every other row matches as it is."""
+    <args>`, the args and the space before them only when `<command-args>`
+    is not empty (`/model` has `<command-args></command-args>`). A
+    prompt's text matches with the `<pasted_content id="...">` wrapper the
+    transcript puts around a paste removed and its ASCII whitespace
+    removed, since the history line holds the bare paste and may join it
+    to the typed text with other whitespace. Every other row matches as it
+    is."""
     text = row.text
     if row.turn_type == "system":
         if text.startswith(("slash command: ", "local_command: ")):
@@ -697,12 +722,21 @@ def match_form(row: Row) -> tuple[str, str]:
                     cmd = "/" + cmd
                 args = COMMAND_ARGS_RX.search(text)
                 if args and args.group(1).strip(" \t\r\n"):
-                    cmd += " " + args.group(1)
+                    cmd += " " + args.group(1).strip(" \t\r\n")
                 return "user", ASCII_SPACE_RX.sub("", cmd)
         return row.turn_type, text
     if row.turn_type == "user":
-        return "user", ASCII_SPACE_RX.sub("", text)
+        return "user", ASCII_SPACE_RX.sub("", PASTE_WRAPPER_RX.sub("", text))
     return row.turn_type, text
+
+
+def match_tolerance(row: Row) -> float | None:
+    """The time window, in seconds, of a secondary row that is a slash
+    command as typed (`COMMAND_TOLERANCE_SECONDS`), or None for the
+    source's own (`dedup.MATCH_TOLERANCES`)."""
+    if row.turn_type == "user" and HISTORY_COMMAND_RX.match(row.text):
+        return COMMAND_TOLERANCE_SECONDS
+    return None
 
 
 def scratch_slug(path: str) -> str:
@@ -1588,5 +1622,8 @@ class ClaudeCodeParser(Parser):
 
 
 # A history line and its transcript record differ in form for slash
-# commands and pastes; `dedup.deduplicate` matches them under `match_form`.
+# commands and pastes, and a command's record can come long after its
+# history line; `dedup.deduplicate` matches them under `match_form` and
+# `match_tolerance`.
 MATCH_FORMS[ClaudeCodeParser.agent] = match_form
+MATCH_TOLERANCES[ClaudeCodeParser.agent] = match_tolerance

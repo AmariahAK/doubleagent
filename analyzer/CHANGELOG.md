@@ -150,10 +150,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `claude-code` sessions no longer read `recovered` `partial` or `yes`
   because of their own slash commands and pastes: a `history.jsonl` line
-  with a command as typed (`/model`, `/rename lab-round`) now pairs with
-  the transcript's tag-form command record, and a line with a paste with
-  the expanded prompt, so only a line no transcript records (`/exit`)
-  stays recovered ([#256]).
+  with a command as typed (`/model`, `/help`, `/rename lab-round`) now
+  pairs with the transcript's tag-form command record, within 600 seconds
+  because a command that opens a picker is recorded when it completes, and
+  a line with a paste with the prompt that wraps it in `<pasted_content>`,
+  so only lines no transcript records match stay recovered: `/clear`
+  (filed under the ended session), `/logout` and an `/exit` typed during
+  a turn ([#256]).
 
 ## [0.20.1] - 2026-10-21
 

@@ -2401,9 +2401,14 @@ secondary source is dropped when a row from the agent's primary store has
   lab-round`) where the transcript has the command in tags (a `slash
   command:` or `local_command:` row), and a paste as the expanded text
   the parser builds from the placeholder, which the transcript's prompt
-  may join to the typed text with other whitespace; so the command
-  matches as the `user` text `/<name> <args>` and a prompt with its
-  whitespace removed;
+  wraps in `<pasted_content id="...">` ... `</pasted_content>`; so the
+  command matches as the `user` text `/<name>`, plus ` <args>` when its
+  `<command-args>` is not empty, and a prompt with the wrapper and its
+  whitespace removed. A command line's window is 600 seconds, because a
+  command that opens a picker or an overlay (`/model`, `/help`) is
+  recorded in the transcript when it completes. A `/clear` (its history
+  line carries the ended session, its record the new one), a `/logout` and
+  an `/exit` typed while a turn ran have no record to pair with and stay;
 - the same `session_id`, when the secondary row has one; when it has
   none, the same `project_path` (whatever the primary row's
   `session_id`), when it has one; when it has neither, as a text-only
