@@ -1066,6 +1066,16 @@ and writes `~/.claude/.credentials.json` instead; the two are not shared,
 so a CLI started over ssh after a desktop sign-in is not signed in
 (observed with 2.1.310 on macOS 26.6, October 2026).
 
+The GitHub CLI's login store is collected as the `shared` agent and flagged, since several
+agents (Claude Code's `/install-github-app` and pull-request status, Copilot) act on GitHub
+through `gh`: `~/.config/gh/hosts.yml` on macOS and Linux, `AppData/Roaming/GitHub CLI/hosts.yml`
+on Windows. The file names the GitHub login an agent acted as, which is what a responder needs
+when work was pushed to a personal account; it holds the OAuth token only when `gh` could not
+reach the OS credential store (a process started from an SSH session on macOS wrote a 218-byte
+file with the token, a GUI-launched one a 94-byte entry without it, the token then being a
+keychain item of service `gh:github.com`). `config.yml` beside it holds preferences only and is
+not collected.
+
 Cursor and Windsurf keep their auth tokens inside the same `state.vscdb`
 that holds the chat history, so that file is collected unflagged; the keys
 to redact are `cursorAuth/*` and `windsurfAuthStatus`, and in Cursor's

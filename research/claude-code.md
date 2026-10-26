@@ -2158,7 +2158,9 @@ Observed on Windows 2.1.309, with the GitHub CLI `gh` installed and no GitHub si
   `.claude.json` key, no new file under `~/.claude`; the transcript gained the command's lines.
 - The connected account is in `gh`'s own store, `%APPDATA%\GitHub CLI\config.yml` and
   `hosts.yml` (which names the user), with the token in the Windows Credential Manager. These are
-  `gh`'s files, not in the catalog; a responder reads `hosts.yml` for the account.
+  `gh`'s files, collected as the `shared` agent and flagged since the macOS round (the
+  `.config/gh/hosts.yml` and `AppData/Roaming/GitHub CLI/hosts.yml` lines), because the login they
+  name is the account an agent pushed to: an insider's personal account beside the work one.
 - A read-only question about the repository's pull requests ran `gh` through the `Bash` tool; the
   only trace beyond the transcript was one persisted `gh` output in `tool-results/`
   ([Persisted output](#persisted-output)). No `pr-link` line was written, since no pull request was
@@ -2200,7 +2202,9 @@ Observed on macOS 2.1.310, with Homebrew's `gh` installed:
   Terminal.app in the desktop session stored the token in the login keychain as a generic password,
   service `gh:github.com`, account the GitHub login, and rewrote `hosts.yml` to 94 B, the host
   entry without the token. `gh auth logout` truncated `hosts.yml` to 3 B, an empty document, and
-  kept the file. Neither form is collected: no catalog line takes `~/.config/gh`.
+  kept the file. Both forms are collected as the `shared` agent and flagged (the
+  `.config/gh/hosts.yml` line and its Windows twin `AppData/Roaming/GitHub CLI/hosts.yml`); a
+  94-byte file means the token sits in the keychain, a 218-byte one holds it.
 - `/install-github-app` with `gh` signed in asked `Select GitHub repository`
   (`Use current repository: <owner>/<repo>` or `Enter a different repository`), opened the app's
   install page with `Important: Make sure to grant access to this specific repository`, and, once

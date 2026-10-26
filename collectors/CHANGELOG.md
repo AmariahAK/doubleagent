@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The GitHub CLI login store, `.config/gh/hosts.yml` and `AppData/Roaming/GitHub CLI/hosts.yml`, is collected as the `shared` agent and flagged `secret: true`: it names the GitHub account an agent acted as and holds the token when `gh` had no OS credential store ([#256]).
 - The git metadata of every discovered or `-p` project is collected as
   `project`: `.git/HEAD`, `.git/config`, `.git/FETCH_HEAD`,
   `.git/packed-refs`, `.git/refs`, `.git/logs` and `.git/worktrees`, which

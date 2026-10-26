@@ -156,6 +156,8 @@ excl||.local/share/Cody-nodejs/dist
 excl||AppData/Roaming/Cody-nodejs/Config/dist
 secret||.config/Cody-nodejs/user-settings.json
 secret||AppData/Roaming/Cody-nodejs/Config/user-settings.json
+secret||.config/gh/hosts.yml
+secret||AppData/Roaming/GitHub CLI/hosts.yml
 agent|cody|.config/Code/User/globalStorage/sourcegraph.cody-ai/symf/indexroot/meta.json
 agent|cody|.vscode/cody.json
 agent|cody|.local/share/Cody-nodejs/JetBrains-globalState/cody-local-chatHistory-v2

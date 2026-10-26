@@ -622,6 +622,11 @@ pydantic-clai|.local/state/pydantic-clai2
 shared|.agents
 shared|.config/AGENTS.md
 shared|.config/agents
+# GitHub CLI login that agents use for source-host access (gh auth login):
+# the token in plaintext when the login keychain is unreachable, a token-less
+# host entry when it is in the keychain (macOS, Claude Code 2.1.310 round, #256)
+shared|.config/gh/hosts.yml
+shared|AppData/Roaming/GitHub CLI/hosts.yml
 # Ollama
 ollama|.ollama
 ollama|Library/Application Support/Ollama
@@ -1449,6 +1454,8 @@ AppData/Roaming/devin/credentials.toml
 .cline/data/connectors/settings.json
 .cline/data/db/connectors.db*
 */User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json
+.config/gh/hosts.yml
+AppData/Roaming/GitHub CLI/hosts.yml
 Documents/Cline/webhook_config.json
 .vscode-mock/global-storage/secrets.json
 .roo/cli-credentials.json
