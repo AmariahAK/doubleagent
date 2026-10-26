@@ -1363,6 +1363,16 @@ Mk 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' "pasted text`n"
 Mk 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json' "{`"plugins`":[]}`n"
 Mk "$g253/info/exclude" "# git ls-files --others --exclude-from=.git/info/exclude`n.claude/scheduled_tasks.lock`n"
 
+# 2026-10-26 claude-code Linux round (#256)
+# Claude Code 2.1.310 on Ubuntu 26.04 (real install, 2026-10-25/26) holds
+# .local/state/claude/locks/<version>.lock, a JSON lock with acquiredAt,
+# execPath, pid and version, while a session runs, and creates
+# .cache/claude/staging/ at install; both directories are home-relative on
+# Windows too and are collected as claude-code. Checks follow the default
+# run below; the same files are in smoke.sh under alice.
+Mk 'Users/alice/.local/state/claude/locks/2.1.310.lock' "{`"acquiredAt`":1792800000000,`"execPath`":`"/x`",`"pid`":1,`"version`":`"2.1.310`"}`n"
+Mk 'Users/alice/.cache/claude/staging/entry' "staged`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -2027,6 +2037,10 @@ Check '#256 Claude Code corrupted .claude.json copy flagged secret' { Is113 'Use
 Check '#256 Claude Code paste-cache collected' { Is113 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' 'claude-code' $false }
 Check '#256 Claude Code plugin directory cache excluded' { (StatusOf 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json') -eq 'skipped_excluded' }
 Check '#256 project git info/exclude collected as project' { Is253 @('info/exclude') }
+
+# 2026-10-26 claude-code Linux round (#256)
+Check '#256 Claude Code version lock collected as claude-code' { Is113 'Users/alice/.local/state/claude/locks/2.1.310.lock' 'claude-code' $false }
+Check '#256 Claude Code cache staging collected as claude-code' { Is113 'Users/alice/.cache/claude/staging/entry' 'claude-code' $false }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
