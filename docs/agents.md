@@ -263,7 +263,7 @@ and `disableBypassPermissionsMode` in `.claude/settings.json` and
 `project_path` the project) and from `projects.<path>.allowedTools`,
 `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` in
 `.claude.json`; a `retention setting: cleanupPeriodDays=<n> (from
-settings.json, file mtime)` row when a settings file sets the retention
+<file>, file mtime)` row when a settings file sets the retention
 period, and a `source host: github status=<status> (from .claude.json,
 file mtime)` row from `.claude.json` `githubWebConnectionStatusCache`
 (2.1.310 and later; the account and organisation ids are not printed);
