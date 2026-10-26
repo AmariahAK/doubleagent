@@ -123,6 +123,10 @@ claude-code|.claude-*/daemon/control.key
 claude-code|.claude-*/daemon/pipe.key
 claude-code|.claude-*/daemon/roster.json
 claude-code|.claude-*/backups/.claude.json.*
+# Running-process credentials in a relocated config home: the IDE bridge
+# lock (authToken) and the Remote Control spawn MCP definition (2.1.310, #256)
+claude-code|.claude-*/ide/*.lock
+claude-code|.claude-*/bridge-spawn/*/mcp.json
 claude-code|.local/share/claude
 # Claude Code version locks and its staging/ directory, home-relative on Linux
 # and Windows alike: locks/<version>.lock exists only while a session
@@ -139,6 +143,10 @@ claude-code|AppData/Local/claude-cli-nodejs/Cache/*
 # scratchpad/ and tasks/ (2.1.309, #256); the Linux and macOS roots are
 # outside every home (#163)
 claude-code|AppData/Local/Temp/claude
+# Claude Code macOS URL handler: a two-file bundle registering the claude-cli:
+# URL scheme, written at the first exit, whose executable is a symlink to
+# ~/.local/bin/claude; install evidence that outlives ~/.local (2.1.310, #256)
+claude-code|Applications/Claude Code URL Handler.app
 claude-desktop|Library/Application Support/Claude
 claude-desktop|Library/Application Support/Claude-3p
 claude-desktop|Library/Logs/Claude
@@ -1322,6 +1330,8 @@ SECRET_GLOBS='.claude/.credentials.json
 .claude/daemon/pipe.key
 .claude/daemon/roster.json
 .claude/backups/.claude.json.*
+.claude/ide/*.lock
+.claude/bridge-spawn/*/mcp.json
 .claude.json
 .claude.json.backup*
 .claude-*/.credentials.json
@@ -1334,6 +1344,8 @@ SECRET_GLOBS='.claude/.credentials.json
 .claude-*/daemon/pipe.key
 .claude-*/daemon/roster.json
 .claude-*/backups/.claude.json.*
+.claude-*/ide/*.lock
+.claude-*/bridge-spawn/*/mcp.json
 .claude-*/.claude.json
 .claude-*/.claude.json.backup*
 Library/Application Support/Claude*/config.json
