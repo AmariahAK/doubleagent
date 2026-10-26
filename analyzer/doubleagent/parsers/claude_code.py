@@ -187,14 +187,16 @@ cloud session and the VS Code extension; the evidence is in
     replayed from the vendor's copy)`, since the conversation is held on
     the vendor's servers (`synced` `yes`, like a Remote Control spawn); the cloud
     `session_01...` id sits only inside URL and text values and is not
-    extracted, and `entrypoint` stays `cli`. In a file with such a record,
-    an `environment` attachment whose scratchpad's `<slug>` directory is
-    neither the transcript's own project directory nor the slug of a
-    `relocatedCwd` the file recorded (`cwd_slug`) is the cloud machine's
-    (`/tmp/claude-0/-home-user-repo/...`), replayed with the cloud turn: it
-    gives `session origin: remote (teleport, cloud scratchpad <path>)`
-    instead of a `scratch directory:` row, since the path is not on this
-    host. A record of the VS Code extension (`entrypoint` `claude-vscode`)
+    extracted, and `entrypoint` stays `cli`. The replayed records come
+    first in the file and the local process's own after them, so an
+    `environment` attachment on or before the file's last `remoteSourced`
+    line is the cloud machine's (`/tmp/claude-0/-home-user-repo/...`),
+    replayed with the cloud turn, whatever its `<slug>` directory (the
+    cloud and the local checkout may share a path, and a local slug may
+    differ by case or after a `relocated` record): it gives `session
+    origin: remote (teleport, cloud scratchpad <path>)` instead of a
+    `scratch directory:` row, since the path is not on this host. A
+    record of the VS Code extension (`entrypoint` `claude-vscode`)
     gives `session origin: local (VS Code extension)` once per session;
     its `promptSource` `sdk` is not a remote mark on its own. So
     `records_origin` is set, and a session without a `session origin:
@@ -509,9 +511,6 @@ GLOBAL_CONFIG_RX = re.compile(r"^(?:\.claude-[^/]+/)?\.claude\.json$")
 # directory, `bridge-pointer.json` in a project's.
 CCR_TIP_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/([^/]+)/ccr-tip\.json$")
 BRIDGE_POINTER_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/bridge-pointer\.json$")
-# The project directory name of a transcript, compared with the slug of a
-# replayed scratchpad path in a teleported session.
-PROJECT_SLUG_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/([^/]+)/")
 # Settings `permissions` keys read, the lists first (claude 2.1.296 settings
 # schema, research/claude-code.md, Other stores).
 PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
@@ -759,22 +758,6 @@ def match_tolerance(row: Row) -> float | None:
     return None
 
 
-def scratch_slug(path: str) -> str:
-    """The `<slug>` of a scratchpad path `.../<slug>/<session>/scratchpad`,
-    or "" when the path does not end that way."""
-    parts = [x for x in re.split(r"[/\\]", path) if x]
-    if len(parts) < 3 or parts[-1] != "scratchpad":
-        return ""
-    return parts[-3]
-
-
-def cwd_slug(cwd: str) -> str:
-    """The `projects/` key of a working directory: every character other
-    than a letter or digit replaced by `-`, the scheme the temp root's
-    `<slug>` directories share."""
-    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
-
-
 def read_paste(history: Path, content_hash: str) -> tuple[str | None, str]:
     """`(text, problem)` for `paste-cache/<content_hash>.txt` beside
     `history`: the file's text and ""; `(None, "")` when the name is not a
@@ -828,8 +811,9 @@ class _Prescan:
     the file is a fork, the first cwd and branch, the `(line, url)` of each
     `bridge_status` record and the `(line, id)` of each `bridge-session`
     record, whether a `user` record of the `sdk-cli` entrypoint has
-    `promptSource` `sdk` (a Remote Control spawn), and whether a record
-    carries `remoteSourced` (a teleported cloud session)."""
+    `promptSource` `sdk` (a Remote Control spawn), and the line of the
+    last record that carries `remoteSourced` (a teleported cloud session;
+    0 when none), which ends the replayed block."""
 
     __slots__ = (
         "branch",
@@ -838,7 +822,7 @@ class _Prescan:
         "cwd",
         "delivered",
         "fork",
-        "remote_sourced",
+        "remote_last",
         "sdk_spawn",
     )
 
@@ -850,7 +834,7 @@ class _Prescan:
         self.bridge_urls: list[tuple[int, str]] = []
         self.bridge_lines: list[tuple[int, str | None]] = []
         self.sdk_spawn = False
-        self.remote_sourced = False
+        self.remote_last = 0
 
 
 class ClaudeCodeParser(Parser):
@@ -1165,7 +1149,7 @@ class ClaudeCodeParser(Parser):
             if not pre.branch and rec.get("gitBranch"):
                 pre.branch = str(rec.get("gitBranch"))
             if rec.get("remoteSourced") is True:
-                pre.remote_sourced = True
+                pre.remote_last = n
             if rtype == "system" and rec.get("subtype") == "bridge_status" and rec.get("url"):
                 pre.bridge_urls.append((n, str(rec.get("url"))))
             if rtype == "bridge-session":
@@ -1217,10 +1201,6 @@ class ClaudeCodeParser(Parser):
         last_ts = ""
         last_cwd = pre.cwd
         last_branch = pre.branch
-        slug_m = PROJECT_SLUG_RX.match(artifact.rel)
-        # The slugs a local scratchpad can sit under: the file's project
-        # directory and the key of any `relocatedCwd` the file records.
-        local_slugs = {slug_m.group(1)} if slug_m else set()
         seen_origin: set = set()
         relocated = ""
         seen_pr: set = set()
@@ -1330,11 +1310,11 @@ class ClaudeCodeParser(Parser):
                 scratch = self._scratchpad(rec)
                 if scratch and (session_id, scratch) not in seen_scratch:
                     seen_scratch.add((session_id, scratch))
-                    slug = scratch_slug(scratch)
-                    if pre.remote_sourced and slug and slug not in local_slugs:
-                        # A teleport replays the cloud session's environment:
-                        # the scratchpad is the cloud machine's, not this
-                        # host's, and marks the session's origin.
+                    if n <= pre.remote_last:
+                        # A teleport replays the cloud session's records
+                        # before the local process writes its own, so this
+                        # environment is the cloud machine's: its scratchpad
+                        # is not on this host and marks the session's origin.
                         yield state_row(
                             "%s (teleport, cloud scratchpad %s)" % (ORIGIN_PREFIX, scratch)
                         )
@@ -1369,7 +1349,6 @@ class ClaudeCodeParser(Parser):
                 new_cwd = str(rec.get("relocatedCwd") or "")
                 if new_cwd:
                     relocated = new_cwd
-                    local_slugs.add(cwd_slug(new_cwd))
                     yield state_row("cwd changed: " + new_cwd)
             elif rtype == "pr-link":
                 url = str(rec.get("prUrl") or rec.get("prNumber") or "")

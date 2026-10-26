@@ -2182,8 +2182,8 @@ class ClaudeCodeMacTests(ParserBase):
 
     def test_relocated_local_scratchpad_stays_scratch(self):
         # After a `relocated` record the local process runs under the new
-        # cwd's slug, so a scratchpad under it is this host's even in a
-        # teleported file, not the cloud machine's.
+        # cwd's slug; its scratchpad follows the replayed block, so it is
+        # this host's even in a teleported file, not the cloud machine's.
         records = claude_mac_teleport_records()
         k = next(
             i
@@ -2222,6 +2222,58 @@ class ClaudeCodeMacTests(ParserBase):
         self.assertIn(
             CLAUDE_MAC_CLOUD_SCRATCH,
             [r.project_path for r in rows if r.text.startswith("scratch directory:")],
+        )
+
+    def test_same_slug_cloud_scratchpad_is_replayed(self):
+        # The cloud checkout and the local one share a path, so the cloud
+        # scratchpad sits under the transcript's own slug: it is still the
+        # replayed one, on or before the last `remoteSourced` line, and
+        # never a scratch directory of this host.
+        records = claude_mac_teleport_records()
+        same = "/tmp/claude-0/-srv-proj/22222222-3333-4444-8555-666666666666/scratchpad"
+        k = next(
+            i
+            for i, r in enumerate(records)
+            if r.get("type") == "attachment"
+            and r["attachment"]["snapshot"].get("scratchpadDirectory") == CLAUDE_MAC_CLOUD_SCRATCH
+        )
+        records[k]["attachment"]["snapshot"]["scratchpadDirectory"] = same
+        rows = self._rows(self.TELEPORT_REL, records)
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("session origin:")],
+            [
+                "session origin: remote (teleport, cloud scratchpad %s)" % same,
+                "session origin: remote (teleport, remoteSourced)",
+            ],
+        )
+        self.assertEqual(
+            [r.project_path for r in rows if r.text.startswith("scratch directory:")],
+            [CLAUDE_MAC_LOCAL_SCRATCH],
+        )
+
+    def test_case_variant_local_scratchpad_stays_scratch(self):
+        # A local slug spelled in another case than the project directory
+        # (issue 112) is still this host's: the attachment follows the
+        # replayed block.
+        records = claude_mac_teleport_records()
+        k = next(
+            i
+            for i, r in enumerate(records)
+            if r.get("type") == "attachment"
+            and r["attachment"]["snapshot"].get("scratchpadDirectory") == CLAUDE_MAC_LOCAL_SCRATCH
+        )
+        cased = CLAUDE_MAC_LOCAL_SCRATCH.replace("/-srv-proj/", "/-Srv-Proj/")
+        records[k]["attachment"]["snapshot"]["scratchpadDirectory"] = cased
+        rows = self._rows(self.TELEPORT_REL, records)
+        self.assertEqual(
+            [r.project_path for r in rows if r.text.startswith("scratch directory:")], [cased]
+        )
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("session origin:")],
+            [
+                "session origin: remote (teleport, cloud scratchpad %s)" % CLAUDE_MAC_CLOUD_SCRATCH,
+                "session origin: remote (teleport, remoteSourced)",
+            ],
         )
 
     def test_ccr_tip(self):

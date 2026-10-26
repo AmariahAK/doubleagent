@@ -2709,10 +2709,13 @@ with `session synced: cloud session (teleported: remoteSourced records replayed 
 copy)` beside it (the vendor holds the conversation, so `synced` reads `yes`),
 at its first line with `remoteSourced`; its replayed `environment` attachment, naming the cloud
 machine's scratchpad, yields `session origin: remote (teleport, cloud scratchpad <path>)` in place
-of the `scratch directory:` row when that path's project slug is neither the transcript's own
-nor the key of a `relocatedCwd` the file recorded. A
-cloud session created with `--cloud` and never teleported leaves no local session, so its only
-row is `cloud: hasRemoteEnvironment=<value> (from .claude.json, file mtime)`; the
+of the `scratch directory:` row. The replayed records come first in the file and the local
+process's own after them, so the attachment is the replayed one when it sits on or before the
+file's last `remoteSourced` line, whatever its project slug: the cloud checkout and the local one
+may share a path (`/home/user/repo`), and a local slug may differ by case
+([issue 112](https://github.com/seanthegeek/doubleagent/issues/112)) or after a `relocated`
+record. A cloud session created with `--cloud` and never teleported leaves no local session, so
+its only row is `cloud: hasRemoteEnvironment=<value> (from .claude.json, file mtime)`; the
 files the bundle names for one (`.session_ingress_token`, `remote/`, `server-sessions.json`,
 `remote-settings.json`) were not written. A VS Code extension session gets
 `session origin: local (VS Code extension)`. The parser sets `records_sync` and `records_origin`,
