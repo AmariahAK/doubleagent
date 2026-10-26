@@ -69,8 +69,12 @@ inside them goes to the extension's agent.
   `~/.copilot/logs/process-<epoch>-<pid>.log` at the editor's first start,
   with no Copilot CLI installed (observed on Ubuntu 26.04, October 2026).
   `.copilot` is a `copilot-cli` catalog line, so both files are collected
-  as `copilot-cli`: a `copilot-cli` detection whose only files are under
-  `.copilot/logs/` is VS Code's, not the Copilot CLI's.
+  as `copilot-cli`. The Copilot CLI writes the same two paths itself
+  ([Process logs in `research/copilot-cli.md`](../../research/copilot-cli.md#process-logs)),
+  so a `copilot-cli` detection whose only files are under `.copilot/logs/`
+  may be VS Code's rather than the CLI's; the log's own lines decide (the
+  sign-in line names the account, and a session leaves `session-state/`
+  beside `logs/`).
 - **Skills and configuration files** that several agents read are
   collected too, with agent `shared` in the manifest.
 - **`.env` files:** an agent's own `.env` inside its state directory, such
