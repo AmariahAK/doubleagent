@@ -739,9 +739,10 @@ def _squash(text: str) -> str:
 
 
 def match_tolerance(row: Row) -> float | None:
-    """The time window, in seconds, of a secondary row that is a slash
-    command as typed (`COMMAND_TOLERANCE_SECONDS`), or None for the
-    source's own (`dedup.MATCH_TOLERANCES`)."""
+    """The forward time window, in seconds, of a secondary row that is a
+    slash command as typed (`COMMAND_TOLERANCE_SECONDS`: how long after the
+    line its transcript record may be written), or None for the source's
+    own (`dedup.MATCH_TOLERANCES`)."""
     if row.turn_type == "user" and HISTORY_COMMAND_RX.match(row.text):
         return COMMAND_TOLERANCE_SECONDS
     return None

@@ -157,7 +157,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a line with a paste with the prompt that wraps it in `<pasted_content>`,
   so only lines no transcript records match stay recovered: `/clear`
   (filed under the ended session), `/logout` and an `/exit` typed during
-  a turn. The match keeps whitespace (only runs of it collapse), a line
+  a turn. The match keeps whitespace (only runs of it collapse), the wider
+  window reaches forward only and against transcript records only, a line
   whose own record is missing keeps its own time instead of taking a later
   line's record, and a `paste-cache` file that is there but cannot be read
   gives a `parser:` row naming it ([#256]).

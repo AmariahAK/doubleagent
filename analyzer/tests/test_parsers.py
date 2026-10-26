@@ -1849,6 +1849,90 @@ class ClaudeCodeMacTests(ParserBase):
         )
         self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:07.000Z")
 
+    def test_history_command_window_is_forward_only(self):
+        # A record is written after its line, never before: with the first
+        # `/model` history line gone and only the first record left, the
+        # second line (16 s after that record) stays recovered instead of
+        # taking it.
+        primary = [r for r in self._primary() if r.source_line != 18]
+        history = [
+            r
+            for r in self._history()
+            if not (r.text == "/model" and r.timestamp_utc.endswith("07.000Z"))
+        ]
+        rows, _ = deduplicate(primary, [(r, 2.0) for r in history])
+        kept = rows[len(primary) :]
+        self.assertEqual([r.text for r in kept], ["/model", *self.HISTORY_ONLY])
+        self.assertEqual(kept[0].timestamp_utc, "2026-10-01T11:00:23.000Z")
+
+    def test_history_bounds_follow_the_matching_scope(self):
+        # Two session-less lines of different projects do not bound each
+        # other: project A's line still takes A's delayed record although
+        # project B typed the same command in between.
+        block = (
+            "slash command: <command-name>/model</command-name>\n<command-message>model"
+            "</command-message>\n<command-args></command-args>"
+        )
+
+        def line(t, project, session="", source="h"):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                turn_type="user",
+                text="/model",
+                timestamp_utc="2026-10-01T11:00:%02d.000Z" % t,
+                project_path=project,
+                session_id=session,
+                source_file=source,
+            )
+
+        record = Row(
+            host="h",
+            user="u",
+            agent="claude-code",
+            turn_type="system",
+            text=block,
+            timestamp_utc="2026-10-01T11:00:40.000Z",
+            project_path="/a",
+            session_id="s1",
+            source_file="t",
+        )
+        rows, dropped = deduplicate([record], [(line(0, "/a"), 2.0), (line(30, "/b"), 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        self.assertEqual([(r.project_path, r.recovered) for r in rows[1:]], [("/b", "yes")])
+
+    def test_widened_window_stays_between_history_files(self):
+        # Two history files of one session each hold a `/model` a minute
+        # apart; only the later one's record survives. The earlier line is
+        # bounded by the later line against the transcript, and the 600 s
+        # window does not make it a copy of the later line: it stays.
+        block = (
+            "slash command: <command-name>/model</command-name>\n<command-message>model"
+            "</command-message>\n<command-args></command-args>"
+        )
+
+        def row(turn_type, text, t, source):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                turn_type=turn_type,
+                text=text,
+                timestamp_utc="2026-10-01T11:%02d:%02d.000Z" % divmod(t, 60),
+                project_path="/srv/proj",
+                session_id="s1",
+                source_file=source,
+            )
+
+        primary = [row("system", block, 80, ".claude/projects/-srv-proj/s1.jsonl")]
+        early = row("user", "/model", 7, ".claude/history.jsonl")
+        late = row("user", "/model", 67, ".claude-work/history.jsonl")
+        rows, dropped = deduplicate(primary, [(early, 2.0), (late, 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        kept = rows[len(primary) :]
+        self.assertEqual([(r.source_file, r.recovered) for r in kept], [(early.source_file, "yes")])
+
     def test_match_form_keeps_whitespace_distinctions(self):
         # Runs of whitespace collapse, but the whitespace stays: prompts and
         # arguments that differ only by a space are different events.

@@ -2408,9 +2408,12 @@ secondary source is dropped when a row from the agent's primary store has
   stays, so prompts that differ by a space stay distinct). A command
   line's window is 600 seconds, because a command that opens a picker or
   an overlay (`/model`, `/help`) is recorded in the transcript when it
-  completes; within that window a command line may not take a record
-  written at or after the next line of the same command in its session,
-  so a line whose own record is missing stays, under its own time, rather
+  completes; the window extends forward only (a record never precedes
+  its line by more than the source's own window), it applies against
+  transcript records only (two history files keep their own window with
+  each other), and within it a command line may not take a record
+  written at or after the next line of the same command in its scope, so
+  a line whose own record is missing stays, under its own time, rather
   than taking a later line's record. A `/clear` (its history
   line carries the ended session, its record the new one), a `/logout` and
   an `/exit` typed while a turn ran have no record to pair with and stay;
