@@ -184,7 +184,7 @@ Linux, October 2026; not observed on macOS):
 | Location | What it holds |
 | --- | --- |
 | `.local/state/claude` | `locks/<version>.lock`, a JSON object with `acquiredAt`, `execPath`, `pid` and `version` (138 bytes on Linux), written when a session of that version starts and removed when it exits; the `locks/` directory is empty otherwise, so a lock in a collection names the process and binary of a session that had not exited. |
-| `.cache/claude` | `staging/`, which the native installer created on Linux; it was empty whenever it was listed, on Windows and Linux. |
+| `.cache/claude` | `staging/`, which the native installer creates on Linux and Windows; it was empty whenever it was listed on either. |
 
 ## Claude Code temp root and git excludes
 
