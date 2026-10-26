@@ -1950,6 +1950,44 @@ class ClaudeCodeMacTests(ParserBase):
             [(r.timestamp_utc, r.recovered) for r in kept], [("2026-10-01T11:00:07.000Z", "yes")]
         )
 
+    def test_history_bounds_cover_broader_scopes(self):
+        # The inverse: a session line is bounded by a later session-less
+        # line of its project, since both could take the session's record;
+        # a line of another session never bounds it.
+        block = (
+            "slash command: <command-name>/model</command-name>\n<command-message>model"
+            "</command-message>\n<command-args></command-args>"
+        )
+
+        def row(turn_type, text, t, session, source):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                turn_type=turn_type,
+                text=text,
+                timestamp_utc="2026-10-01T11:00:%02d.000Z" % t,
+                project_path="/srv/proj",
+                session_id=session,
+                source_file=source,
+            )
+
+        primary = [row("system", block, 50, "s1", "t")]
+        in_session = row("user", "/model", 7, "s1", "h")
+        no_session = row("user", "/model", 23, "", "h")
+        rows, dropped = deduplicate(primary, [(in_session, 2.0), (no_session, 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        kept = rows[len(primary) :]
+        self.assertEqual(
+            [(r.timestamp_utc, r.recovered) for r in kept], [("2026-10-01T11:00:07.000Z", "yes")]
+        )
+        # A later line of a different session leaves the session line free
+        # to take its own record.
+        other = row("user", "/model", 23, "s2", "h")
+        rows, dropped = deduplicate(primary, [(in_session, 2.0), (other, 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        self.assertEqual([r.session_id for r in rows[len(primary) :]], ["s2"])
+
     def test_widened_window_stays_between_history_files(self):
         # Two history files of one session each hold a `/model` a minute
         # apart; only the later one's record survives. The earlier line is

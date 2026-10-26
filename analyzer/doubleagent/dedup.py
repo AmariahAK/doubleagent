@@ -37,8 +37,9 @@ widening is forward only and against primary rows only: the row keeps
 its source's window backwards (a record is never written before its
 line was typed) and among secondary sources, and it may not take a
 primary row recorded at or after the next secondary row of the same
-text in its scope (its session, or for a row without one its project,
-whatever the others' sessions), so an earlier history line whose own
+text that could take the same records (its session's rows, the
+session-less rows of its project, and the rows with neither; a row of
+another session never counts), so an earlier history line whose own
 record is missing never claims a later line's record.
 
 Matching is one-to-one, the primary row always survives, and a secondary
@@ -104,7 +105,7 @@ primary row with no timestamp.
 
 from __future__ import annotations
 
-from bisect import bisect_left, insort
+from bisect import bisect_left, bisect_right, insort
 from collections import Counter
 from collections.abc import Callable, Container
 
@@ -351,40 +352,63 @@ def _scope(r: Row) -> tuple:
 
 def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, int]:
     """For each widened secondary row with a timestamp, the epoch ms of the
-    next strictly later secondary row of the same match text within its
-    scope (`_scope`): the rows of its session; for a row without a
-    session, every row of its project, whatever their session; for a row
-    with neither, every row of that text. A copy at the same time (the
-    same line in two history files) does not bound it. The row may not
-    take a primary row recorded at or after that time, so the later line
-    keeps the later record. One sorted pass per group, backwards, so the
-    cost is linear in the rows of the group."""
-    groups: dict[tuple, list[tuple[int, int]]] = {}
-    scopes: dict[int, tuple] = {}
+    next strictly later secondary row of the same match text that could
+    take the same primary rows: for a row of a session, the rows of that
+    session, the rows of its project with no session, and the rows with
+    neither; for a row of a project with no session, every row of that
+    project and the rows with neither; for a row with neither, every row
+    of that text. Rows of a different session never bound it. A copy at
+    the same time (the same line in two history files) does not bound it.
+    The row may not take a primary row recorded at or after that time, so
+    the later line keeps the later record. Each index is sorted once and
+    searched by bisection, so the cost is near linear."""
+    by_session: dict[tuple, list[int]] = {}
+    by_project: dict[tuple, list[int]] = {}
+    by_project_free: dict[tuple, list[int]] = {}
+    by_none: dict[tuple, list[int]] = {}
+    by_text: dict[tuple, list[int]] = {}
+    rows: list[tuple[int, Row, int, tuple]] = []
     for j, (r, _) in enumerate(secondary):
         ms = epoch_ms(r.timestamp_utc)
         if ms is None or _is_parser_row(r):
             continue
         text = _by_text(r)
-        scopes[j] = (text, _scope(r))
-        scopes_of: list[tuple] = [("any",)]
-        if r.project_path:
-            scopes_of.append(("project", r.project_path))
+        rows.append((j, r, ms, text))
+        by_text.setdefault(text, []).append(ms)
         if r.session_id:
-            scopes_of.append(("session", r.session_id))
-        for scope in scopes_of:
-            groups.setdefault((text, scope), []).append((ms, j))
+            by_session.setdefault((text, r.session_id), []).append(ms)
+        if r.project_path:
+            by_project.setdefault((text, r.project_path), []).append(ms)
+            if not r.session_id:
+                by_project_free.setdefault((text, r.project_path), []).append(ms)
+        if not r.session_id and not r.project_path:
+            by_none.setdefault(text, []).append(ms)
+    for index in (by_session, by_project, by_project_free, by_none, by_text):
+        for times in index.values():
+            times.sort()
     bounds: dict[int, int] = {}
-    for key, items in groups.items():
-        items.sort()
+    for j, r, ms, text in rows:
+        if j not in widened:
+            continue
+        if r.session_id:
+            lists = [
+                by_session.get((text, r.session_id)),
+                by_project_free.get((text, r.project_path)) if r.project_path else None,
+                by_none.get(text),
+            ]
+        elif r.project_path:
+            lists = [by_project.get((text, r.project_path)), by_none.get(text)]
+        else:
+            lists = [by_text.get(text)]
         later: int | None = None
-        prev: int | None = None
-        for ms, j in reversed(items):
-            if prev is not None and prev > ms:
-                later = prev
-            prev = ms
-            if later is not None and j in widened and scopes[j] == key:
-                bounds[j] = later
+        for times in lists:
+            if not times:
+                continue
+            k = bisect_right(times, ms)
+            if k < len(times) and (later is None or times[k] < later):
+                later = times[k]
+        if later is not None:
+            bounds[j] = later
     return bounds
 
 
