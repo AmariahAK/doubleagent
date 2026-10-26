@@ -2709,7 +2709,8 @@ with `session synced: cloud session (teleported: remoteSourced records replayed 
 copy)` beside it (the vendor holds the conversation, so `synced` reads `yes`),
 at its first line with `remoteSourced`; its replayed `environment` attachment, naming the cloud
 machine's scratchpad, yields `session origin: remote (teleport, cloud scratchpad <path>)` in place
-of the `scratch directory:` row when that path's project slug is not the transcript's own. A
+of the `scratch directory:` row when that path's project slug is neither the transcript's own
+nor the key of a `relocatedCwd` the file recorded. A
 cloud session created with `--cloud` and never teleported leaves no local session, so its only
 row is `cloud: hasRemoteEnvironment=<value> (from .claude.json, file mtime)`; the
 files the bundle names for one (`.session_ingress_token`, `remote/`, `server-sessions.json`,

@@ -189,7 +189,8 @@ cloud session and the VS Code extension; the evidence is in
     `session_01...` id sits only inside URL and text values and is not
     extracted, and `entrypoint` stays `cli`. In a file with such a record,
     an `environment` attachment whose scratchpad's `<slug>` directory is
-    not the transcript's own project directory is the cloud machine's
+    neither the transcript's own project directory nor the slug of a
+    `relocatedCwd` the file recorded (`cwd_slug`) is the cloud machine's
     (`/tmp/claude-0/-home-user-repo/...`), replayed with the cloud turn: it
     gives `session origin: remote (teleport, cloud scratchpad <path>)`
     instead of a `scratch directory:` row, since the path is not on this
@@ -767,6 +768,13 @@ def scratch_slug(path: str) -> str:
     return parts[-3]
 
 
+def cwd_slug(cwd: str) -> str:
+    """The `projects/` key of a working directory: every character other
+    than a letter or digit replaced by `-`, the scheme the temp root's
+    `<slug>` directories share."""
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+
+
 def read_paste(history: Path, content_hash: str) -> tuple[str | None, str]:
     """`(text, problem)` for `paste-cache/<content_hash>.txt` beside
     `history`: the file's text and ""; `(None, "")` when the name is not a
@@ -1210,7 +1218,9 @@ class ClaudeCodeParser(Parser):
         last_cwd = pre.cwd
         last_branch = pre.branch
         slug_m = PROJECT_SLUG_RX.match(artifact.rel)
-        file_slug = slug_m.group(1) if slug_m else ""
+        # The slugs a local scratchpad can sit under: the file's project
+        # directory and the key of any `relocatedCwd` the file records.
+        local_slugs = {slug_m.group(1)} if slug_m else set()
         seen_origin: set = set()
         relocated = ""
         seen_pr: set = set()
@@ -1320,7 +1330,8 @@ class ClaudeCodeParser(Parser):
                 scratch = self._scratchpad(rec)
                 if scratch and (session_id, scratch) not in seen_scratch:
                     seen_scratch.add((session_id, scratch))
-                    if pre.remote_sourced and scratch_slug(scratch) not in ("", file_slug):
+                    slug = scratch_slug(scratch)
+                    if pre.remote_sourced and slug and slug not in local_slugs:
                         # A teleport replays the cloud session's environment:
                         # the scratchpad is the cloud machine's, not this
                         # host's, and marks the session's origin.
@@ -1358,6 +1369,7 @@ class ClaudeCodeParser(Parser):
                 new_cwd = str(rec.get("relocatedCwd") or "")
                 if new_cwd:
                     relocated = new_cwd
+                    local_slugs.add(cwd_slug(new_cwd))
                     yield state_row("cwd changed: " + new_cwd)
             elif rtype == "pr-link":
                 url = str(rec.get("prUrl") or rec.get("prNumber") or "")

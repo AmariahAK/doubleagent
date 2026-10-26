@@ -2018,6 +2018,36 @@ class ClaudeCodeMacTests(ParserBase):
         self.assertEqual(dropped["claude-code"], 2)
         self.assertEqual(rows[len(primary) :], [])
 
+    def test_history_bounds_follow_the_candidate_project(self):
+        # A session's line is bounded by a later session-less line of the
+        # project the record was written in, not of the line's own project:
+        # the session moved from P to Q, the :23 line of Q can take the :50
+        # record in S/Q, so the :07 line of S/P stays under its own time.
+        block = (
+            "slash command: <command-name>/model</command-name>\n<command-message>model"
+            "</command-message>\n<command-args></command-args>"
+        )
+
+        def row(turn_type, text, t, session, project, source):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                turn_type=turn_type,
+                text=text,
+                timestamp_utc="2026-10-01T11:00:%02d.000Z" % t,
+                project_path=project,
+                session_id=session,
+                source_file=source,
+            )
+
+        primary = [row("system", block, 50, "s", "/srv/Q", "t")]
+        moved = row("user", "/model", 7, "s", "/srv/P", "h")
+        in_q = row("user", "/model", 23, "", "/srv/Q", "h")
+        rows, dropped = deduplicate(primary, [(moved, 2.0), (in_q, 2.0)])
+        self.assertEqual(dropped["claude-code"], 1)
+        self.assertEqual(rows[len(primary) :], [moved])
+
     def test_widened_window_stays_between_history_files(self):
         # Two history files of one session each hold a `/model` a minute
         # apart; only the later one's record survives. The earlier line is
@@ -2149,6 +2179,41 @@ class ClaudeCodeMacTests(ParserBase):
             [r.text for r in rows if r.text.startswith("session origin:")][1:],
             ["session origin: remote (teleport, remoteSourced)"],
         )
+
+    def test_relocated_local_scratchpad_stays_scratch(self):
+        # After a `relocated` record the local process runs under the new
+        # cwd's slug, so a scratchpad under it is this host's even in a
+        # teleported file, not the cloud machine's.
+        records = claude_mac_teleport_records()
+        k = next(
+            i
+            for i, r in enumerate(records)
+            if r.get("type") == "attachment"
+            and r["attachment"]["snapshot"].get("scratchpadDirectory") == CLAUDE_MAC_LOCAL_SCRATCH
+        )
+        moved = CLAUDE_MAC_LOCAL_SCRATCH.replace("/-srv-proj/", "/-srv-new/")
+        records[k]["attachment"]["snapshot"]["scratchpadDirectory"] = moved
+        records.insert(
+            k,
+            dict(type="relocated", relocatedCwd="/srv/new", sessionId=CLAUDE_MAC_TELEPORT_SESSION),
+        )
+        rows = self._rows(self.TELEPORT_REL, records)
+        self.assertIn(
+            (moved, moved),
+            [
+                (r.project_path, r.text.split(" ")[2])
+                for r in rows
+                if r.text.startswith("scratch directory:")
+            ],
+        )
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("session origin:")],
+            [
+                "session origin: remote (teleport, cloud scratchpad %s)" % CLAUDE_MAC_CLOUD_SCRATCH,
+                "session origin: remote (teleport, remoteSourced)",
+            ],
+        )
+        self.assertIn("cwd changed: /srv/new", [r.text for r in rows])
 
     def test_foreign_scratchpad_without_remote_sourced_stays_scratch(self):
         records = [r for r in claude_mac_teleport_records() if not r.get("remoteSourced")]
