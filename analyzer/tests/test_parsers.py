@@ -1281,6 +1281,255 @@ class ClaudeCode309Tests(ParserBase):
 
 
 from fixtures import (
+    CLAUDE_310_SESSION,
+    CLAUDE_310_VSCODE_SESSION,
+    claude_310_global_config,
+    claude_310_records,
+    claude_310_user_settings,
+    claude_310_vscode_records,
+)
+
+
+class ClaudeCode310Tests(ParserBase):
+    """Claude Code 2.1.310, the Linux round (issue 256): the rule-miss
+    `reasonCode`, a compaction's re-emitted state records, a detached head,
+    the extension's `queue-operation` without `content`, the retention
+    setting and the GitHub connection cache in `.claude.json`."""
+
+    REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_310_SESSION
+    VSCODE_REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_310_VSCODE_SESSION
+    SETTINGS_TS = "2026-10-01T09:00:00.000Z"
+    MISS = '"reasonCode":"bashMiss:no-rule-match"'
+
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (2, "system", "permission mode: auto"),
+        (3, "system", "session surface: cli"),
+        (3, "system", "permission mode: auto -> default"),
+        (3, "user", "Run python calc.py 2 3"),
+        (4, "system", "model: claude-sonnet-5-5"),
+        (4, "tool_use", "python3 calc.py 2 3"),
+        (5, "tool_result", "5"),
+        (
+            5,
+            "system",
+            "permission decision: accept source=user_temporary reason=- "
+            '{"decision":"accept","grantScope":"once",' + MISS + ',"source":"user_temporary"}',
+        ),
+        (6, "tool_use", "python3 calc.py 5 7"),
+        (7, "tool_result", "The user doesn't want to proceed with this tool use."),
+        (
+            7,
+            "system",
+            "permission decision: reject source=user_reject reason=- "
+            '{"decision":"reject",' + MISS + ',"source":"user_reject"} '
+            "toolDenialKind=user-rejected userFeedback=I changed my mind",
+        ),
+        (8, "tool_use", "python3 calc.py 1 1"),
+        (9, "tool_result", "2"),
+        (
+            9,
+            "system",
+            "permission decision: accept source=user_permanent reason=- "
+            '{"decision":"accept",' + MISS + ',"source":"user_permanent"}',
+        ),
+        (10, "system", "session title: Run calc.py"),
+        (11, "system", "compact_boundary: Conversation compacted"),
+        (12, "system", "compaction summary: We ran calc.py three times."),
+        (24, "user", "What git branch is checked out?"),
+        (27, "assistant", "HEAD is detached."),
+        (28, "system", "turn_duration: 4000 ms, 3 messages"),
+    ]
+
+    def _write(self, rel, records):
+        path = self.home / rel
+        path.write_text("".join(json.dumps(x) + "\n" for x in records), encoding="utf-8")
+        home = self.artifact(".claude/settings.json").home
+        return Artifact(path, rel, rel, "claude-code", home)
+
+    def _rows(self, rel, records, **kw):
+        return list(ClaudeCodeParser().parse(self._write(rel, records), Options(**kw)))
+
+    def test_rows(self):
+        rows = self._rows(self.REL, claude_310_records())
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual(r.session_id, CLAUDE_310_SESSION)
+
+    def test_compaction_copies_yield_nothing(self):
+        # The attachments a compaction re-injects and the session-state records
+        # it re-emits with unchanged values (lines 13 to 23), the plan
+        # re-entry and the deferred-tools delta yield no row: one title row,
+        # one permission mode row per real change.
+        rows = self._rows(self.REL, claude_310_records())
+        self.assertFalse(set(range(13, 24)) & {r.source_line for r in rows})
+        self.assertFalse({25, 26} & {r.source_line for r in rows})
+        texts = [r.text for r in rows]
+        self.assertEqual(texts.count("session title: Run calc.py"), 1)
+        self.assertEqual(
+            [t for t in texts if t.startswith("permission mode:")],
+            ["permission mode: auto", "permission mode: auto -> default"],
+        )
+
+    def test_mode_change_after_compaction_still_tracked(self):
+        # A real change after the re-emitted copies is still a row.
+        records = claude_310_records()
+        records.append(
+            {"type": "permission-mode", "permissionMode": "plan", "sessionId": CLAUDE_310_SESSION}
+        )
+        rows = self._rows(self.REL, records)
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text), (29, "permission mode: default -> plan")
+        )
+
+    def test_detached_head_branch(self):
+        # gitBranch `HEAD` on a detached head is passed through as the branch.
+        rows = self._rows(self.REL, claude_310_records())
+        self.assertEqual(
+            {r.git_branch for r in rows if r.source_line >= 24},
+            {"HEAD"},
+        )
+        self.assertEqual({r.git_branch for r in rows if r.source_line < 24}, {"main"})
+
+    def test_vscode_session(self):
+        # The extension's queue-operation lines have no `content`, the file
+        # has no mode lines, and cost-state yields nothing.
+        rows = self._rows(self.VSCODE_REL, claude_310_vscode_records())
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "system", "queue enqueue:"),
+                (2, "system", "queue dequeue:"),
+                (3, "system", "session surface: claude-vscode"),
+                (3, "system", "permission mode: auto"),
+                (3, "user", "Run python3 calc.py 6 1"),
+                (3, "system", "prompt trigger: promptSource=sdk turnOrigin=human"),
+            ],
+        )
+
+    def test_retention_setting(self):
+        path = self.home / ".claude/settings.json"
+        path.write_text(json.dumps(claude_310_user_settings()), encoding="utf-8")
+        os.utime(path, (CLAUDE_SETTINGS_MTIME, CLAUDE_SETTINGS_MTIME))
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    self.SETTINGS_TS,
+                    "",
+                    "",
+                    "retention setting: cleanupPeriodDays=1 "
+                    "(from .claude/settings.json, file mtime)",
+                )
+            ],
+        )
+
+    def test_retention_setting_after_permission_rows(self):
+        path = self.home / ".claude/settings.json"
+        doc = dict(claude_310_user_settings(), permissions={"allow": ["Bash(python3 *)"]})
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
+        src = "(from .claude/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: permissions.allow=Bash(python3 *) " + src,
+                "retention setting: cleanupPeriodDays=1 " + src,
+            ],
+        )
+
+    def test_source_host_row(self):
+        path = self.home / ".claude.json"
+        path.write_text(json.dumps(claude_310_global_config()), encoding="utf-8")
+        os.utime(path, (CLAUDE_SETTINGS_MTIME, CLAUDE_SETTINGS_MTIME))
+        rows = self.rows_for(ClaudeCodeParser(), ".claude.json")
+        self.assertEqual(
+            [(r.text, r.project_path, r.session_id, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "permission setting: hasTrustDialogAccepted=true "
+                    "(from .claude.json, file mtime)",
+                    "/srv/proj",
+                    "",
+                    self.SETTINGS_TS,
+                ),
+                (
+                    "source host: github status=connected (from .claude.json, file mtime)",
+                    "",
+                    "",
+                    self.SETTINGS_TS,
+                ),
+            ],
+        )
+        for r in rows:
+            # The account and organisation UUIDs, the OAuth account and
+            # githubRepoPaths are never printed.
+            self.assertNotIn("00000000-0000-4000-8000", r.text)
+            self.assertNotIn("example.invalid", r.text)
+            self.assertNotIn("example/logs", r.text)
+
+    def test_source_host_without_projects_or_status(self):
+        path = self.home / ".claude.json"
+        cache = {"accountUuid": "00000000-0000-4000-8000-0000000000aa"}
+        path.write_text(json.dumps({"githubWebConnectionStatusCache": cache}), encoding="utf-8")
+        rows = self.rows_for(ClaudeCodeParser(), ".claude.json")
+        self.assertEqual(
+            [r.text for r in rows],
+            ["source host: github status=- (from .claude.json, file mtime)"],
+        )
+        path.write_text(json.dumps({"githubWebConnectionStatusCache": "connected"}), "utf-8")
+        self.assertEqual(self.rows_for(ClaudeCodeParser(), ".claude.json"), [])
+
+    def test_history_inline_paste(self):
+        # A short paste is kept inline (`content`) in pastedContents; the row
+        # is the display text all the same.
+        line = {
+            "display": "[Pasted text #1 +3 lines] Summarise the text above in one sentence",
+            "pastedContents": {"1": {"content": "one\ntwo\nthree", "id": 1, "type": "text"}},
+            "timestamp": 1790935200000,
+            "project": "/srv/proj",
+            "sessionId": CLAUDE_310_SESSION,
+        }
+        (self.home / ".claude/history.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/history.jsonl")
+        self.assertEqual([(r.turn_type, r.text) for r in rows], [("user", line["display"])])
+
+    def test_debug_log_and_key_not_wanted(self):
+        home = self.artifact(".claude/settings.json").home
+        for rel in (
+            ".claude/debug/%s.txt" % CLAUDE_310_SESSION,
+            ".claude/debug/latest",
+            ".claude/sessions/4242." + "ab" * 32 + ".key",
+            ".claude/projects/-srv-proj/%s/subagents/agent-a1.meta.json" % CLAUDE_310_SESSION,
+        ):
+            art = Artifact(self.home / rel, rel, rel, "claude-code", home)
+            self.assertFalse(ClaudeCodeParser().wants(art), rel)
+
+    def test_thinking_opt_in(self):
+        rows = self._rows(self.REL, claude_310_records(), include_thinking=True)
+        self.assertEqual([r for r in rows if r.turn_type == "thinking"], [])
+        self.assertEqual(len(rows), len(self.EXPECTED))
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        art = self._write(self.REL, claude_310_records())
+        write_bad_line(art.disk_path)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_310_SESSION)
+        with open(art.disk_path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(30, "user", "after the cut"), (29, "system", bad_line_text())],
+        )
+        self.assertEqual(rows[-1].session_id, CLAUDE_310_SESSION)
+
+
+from fixtures import (
     CODEX_BACKUP_STATE_REL,
     CODEX_FEEDBACK_TS,
     CODEX_GOAL_EVENT,

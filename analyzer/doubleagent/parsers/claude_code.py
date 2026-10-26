@@ -4,7 +4,9 @@ Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
 2026), the shipped 2.1.289 package, 2.1.295 installs on Linux and macOS
 (2026-10-11) for the permission decision and the process registry, and a
 per-step round of 2.1.309 (native installer, win32-arm64) on Windows 11
-arm64 (2026-10-23, issue 256) for the CLI and the VS Code extension; the
+arm64 (2026-10-23, issue 256) for the CLI and the VS Code extension, and
+a per-step round of 2.1.310 (native installer, linux-arm64) on Ubuntu
+26.04 arm64 (2026-10-25/26, issue 256) for the same two surfaces; the
 evidence is in `research/claude-code.md`. Files:
 
 * `~/.claude/projects/<slug>/<session>.jsonl`: one JSON object per line.
@@ -12,7 +14,9 @@ evidence is in `research/claude-code.md`. Files:
   `parentUuid`, `timestamp` (ISO 8601 Z), `sessionId`, `cwd`, `gitBranch`,
   `version`, `entrypoint` and `isSidechain`; 2.1.309 adds `sessionKind`
   (`bg` in a session-daemon worker's file) and `slug`, which a `system`
-  row's detail JSON leaves out with the other envelope keys.
+  row's detail JSON leaves out with the other envelope keys. On a
+  detached head `gitBranch` is the literal `HEAD` (2.1.310 Linux), which
+  is passed through as the row's branch.
   `message.content` is a string or a list of blocks typed text, thinking
   (`thinking`, `signature`), redacted_thinking, tool_use (`id`, `name`,
   `input`) or tool_result (`tool_use_id`, `content`, `is_error`); a
@@ -42,16 +46,19 @@ evidence is in `research/claude-code.md`. Files:
     whose `promptSource` is set and not `typed`, or whose `turnOrigin` is
     set and not `human`, gets one `system` row after its own rows,
     `prompt trigger: promptSource=<promptSource> turnOrigin=<turnOrigin>`
-    (`-` for a missing key). Values seen on 2.1.309: `promptSource`
-    `typed`, `system` (a task notification), `queued` (a prompt sent from
-    a Remote Control client such as the phone), `sdk` (the VS Code
-    extension) and `suggestion_accepted` (a
-    prompt Claude suggested and the person accepted); `turnOrigin`
-    `human`, `task_notification` and `scheduled` (a `/loop` firing).
-    `sandboxed`, `turnPosition`, `serverClassifierContext`,
-    `queueSkipAttachments`, `queueSkipSlashCommands`, `mcpMeta` and the
-    scheduled-fire keys (`scheduledFireId`, `scheduledTaskId`,
-    `wakeupSource`, `turnCompanion`, `queuePriority`) are not read.
+    (`-` for a missing key). Values seen on 2.1.309 and 2.1.310:
+    `promptSource` `typed`, `system` (a task notification), `queued` (a
+    prompt sent from a Remote Control client such as the phone), `sdk`
+    (the VS Code extension) and `suggestion_accepted` (a prompt Claude
+    suggested and the person accepted; on 2.1.310 Linux the suggestion
+    picked in the `/schedule` flow); `turnOrigin` `human`,
+    `task_notification` and `scheduled` (a `/loop` firing).
+    `sandboxed` (on a line that ran a shell call), `turnPosition`,
+    `serverClassifierContext`, `queueSkipAttachments` (2.1.310: on a
+    prompt typed while another turn ran), `queueSkipSlashCommands`,
+    `mcpMeta` (on an MCP tool's result line) and the scheduled-fire keys
+    (`scheduledFireId`, `scheduledTaskId`, `wakeupSource`,
+    `turnCompanion`, `queuePriority`) are not read.
     `permissionMode` feeds the mode tracker below.
     `permissionDecision` (2.1.295, on a line that carries `tool_result`
     blocks: `decision`, `source`, `reasonType`; 2.1.309 adds `grantScope`
@@ -64,17 +71,22 @@ evidence is in `research/claude-code.md`. Files:
     on 2.1.309: `decision` `accept`, `reject`; `source` `config` (the mode
     or the auto-mode classifier allowed it), `user_temporary` (approved
     once), `user_permanent` (the allow-always answer), `user_reject`;
-    `reasonType` `classifier`, `mode`, `other` (absent on a user's
+    `reasonType` `classifier`, `mode`, `other`, and on 2.1.310
+    `subcommandResults` with `source` `config` (absent on a user's
     answer); `grantScope` `once` (only on a one-time approval);
     `reasonCode` `other`, `unknown`, `subcommandResults` (a piped command
-    approved as a whole). The same line's `toolDenialKind` (`user-rejected`
+    approved as a whole), and on 2.1.310 Linux `bashMiss:no-rule-match`
+    (a Bash command that matched no allow rule, on a `user_temporary`, a
+    `user_permanent` and a `user_reject` decision alike). The same line's
+    `toolDenialKind` (`user-rejected`
     on 2.1.309) and `userFeedback` (the reason the person typed) are
     appended as ` toolDenialKind=<kind> userFeedback=<text>` when present;
     a line with either key and no `permissionDecision` gets the row with
     `-` for the three decision keys. A declined plan is a rejected
     `ExitPlanMode` call and gets the same row.
   - `assistant` records: `message.model` and `requestedModel` (2.1.295);
-    `wireToolInputs[<tool_use id>]`
+    `wireIngestContext` (2.1.310, the `cd <dir> &&` prefix record) is not
+    read; `wireToolInputs[<tool_use id>]`
     is the input as the model sent it, used for the Bash command because
     the stored `input.command` lacks its `cd <dir> &&` prefix. A record
     with `isApiErrorMessage` or model `<synthetic>` is a local API error
@@ -88,7 +100,9 @@ evidence is in `research/claude-code.md`. Files:
     `turn_duration`, `away_summary`, `local_command` (`commandRun`),
     `compact_boundary` (`compactMetadata`), `bridge_status` (`url`, read
     for the sync row below) and `scheduled_task_fire` (`cron`, `prompt`,
-    `taskId`), each a `<subtype>: <content>` row.
+    `taskId`), each a `<subtype>: <content>` row. 2.1.310 adds
+    `pendingBackgroundAgentCount` to the `system` key set; it is shown
+    only in the detail JSON of a subtype without `content`.
   - `attachment` records, by `attachment.type`: `queued_command`
     (`prompt`, `origin.kind`) is a `user` row when `origin.kind` is human,
     else a labelled `system` row; `hook_system_message` (`hookName`,
@@ -103,15 +117,20 @@ evidence is in `research/claude-code.md`. Files:
     lists it under `scratch_directories` (issue 149). Every other
     attachment type is runtime context (system prompt, tool lists,
     reminders, `remote_session_change` with the session's PR and commit,
-    `command_permissions`, `file`, `plan_file_reference`, `task_reminder`)
-    and is skipped. So are the mode attachments, whose 2.1.309 shapes are
+    `command_permissions`, `task_reminder`, `deferred_tools_delta`, whose
+    2.1.310 form adds `needsAuthMcpServers`) and is skipped, and so are
+    the attachments a compaction re-injects (2.1.310 Linux):
+    `compact_file_reference` (`displayPath`, `filename`),
+    `plan_file_reference` (`planContent`, `planFilePath`) and `file`
+    (`content`, `displayPath`, `filename`). So are the mode attachments,
+    whose 2.1.309 shapes are
     now known (issue 98): `auto_mode` (`autoModeConsentFlow`, `bashFirst`,
     `bashFirstSteer`, `bypass`, `finishExposedWork`, `steerOnly`) is the
     turn's auto-mode configuration, not a decision, and `plan_mode`
     (`isSubAgent`, `planExists`, `planFilePath`, `reminderType`),
     `plan_mode_exit` (`planExists`, `planFilePath`) and `auto_mode_exit`
-    mark a mode change that the `permission mode:` rows already show;
-    `plan_mode_reentry` was not observed.
+    mark a mode change that the `permission mode:` rows already show, as
+    does `plan_mode_reentry` (`planFilePath`, observed on 2.1.310 Linux).
   - Session-state records carry no `timestamp`, `cwd` or `gitBranch`; their
     rows take the latest timestamp, cwd and branch seen in the file (the
     first ones when none has been seen yet). `ai-title` (`aiTitle`),
@@ -121,7 +140,9 @@ evidence is in `research/claude-code.md`. Files:
     every later row of the file; `pr-link` (`prUrl`, `prNumber`) is re-
     appended on every metadata flush and is emitted once per session and
     URL (the first record wins); `queue-operation` (`operation`, `content`,
-    `timestamp`) is `queue <operation>: <content>`, except an `enqueue`
+    `timestamp`; the VS Code extension's lines have no `content` on
+    2.1.310 and give `queue <operation>:` with nothing after it) is
+    `queue <operation>: <content>`, except an `enqueue`
     whose `content` a `queued_command` attachment or a `user` record of the
     same file delivers: the prompt text stays on that record's row, and the
     enqueue keeps the time it was typed as `prompt queued: delivered at
@@ -146,14 +167,29 @@ evidence is in `research/claude-code.md`. Files:
     takes the first one's URL: the bridge puts the session on
     claude.ai, so `records_sync` is set and a session without the row is
     `synced` `no`. The other state types (mode, last-prompt, cost-state,
+    which 2.1.310 also writes in a VS Code extension session file,
     file-history-snapshot, file-history-delta, atis-latch, and the
     2.1.309 request-capture lines `api-request`, `api-request-shape` and
     `api-request-blob`, which repeat the prompt inside the request they
     record) are skipped.
+  - Compaction. A `/compact` writes a `compact_boundary` system record
+    and re-emits the session's `mode`, `permission-mode`, `ai-title`,
+    `last-prompt`, `atis-latch` and `file-history-snapshot` records after
+    it (2.1.310 Linux), so their counts are not turn counts. The copies
+    change no value, so the mode tracker below and the once-per-value
+    title rows yield nothing for them.
   - Deletion. A `/clear` starts a new session file in the same process;
     the new file's `system` `local_command` record (`commandRun`,
     `content`) is its `local_command:` row, and the old file is left
-    unmarked, so no deletion row is written.
+    unmarked, so no deletion row is written. The retention sweep deletes
+    a transcript older than `cleanupPeriodDays` together with its
+    scratchpad directory under the temp root and keeps the session's
+    `history.jsonl` line; on 2.1.310 Linux (2026-10-26) it ran on an
+    in-session timer 10 to 20 minutes after a session's last prompt
+    (about 30 minutes after the start in two of the three runs) and never
+    in a session without a prompt. So a session known only from
+    `history.jsonl` (`recovered` `yes`) is the expected trace of a swept
+    session, and the setting itself is a `retention setting:` row (below).
   - Permission mode and model (issue 93). A `permission-mode` record
     (`permissionMode`, `sessionId`, no `timestamp`) and the `permissionMode`
     key of a `user` record feed one tracker per session id: the first value
@@ -195,8 +231,10 @@ evidence is in `research/claude-code.md`. Files:
   source: the timeline drops a line whose event the session file also
   records (`dedup.py`), and keeps the rest, since it survives session
   deletion. `pastedContents` (2.1.309: `{"<n>": {contentHash, id, type}}`
-  for a long paste, the text itself in `paste-cache/<contentHash>.txt`)
-  is not read; the row is `display`, as before. The transcript's `user`
+  for a long paste, the text itself in `paste-cache/<contentHash>.txt`;
+  2.1.310 Linux: `{"<n>": {content, id, type}}` for a paste under the
+  cache threshold, the text inline; `<n>` is the paste's number within
+  the session) is not read; the row is `display`, as before. The transcript's `user`
   line carries the pasted text inline. A prompt sent through a console
   attached with `claude agents` is not a history line.
 
@@ -215,8 +253,10 @@ evidence is in `research/claude-code.md`. Files:
   gone, so a registry-only session reads `synced` `yes`; a record can
   outlive a crashed process until the CLI's housekeeping sweep, so pair it
   with the EDR's process list. The `<pid>.<sha256>.key` sibling is a
-  secret and is never read. A file that is not a JSON object is one
-  `system` row.
+  secret and is never read: a JSON object `{peerToken, pidDomain,
+  procStart}` on Linux (2.1.310, `procStart` the process start tick) and
+  `{peerToken, pidDomain, procStartFt}` on Windows (2.1.309). A file that
+  is not a JSON object is one `system` row.
 
 * Standing permission settings (issue 93), one `system` row per entry,
   timestamped by the file's modification time (the manifest `mtime` when
@@ -231,16 +271,29 @@ evidence is in `research/claude-code.md`. Files:
     `permissions.additionalDirectories` (one row per entry) and
     `permissions.defaultMode` and `permissions.disableBypassPermissionsMode`
     (one row each), as `permission setting: permissions.<key>=<value>
-    (from <path relative to the home or project>, file mtime)`. No other
-    key is read: `env`, `apiKeyHelper`, hooks and MCP settings can carry
-    credentials.
+    (from <path relative to the home or project>, file mtime)`, then the
+    top-level `cleanupPeriodDays` as `retention setting:
+    cleanupPeriodDays=<n> (from <path>, file mtime)`, because the value
+    decides what the retention sweep removes (see Deletion above). No
+    other key is read: `env`, `apiKeyHelper`, hooks and MCP settings can
+    carry credentials, and `model`, `theme` and `agentPushNotifEnabled`
+    (2.1.310, the phone's push-notification opt-in) are not permission
+    or retention state.
   - `~/.claude.json`: for each `projects.<path>` object, one row per
     `allowedTools` entry and one each for `hasTrustDialogAccepted` and
     `hasClaudeMdExternalIncludesApproved` when present, as
     `permission setting: allowedTools=<entry> (from .claude.json, file
-    mtime)`, with `project_path` the `<path>` key. The collector flags this
-    file `secret: true` (it holds the account's OAuth details); nothing
-    else in it is read. Backups (`.claude.json.backup*`) are not wanted.
+    mtime)`, with `project_path` the `<path>` key. Then, when
+    `githubWebConnectionStatusCache` is an object (`accountUuid`,
+    `orgUuid`, `status`; `status` `connected` on 2.1.310 Linux after
+    `/install-github-app`; 2.1.309 wrote no such key), one row
+    `source host: github status=<status> (from .claude.json, file mtime)`
+    (`-` for a missing status) with `project_path` empty; the two UUIDs
+    are identity values and are not printed. `githubRepoPaths`
+    (repository to local paths, from the git remote) is not read. The
+    collector flags this file `secret: true` (it holds the account's
+    OAuth details); nothing else in it is read. Backups
+    (`.claude.json.backup*`) are not wanted.
   A settings file that is not a JSON object is one `system` row.
 
 The same files under a config home moved with `CLAUDE_CONFIG_DIR` to a
@@ -257,11 +310,13 @@ collect those two files from a moved config home; only the
 `permissions` object would be read if one were offered. A config home
 anywhere else is not collected.
 
-Not read: the `.meta.json` subagent sidecars, `custom-title.json` beside a
+Not read: the `.meta.json` subagent sidecars (2.1.310 adds `isBuiltIn` to
+their keys), `custom-title.json` beside a
 session (the `custom-title` line holds the same title), the
 `sessions/<pid>.*.key` files, `paste-cache/`, `file-history/`, `plans/`,
 the session daemon's `daemon/` and `jobs/` trees and the MCP logs of the
-CLI cache directory.
+CLI cache directory. The `debug/<session>.txt` log that `--debug` writes
+(with its `debug/latest` symlink) is not a store the parser reads.
 """
 
 from __future__ import annotations
@@ -297,6 +352,11 @@ PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
 PERMISSION_SCALARS = ("defaultMode", "disableBypassPermissionsMode")
 # `.claude.json` `projects.<path>` flags read beside `allowedTools`.
 PROJECT_FLAGS = ("hasTrustDialogAccepted", "hasClaudeMdExternalIncludesApproved")
+# The settings key that sets the retention sweep's period, and the
+# `.claude.json` cache of the GitHub app connection (2.1.310 Linux,
+# research/claude-code.md).
+RETENTION_KEY = "cleanupPeriodDays"
+GITHUB_STATUS_KEY = "githubWebConnectionStatusCache"
 PERSISTED_MARK = "<persisted-output>"
 PERSISTED_RX = re.compile(r"Full output saved to: ([^\r\n]*?tool-results[/\\][^/\\\r\n]+?\.txt)")
 
@@ -543,15 +603,22 @@ class ClaudeCodeParser(Parser):
             )
             yield sync
 
-    def _standing_row(self, artifact: Artifact, ts: str, project: str, key: str, value) -> Row:
+    def _standing_row(
+        self,
+        artifact: Artifact,
+        ts: str,
+        project: str,
+        key: str,
+        value,
+        label: str = "permission setting",
+    ) -> Row:
         row = self.base_row(artifact)
         row.source_line = 1
         row.turn_type = "system"
         row.timestamp_utc = ts
         row.project_path = project
         row.text = compact(
-            "permission setting: %s=%s (from %s, file mtime)"
-            % (key, setting_value(value), artifact.rel)
+            "%s: %s=%s (from %s, file mtime)" % (label, key, setting_value(value), artifact.rel)
         )
         return row
 
@@ -576,19 +643,24 @@ class ClaudeCodeParser(Parser):
             if bad is not None:
                 yield bad
             return
-        perms = doc.get("permissions")
-        if not isinstance(perms, dict):
-            return
         ts = file_mtime(artifact)
         project = artifact.home.original if artifact.home.project else ""
-        for key in PERMISSION_LISTS:
-            entries = perms.get(key)
-            if isinstance(entries, list):
-                for entry in entries:
-                    yield self._standing_row(artifact, ts, project, "permissions." + key, entry)
-        for key in PERMISSION_SCALARS:
-            if perms.get(key) is not None:
-                yield self._standing_row(artifact, ts, project, "permissions." + key, perms[key])
+        perms = doc.get("permissions")
+        if isinstance(perms, dict):
+            for key in PERMISSION_LISTS:
+                entries = perms.get(key)
+                if isinstance(entries, list):
+                    for entry in entries:
+                        yield self._standing_row(artifact, ts, project, "permissions." + key, entry)
+            for key in PERMISSION_SCALARS:
+                if perms.get(key) is not None:
+                    yield self._standing_row(
+                        artifact, ts, project, "permissions." + key, perms[key]
+                    )
+        if doc.get(RETENTION_KEY) is not None:
+            yield self._standing_row(
+                artifact, ts, project, RETENTION_KEY, doc[RETENTION_KEY], "retention setting"
+            )
 
     def _parse_global_config(self, artifact: Artifact) -> Iterator[Row]:
         doc, bad = self._settings_doc(artifact, ".claude.json")
@@ -596,11 +668,9 @@ class ClaudeCodeParser(Parser):
             if bad is not None:
                 yield bad
             return
-        projects = doc.get("projects")
-        if not isinstance(projects, dict):
-            return
         ts = file_mtime(artifact)
-        for path, proj in projects.items():
+        projects = doc.get("projects")
+        for path, proj in projects.items() if isinstance(projects, dict) else ():
             if not isinstance(proj, dict):
                 continue
             tools = proj.get("allowedTools")
@@ -610,6 +680,19 @@ class ClaudeCodeParser(Parser):
             for key in PROJECT_FLAGS:
                 if proj.get(key) is not None:
                     yield self._standing_row(artifact, ts, str(path), key, proj[key])
+        github = doc.get(GITHUB_STATUS_KEY)
+        if isinstance(github, dict):
+            # accountUuid and orgUuid are identity values: never printed.
+            status = github.get("status")
+            row = self.base_row(artifact)
+            row.source_line = 1
+            row.turn_type = "system"
+            row.timestamp_utc = ts
+            row.text = compact(
+                "source host: github status=%s (from %s, file mtime)"
+                % ("-" if status in (None, "") else setting_value(status), artifact.rel)
+            )
+            yield row
 
     @staticmethod
     def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str, list, list]:
