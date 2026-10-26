@@ -32,7 +32,11 @@ and the prompt joined differently (`claude_code.match_form`). It can also
 register a wider window for some of its secondary rows in
 `MATCH_TOLERANCES`: a Claude Code command that opens a picker or an
 overlay is recorded in the transcript when it completes, seconds to
-minutes after its history line (`claude_code.match_tolerance`).
+minutes after its history line (`claude_code.match_tolerance`). A row
+widened that way may not take a primary row recorded at or after the
+next secondary row of the same text in its session, so an earlier
+history line whose own record is missing never claims a later line's
+record.
 
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
@@ -203,15 +207,18 @@ def _add(buckets: dict[tuple, _Bucket], r: Row, i: int, ms: int | None) -> None:
                 insort(bucket.dated, (ms, i))
 
 
-def _nearest(dated: _Dated, ms: int, tolerance_ms: int, used: Container[int]) -> int | None:
+def _nearest(
+    dated: _Dated, ms: int, tolerance_ms: int, used: Container[int], upper: int | None = None
+) -> int | None:
     """The index of the unused row in `dated` nearest to `ms` and within
-    `tolerance_ms`, the earlier one on a tie; None when there is none."""
+    `tolerance_ms`, the earlier one on a tie, and before `upper` (an epoch
+    ms) when one is given; None when there is none."""
     best: tuple[int, int] | None = None
     k = bisect_left(dated, (ms - tolerance_ms, -1))
     while k < len(dated) and dated[k][0] <= ms + tolerance_ms:
         t, i = dated[k]
         k += 1
-        if i in used:
+        if i in used or (upper is not None and t >= upper):
             continue
         if best is None or abs(t - ms) < best[0]:
             best = (abs(t - ms), i)
@@ -230,15 +237,21 @@ def _earliest(bucket: _Bucket, used: Container[int]) -> int | None:
     return None
 
 
-def _pair(bucket: _Bucket | None, r: Row, tolerance: float, used: Container[int]) -> int | None:
+def _pair(
+    bucket: _Bucket | None,
+    r: Row,
+    tolerance: float,
+    used: Container[int],
+    upper: int | None = None,
+) -> int | None:
     """The candidate in `bucket` not in `used` that secondary row `r` pairs
-    with under the time rule, or None."""
+    with under the time rule, before `upper` when one is given, or None."""
     if bucket is None:
         return None
     ms = epoch_ms(r.timestamp_utc)
     if ms is None:
         return _earliest(bucket, used)
-    return _nearest(bucket.dated, ms, int(tolerance * 1000), used)
+    return _nearest(bucket.dated, ms, int(tolerance * 1000), used, upper)
 
 
 def _processing_order(secondary: list[tuple[Row, float]], by_scope: bool) -> list[int]:
@@ -300,19 +313,44 @@ def _find(
     tolerance: float,
     unavailable: _Unavailable,
     broaden: bool,
+    upper: int | None = None,
 ) -> int | None:
-    """The candidate row `r` pairs with, trying its lookups in order."""
+    """The candidate row `r` pairs with, trying its lookups in order,
+    before `upper` when one is given."""
     for key, broad, idless in _lookups(r, broaden):
         unavailable.broad, unavailable.idless = broad, idless
-        i = _pair(buckets.get(key), r, tolerance, unavailable)
+        i = _pair(buckets.get(key), r, tolerance, unavailable, upper)
         if i is not None:
             return i
     return None
 
 
-def _against_primary(primary: list[Row], secondary: list[tuple[Row, float]]) -> list[int]:
+def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, int]:
+    """For each widened secondary row with a timestamp, the epoch ms of the
+    next later secondary row of the same match text and session, when
+    there is one: the row may not take a primary row recorded at or after
+    it, so the later line keeps the later record."""
+    stamped: dict[tuple, list[tuple[int, int]]] = {}
+    for j, (r, _) in enumerate(secondary):
+        ms = epoch_ms(r.timestamp_utc)
+        if ms is None or _is_parser_row(r):
+            continue
+        stamped.setdefault((_by_text(r), r.session_id), []).append((ms, j))
+    bounds: dict[int, int] = {}
+    for items in stamped.values():
+        items.sort()
+        for n, (ms, j) in enumerate(items):
+            if j in widened and n + 1 < len(items) and items[n + 1][0] > ms:
+                bounds[j] = items[n + 1][0]
+    return bounds
+
+
+def _against_primary(
+    primary: list[Row], secondary: list[tuple[Row, float]], bounds: dict[int, int] | None = None
+) -> list[int]:
     """The indices of the secondary rows that pair with a primary row,
-    each looking only under its own scope."""
+    each looking only under its own scope and, for a row in `bounds`,
+    only before the time it maps to."""
     buckets: dict[tuple, _Bucket] = {}
     for i, r in enumerate(primary):
         if not _is_parser_row(r):
@@ -321,7 +359,8 @@ def _against_primary(primary: list[Row], secondary: list[tuple[Row, float]]) -> 
     matched: list[int] = []
     for j in _processing_order(secondary, by_scope=True):
         r, tolerance = secondary[j]
-        i = _find(buckets, r, tolerance, _Unavailable(primary, used, r, False), False)
+        upper = bounds.get(j) if bounds else None
+        i = _find(buckets, r, tolerance, _Unavailable(primary, used, r, False), False, upper)
         if i is not None:
             used.add(i)
             matched.append(j)
@@ -370,9 +409,18 @@ def deduplicate(
     describes the source itself (a header, a record, a `parser:` problem)
     rather than a lost event; this is where the field is set. A row whose
     agent registered a `MATCH_TOLERANCES` function takes the wider of its
-    source's window and the one that function returns."""
-    secondary = [_widened(r, tolerance) for r, tolerance in secondary]
-    matched = set(_against_primary(primary, secondary))
+    source's window and the one that function returns, and may not take a
+    primary row recorded at or after the next secondary row of the same
+    text in its session (`_bounds`)."""
+    widened: set[int] = set()
+    wide: list[tuple[Row, float]] = []
+    for j, (r, tolerance) in enumerate(secondary):
+        r, wider = _widened(r, tolerance)
+        if wider != tolerance:
+            widened.add(j)
+        wide.append((r, wider))
+    secondary = wide
+    matched = set(_against_primary(primary, secondary, _bounds(secondary, widened)))
     dropped = matched | set(_among_secondary(secondary, matched))
     counts: Counter[str] = Counter(secondary[j][0].agent for j in dropped)
     survivors = [r for j, (r, _) in enumerate(secondary) if j not in dropped]

@@ -346,7 +346,8 @@ cloud session and the VS Code extension; the evidence is in
   command:` or `local_command:` row, `/help` being the latter, as the
   `user` text `/<name>` plus ` <args>` when `<command-args>` is not
   empty; a prompt with the transcript's `<pasted_content id="<4 hex>">`
-  ... `</pasted_content>` wrapper and its ASCII whitespace removed), and
+  ... `</pasted_content>` wrapper removed and each run of ASCII whitespace
+  collapsed to one space), and
   `match_tolerance` widens a command line's window to
   `COMMAND_TOLERANCE_SECONDS`, since a command that opens a picker or an
   overlay (`/model`, `/help`, `/install-github-app`) is recorded when it
@@ -708,10 +709,11 @@ def match_form(row: Row) -> tuple[str, str]:
     <args>`, the args and the space before them only when `<command-args>`
     is not empty (`/model` has `<command-args></command-args>`). A
     prompt's text matches with the `<pasted_content id="...">` wrapper the
-    transcript puts around a paste removed and its ASCII whitespace
-    removed, since the history line holds the bare paste and may join it
-    to the typed text with other whitespace. Every other row matches as it
-    is."""
+    transcript puts around a paste removed and each run of ASCII
+    whitespace collapsed to one space, since the history line holds the
+    bare paste and may join it to the typed text with other whitespace;
+    the whitespace itself stays, so `echo a b` and `echo ab` are distinct
+    prompts. Every other row matches as it is."""
     text = row.text
     if row.turn_type == "system":
         if text.startswith(("slash command: ", "local_command: ")):
@@ -723,11 +725,17 @@ def match_form(row: Row) -> tuple[str, str]:
                 args = COMMAND_ARGS_RX.search(text)
                 if args and args.group(1).strip(" \t\r\n"):
                     cmd += " " + args.group(1).strip(" \t\r\n")
-                return "user", ASCII_SPACE_RX.sub("", cmd)
+                return "user", _squash(cmd)
         return row.turn_type, text
     if row.turn_type == "user":
-        return "user", ASCII_SPACE_RX.sub("", PASTE_WRAPPER_RX.sub("", text))
+        return "user", _squash(PASTE_WRAPPER_RX.sub(" ", text))
     return row.turn_type, text
+
+
+def _squash(text: str) -> str:
+    """`text` with each run of ASCII whitespace collapsed to one space and
+    the ends trimmed."""
+    return ASCII_SPACE_RX.sub(" ", text).strip(" ")
 
 
 def match_tolerance(row: Row) -> float | None:
@@ -748,27 +756,34 @@ def scratch_slug(path: str) -> str:
     return parts[-3]
 
 
-def read_paste(history: Path, content_hash: str) -> str | None:
-    """The text of `paste-cache/<content_hash>.txt` beside `history`, or None
-    when the name is not a plain hash, the file is missing or unreadable,
-    or the directory or file is a symlink, which is never followed."""
+def read_paste(history: Path, content_hash: str) -> tuple[str | None, str]:
+    """`(text, problem)` for `paste-cache/<content_hash>.txt` beside
+    `history`: the file's text and ""; `(None, "")` when the name is not a
+    plain hash, the file is missing, or the directory or file is a symlink,
+    which is never followed; and `(None, "<message>")` when a file that is
+    there could not be read, since a read failure is evidence, not an
+    absent cache entry (issue 136)."""
     if not PASTE_HASH_RX.match(content_hash):
-        return None
+        return None, ""
     cache = history.parent / "paste-cache"
     f = cache / (content_hash + ".txt")
     try:
         if cache.is_symlink() or f.is_symlink() or not f.is_file():
-            return None
-        return f.read_bytes().decode("utf-8", errors="replace")
-    except OSError:
-        return None
+            return None, ""
+        return f.read_bytes().decode("utf-8", errors="replace"), ""
+    except OSError as e:
+        return None, "paste-cache/%s.txt unreadable (%s)" % (content_hash, e)
 
 
-def expand_pastes(history: Path, display: str, pasted) -> str:
+def expand_pastes(
+    history: Path, display: str, pasted, errors: list | None = None, line: int = 0
+) -> str:
     """`display` with each `[Pasted text #<n> ...]` placeholder replaced by
     the paste's text: `pastedContents.<n>.content` when the paste is kept
     inline, else `paste-cache/<contentHash>.txt`; a placeholder whose text
-    is in neither place is kept as written."""
+    is in neither place is kept as written. A cache file that is there but
+    cannot be read keeps the placeholder too and adds `(line, message, "")`
+    to `errors`, which `error_rows` turns into a `parser:` row naming it."""
     if not isinstance(pasted, dict) or not pasted:
         return display
 
@@ -780,7 +795,9 @@ def expand_pastes(history: Path, display: str, pasted) -> str:
         if isinstance(content, str):
             return content
         h = entry.get("contentHash")
-        text = read_paste(history, h) if isinstance(h, str) else None
+        text, problem = read_paste(history, h) if isinstance(h, str) else (None, "")
+        if problem and errors is not None:
+            errors.append((line, problem, ""))
         return m.group(0) if text is None else text
 
     return PASTE_RX.sub(sub, display)
@@ -876,7 +893,9 @@ class ClaudeCodeParser(Parser):
             row.turn_type = "user"
             display = rec.get("display")
             if isinstance(display, str):
-                display = expand_pastes(artifact.disk_path, display, rec.get("pastedContents"))
+                display = expand_pastes(
+                    artifact.disk_path, display, rec.get("pastedContents"), errors, n
+                )
             row.text = compact(display)
             yield row
         yield from error_rows(self, artifact, errors)

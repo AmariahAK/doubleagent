@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from typing import ClassVar, cast
 
+from test_errors import CAN_DENY, DENY_REASON
+
 from doubleagent import catalog, cli, protobuf, sqlite_util
 from doubleagent.dedup import deduplicate
 from doubleagent.inputs import Artifact, Home, open_input
@@ -1721,9 +1723,37 @@ class ClaudeCodeMacTests(ParserBase):
         cache.mkdir(parents=True, exist_ok=True)
         target = self.tmp / "elsewhere.txt"
         target.write_text("not the paste", encoding="utf-8")
-        (cache / ("%s.txt" % CLAUDE_MAC_PASTE_HASH)).symlink_to(target)
+        try:
+            (cache / ("%s.txt" % CLAUDE_MAC_PASTE_HASH)).symlink_to(target)
+        except OSError:
+            self.skipTest("symlinks not available")
         rows = self._rows(".claude/history.jsonl", claude_mac_history_records())
         self.assertEqual(rows[5].text, "[Pasted text #2 +4 lines] Summarise again.")
+
+    @unittest.skipUnless(CAN_DENY, DENY_REASON)
+    def test_history_paste_cache_unreadable_is_reported(self):
+        # A cache file that is there but cannot be read is evidence, not an
+        # absent entry: the history line keeps its placeholder and a
+        # `parser:` row names the file (issue 136).
+        cache = self.home / ".claude/paste-cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        f = cache / ("%s.txt" % CLAUDE_MAC_PASTE_HASH)
+        f.write_text(CLAUDE_MAC_LONG_PASTE, encoding="utf-8")
+        f.chmod(0)
+        try:
+            rows = self._rows(".claude/history.jsonl", claude_mac_history_records())
+        finally:
+            f.chmod(0o600)
+        self.assertEqual(rows[5].text, "[Pasted text #2 +4 lines] Summarise again.")
+        problems = [r for r in rows if r.turn_type == "system" and r.text.startswith("parser:")]
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(
+            problems[0].text.startswith(
+                "parser: paste-cache/%s.txt unreadable (" % CLAUDE_MAC_PASTE_HASH
+            ),
+            problems[0].text,
+        )
+        self.assertEqual(problems[0].source_line, 6)
 
     def _primary(self):
         rows = self._rows(self.REL, claude_mac_records())
@@ -1805,6 +1835,43 @@ class ClaudeCodeMacTests(ParserBase):
             ["/model", *self.HISTORY_ONLY],
         )
         self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:23.000Z")
+
+    def test_history_command_missing_first_record_keeps_its_own_line(self):
+        # With the first `/model` record gone, the first history line may not
+        # take the second line's record, 43 s later: the second line pairs
+        # with it and the first stays, under its own time (the proximity rule
+        # bounded by the next line of the same command).
+        primary = [r for r in self._primary() if r.source_line != 8]
+        rows, _ = deduplicate(primary, [(r, 2.0) for r in self._history()])
+        self.assertEqual(
+            [r.text for r in rows[len(primary) :]],
+            ["/model", *self.HISTORY_ONLY],
+        )
+        self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:07.000Z")
+
+    def test_match_form_keeps_whitespace_distinctions(self):
+        # Runs of whitespace collapse, but the whitespace stays: prompts and
+        # arguments that differ only by a space are different events.
+        self.assertEqual(
+            match_form(Row(turn_type="user", text="echo  a\tb")),
+            match_form(Row(turn_type="user", text="echo a b")),
+        )
+        self.assertNotEqual(
+            match_form(Row(turn_type="user", text="echo a b")),
+            match_form(Row(turn_type="user", text="echo ab")),
+        )
+        block = (
+            "slash command: <command-name>/a</command-name>\n<command-message>a"
+            "</command-message>\n<command-args>%s</command-args>"
+        )
+        self.assertEqual(
+            match_form(Row(turn_type="system", text=block % "x  y")),
+            match_form(Row(turn_type="user", text="/a x y")),
+        )
+        self.assertNotEqual(
+            match_form(Row(turn_type="system", text=block % "x y")),
+            match_form(Row(turn_type="user", text="/a xy")),
+        )
 
     def test_remote_control_spawn(self):
         rows = self._rows(self.SPAWN_REL, claude_mac_spawn_records())
