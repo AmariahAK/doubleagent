@@ -59,8 +59,18 @@ inside them goes to the extension's agent.
   `Code/logs/<start>/window1/exthost/Anthropic.claude-code/Claude VSCode.log`,
   is collected as `vscode` by the editor's `logs` entry, and the extension
   directory `.vscode/extensions/anthropic.claude-code-<version>-<platform>`
-  (282 MB on Windows, the CLI binary included) is not collected (observed
-  with 2.1.309 on Windows, October 2026).
+  (282 MB on Windows, 297 MB on Linux, each holding a full copy of the CLI
+  binary in `resources/native-binary/`) is not collected, since the
+  `vscode` entry takes only `extensions.json` from the extensions
+  directory (observed with 2.1.309 on Windows and 2.1.310 on Linux,
+  October 2026).
+- **VS Code 1.143's bundled Copilot agent** writes
+  `~/.copilot/logs/.copilot-log.lock` and
+  `~/.copilot/logs/process-<epoch>-<pid>.log` at the editor's first start,
+  with no Copilot CLI installed (observed on Ubuntu 26.04, October 2026).
+  `.copilot` is a `copilot-cli` catalog line, so both files are collected
+  as `copilot-cli`: a `copilot-cli` detection whose only files are under
+  `.copilot/logs/` is VS Code's, not the Copilot CLI's.
 - **Skills and configuration files** that several agents read are
   collected too, with agent `shared` in the manifest.
 - **`.env` files:** an agent's own `.env` inside its state directory, such
@@ -147,15 +157,16 @@ a bare `.claude-*` entry would also take other tools' directories such as
 
 The Claude Code CLI keeps per-project MCP server logs outside its config
 home, in a cache directory that `CLAUDE_CONFIG_DIR` does not move:
-`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`, one JSON object
-with `cwd`, `debug`, `sessionId` and `timestamp` per line. It is
+`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`, one file per server
+per start of the CLI, one JSON object per line with `cwd`, `sessionId`,
+`timestamp` and either `debug` or `error`. It is
 collected as `claude-code` from these locations, none flagged
 `secret: true`:
 
 | Location | Platform |
 | --- | --- |
 | `Library/Caches/claude-cli-nodejs` | macOS (observed with CLI 2.1.295, October 2026) |
-| `.cache/claude-cli-nodejs` | Linux, when `XDG_CACHE_HOME` is unset (from the CLI binary, not observed) |
+| `.cache/claude-cli-nodejs` | Linux, when `XDG_CACHE_HOME` is unset (observed with CLI 2.1.310, October 2026) |
 | `AppData/Local/claude-cli-nodejs/Cache/*` | Windows (observed with CLI 2.1.309, October 2026) |
 
 On Windows the catalog names each project-slug directory under `Cache/`
@@ -165,20 +176,72 @@ exclusions without regard to case and the Claude Desktop exclusion
 whole; the slug directories are not named `Cache`, so both collectors
 collect them. A relocated `XDG_CACHE_HOME` on Linux is not found.
 
+Two more directories outside the config home are collected as
+`claude-code` from collector 1.19.0, at the same paths under the home on
+Linux and Windows (observed with CLI 2.1.309 on Windows and 2.1.310 on
+Linux, October 2026; not observed on macOS):
+
+| Location | What it holds |
+| --- | --- |
+| `.local/state/claude` | `locks/<version>.lock`, a JSON object with `acquiredAt`, `execPath`, `pid` and `version` (138 bytes on Linux), written when a session of that version starts and removed when it exits; the `locks/` directory is empty otherwise, so a lock in a collection names the process and binary of a session that had not exited. |
+| `.cache/claude` | `staging/`, which the native installer created on Linux; it was empty whenever it was listed, on Windows and Linux. |
+
 ## Claude Code temp root and git excludes
 
 The Claude Code CLI gives each session a directory under its temp root,
 `<project slug>/<session id>/`, holding `scratchpad/`, the model's
 scratch space, and `tasks/`, the `<id>.output` files of background
-commands and subagents. Claude Code's own cleanup at a later session
-start removes the directories of earlier sessions, open ones included,
-and on Windows they outlive a reboot (observed with CLI 2.1.309, October
-2026):
+commands and subagents. On Windows, Claude Code's own cleanup at a later
+session start removed the directories of earlier sessions, open ones
+included, and the directories outlived a reboot (observed with CLI
+2.1.309, October 2026):
 
 | Platform | Temp root | Collected |
 | --- | --- | --- |
 | Windows | `AppData/Local/Temp/claude` under the home | From collector 1.19.0, as `claude-code`, none flagged `secret: true` |
 | Linux, macOS | `/tmp/claude-<uid>` on Linux, in the system temp directory on macOS | No: outside every home; copy it by hand ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)) |
+
+On Linux the temp root holds more than the session directories, and
+lasts a shorter time (observed with CLI 2.1.310 on Ubuntu 26.04, October
+2026):
+
+- **One directory per process, not per session.** A new session's
+  directory is named by its session id. A resumed session
+  (`claude --resume`, `claude --continue`), the `claude agents` console
+  and a command that starts no session, such as `claude mcp add`, each
+  get a directory of their own under another id, so the directories
+  outnumber the sessions in `~/.claude/projects/`. Every level is mode
+  0700 except `tasks/`, which is 0775 and appears at the session's first
+  shell command.
+- **`tasks/`** holds a background command's output as
+  `<9 base-36 characters>.output` (22 bytes each for two `sleep`
+  commands on the install observed), and a subagent's as
+  `<agent id>.output`, which on Linux is a symbolic link to the
+  subagent's transcript
+  `~/.claude/projects/<slug>/<session id>/subagents/agent-<agent id>.jsonl`
+  (on Windows it was an empty file).
+- **`bash-edit-diff/<19 digits>-<19 digits>-<16 hex>/`**, at the top of
+  the temp root, is a git repository Claude Code makes at a shell command
+  to see what the command changed: a snapshot commit of the project's
+  working tree, with an `objects/info/alternates` file (git's list of
+  other object stores to read) naming the project's `.git/objects`. It is
+  removed when the session exits; the empty `bash-edit-diff/` stays.
+- **The session directories outlive `/exit`** and are removed by
+  Claude Code's retention sweep, which deletes a transcript older than
+  `cleanupPeriodDays` (30 days unless set) together with its session's
+  `scratchpad/` directory. On the install observed the sweep ran 10 to 20
+  minutes after a session's last prompt and never in a session that had
+  none, so the temp root reaches back about as far as the transcripts.
+- **A reboot clears it.** `/tmp` on Ubuntu 26.04 is a tmpfs, a
+  file system held in memory, so after a reboot nothing of the temp root
+  is left: no scratchpads, task outputs or snapshot repositories. On
+  Windows the temp root outlived a reboot.
+
+With `claude --debug` the CLI also writes `~/.claude/debug/<session id>.txt`
+and a `debug/latest` symbolic link to it, both kept after the session
+exits. They are under the config home and are collected as `claude-code`:
+the log as a file, the link as a `symlink` row with its target (see
+[Statuses in `output.md`](output.md#statuses)).
 
 When a user grants a standing permission in a project, Claude Code
 writes it to the project's `.claude/settings.local.json` and adds

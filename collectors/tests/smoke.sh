@@ -1473,6 +1473,18 @@ printf '{"plugins":[]}\n' >"$H/.claude/plugins/plugin-directory-cache-v2.json"
 printf '# git ls-files --others --exclude-from=.git/info/exclude\n.claude/scheduled_tasks.lock\n' \
   >"$G253/info/exclude"
 
+# 2026-10-26 claude-code Linux round (#256)
+# Claude Code 2.1.310 on Ubuntu 26.04 (real install, 2026-10-25/26) holds
+# .local/state/claude/locks/<version>.lock, a JSON lock with acquiredAt,
+# execPath, pid and version, while a session runs, and creates
+# .cache/claude/staging/ at install; both directories are home-relative on
+# Windows too and are collected as claude-code. Checks follow the default
+# run below; the same files are in smoke.ps1 under alice.
+mkdir -p "$H/.local/state/claude/locks" "$H/.cache/claude/staging"
+printf '{"acquiredAt":1792800000000,"execPath":"/x","pid":1,"version":"2.1.310"}\n' \
+  >"$H/.local/state/claude/locks/2.1.310.lock"
+printf 'staged\n' >"$H/.cache/claude/staging/entry"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1962,6 +1974,10 @@ check "#256 Claude Code corrupted .claude.json copy flagged secret" "row \"$H/.c
 check "#256 Claude Code paste-cache collected" "row \"$H/.claude/paste-cache/0123456789abcdef.txt\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
 check "#256 Claude Code plugin directory cache excluded" "[ \"\$(status_of \"$H/.claude/plugins/plugin-directory-cache-v2.json\")\" = skipped_excluded ]"
 check "#256 project git info/exclude collected as project" "is253 info/exclude"
+
+# 2026-10-26 claude-code Linux round (#256)
+check "#256 Claude Code version lock collected as claude-code" "row \"$H/.local/state/claude/locks/2.1.310.lock\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
+check "#256 Claude Code cache staging collected as claude-code" "row \"$H/.cache/claude/staging/entry\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

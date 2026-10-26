@@ -50,6 +50,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   secret glob alone collects nothing ([#256]).
 - `.claude/plugins/plugin-directory-cache*`, Claude Code's downloaded copy
   of the plugin directory, is excluded ([#256]).
+- Claude Code's `.local/state/claude`, whose `locks/<version>.lock` names
+  the process ID, binary path and version of a running session, and
+  `.cache/claude`, its `staging/` directory, are collected as
+  `claude-code`, at the same paths under the home on Linux and Windows
+  (observed with Claude Code 2.1.310 on Ubuntu 26.04, October 2026)
+  ([#256]).
 
 ### Changed
 

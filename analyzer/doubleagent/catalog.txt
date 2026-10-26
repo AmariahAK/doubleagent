@@ -19,6 +19,11 @@ claude-code|.claude-*/daemon/pipe.key
 claude-code|.claude-*/daemon/roster.json
 claude-code|.claude-*/backups/.claude.json.*
 claude-code|.local/share/claude
+# Claude Code version locks and its staging/ directory, home-relative on Linux
+# and Windows alike: locks/<version>.lock exists only while a session
+# runs (2.1.310, #256)
+claude-code|.local/state/claude
+claude-code|.cache/claude
 # Claude Code CLI cache: MCP server logs per project (#81). The Windows
 # entry names the children of Cache/: the PowerShell exclusion match ignores
 # case, so */Claude*/Cache would prune claude-cli-nodejs/Cache itself
