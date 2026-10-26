@@ -28,7 +28,11 @@ primary store registers a match form in `MATCH_FORMS`, and its rows match
 on the `(turn_type, text)` that function returns instead of their own:
 Claude Code's `history.jsonl` keeps a slash command as typed and a paste as
 expanded text, where the transcript has a tag-form `slash command:` row
-and the prompt joined differently (`claude_code.match_form`).
+and the prompt joined differently (`claude_code.match_form`). It can also
+register a wider window for some of its secondary rows in
+`MATCH_TOLERANCES`: a Claude Code command that opens a picker or an
+overlay is recorded in the transcript when it completes, seconds to
+minutes after its history line (`claude_code.match_tolerance`).
 
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
@@ -109,6 +113,12 @@ TOLERANCE_SECONDS = 2.0
 # `/model` for the transcript's tag-form `slash command:` row); the rows of
 # every other agent match on their own `turn_type` and `text`.
 MATCH_FORMS: dict[str, Callable[[Row], tuple[str, str]]] = {}
+# The time window per agent: a function of a secondary row that returns a
+# wider window in seconds for that row, or None for the source's own. A
+# parser registers one when some of its secondary rows record an event
+# much earlier than the primary store does (a Claude Code slash command
+# typed before the picker it opens is closed and recorded).
+MATCH_TOLERANCES: dict[str, Callable[[Row], float | None]] = {}
 
 _Dated = list[tuple[int, int]]  # (epoch ms, row index), sorted
 
@@ -341,6 +351,14 @@ def _among_secondary(secondary: list[tuple[Row, float]], matched: set[int]) -> l
     return copies
 
 
+def _widened(r: Row, tolerance: float) -> tuple[Row, float]:
+    """`r` with the wider of `tolerance` and its agent's
+    `MATCH_TOLERANCES` window for it."""
+    window = MATCH_TOLERANCES.get(r.agent)
+    wider = window(r) if window else None
+    return r, tolerance if wider is None else max(tolerance, wider)
+
+
 def deduplicate(
     primary: list[Row], secondary: list[tuple[Row, float]]
 ) -> tuple[list[Row], Counter[str]]:
@@ -350,7 +368,10 @@ def deduplicate(
     tolerance in seconds. Every secondary row kept gets `recovered` "yes",
     since no primary row holds its event, except a `system` row, which
     describes the source itself (a header, a record, a `parser:` problem)
-    rather than a lost event; this is where the field is set."""
+    rather than a lost event; this is where the field is set. A row whose
+    agent registered a `MATCH_TOLERANCES` function takes the wider of its
+    source's window and the one that function returns."""
+    secondary = [_widened(r, tolerance) for r, tolerance in secondary]
     matched = set(_against_primary(primary, secondary))
     dropped = matched | set(_among_secondary(secondary, matched))
     counts: Counter[str] = Counter(secondary[j][0].agent for j in dropped)

@@ -45,6 +45,7 @@ CLAUDE_310_VSCODE_SESSION = "11111111-2222-4333-8444-eeeeeeeeeeee"
 CLAUDE_MAC_SESSION = "11111111-2222-4333-8444-ffffffffffff"
 CLAUDE_MAC_SPAWN_SESSION = "11111111-2222-5333-8444-000000000001"
 CLAUDE_MAC_TELEPORT_SESSION = "11111111-2222-4333-8444-000000000002"
+CLAUDE_MAC_CLEARED_SESSION = "11111111-2222-4333-8444-000000000003"
 CLAUDE_MAC_CLOUD_SCRATCH = (
     "/tmp/claude-0/-home-user-repo/22222222-3333-4444-8555-666666666666/scratchpad"
 )
@@ -1347,8 +1348,12 @@ def claude_mac_records():
                 "default for new sessions</local-command-stdout>",
             },
         ),  # 9
-        prompt("u10", "10", "one\ntwo\nthree\nfour\nSummarise the pasted text in one sentence."),
-        # 10: a short paste, expanded in the prompt
+        prompt(
+            "u10",
+            "10",
+            '<pasted_content id="0bb3">\none\ntwo\nthree\nfour\n</pasted_content>'
+            " Summarise the pasted text in one sentence.",
+        ),  # 10: a short paste, wrapped in the prompt as 2.1.310 writes it
         dict(
             c,
             type="system",
@@ -1400,8 +1405,16 @@ def claude_mac_records():
         att("t15", "21", {"type": "command_permissions", "allowedTools": ["Bash(echo:*)"]}),
         # 15
         prompt("u16", "30", _claude_command("rename", "lab-round")),  # 16
-        prompt("u17", "40", CLAUDE_MAC_LONG_PASTE + " Summarise again."),  # 17: a long paste
-        prompt("u18", "50", _claude_command("model")),  # 18: a second /model
+        prompt(
+            "u17",
+            "40",
+            '<pasted_content id="a91f">\n'
+            + CLAUDE_MAC_LONG_PASTE
+            + "\n</pasted_content> Summarise again.",
+        ),  # 17: a long paste
+        # 18: a second /model, recorded 27 s after its history line, when
+        # the picker closed (rows 10 and 27a of the round)
+        prompt("u18", "50", _claude_command("model")),
         dict(
             type="cost-state",
             hasUnknownModelCost=False,
@@ -1410,6 +1423,34 @@ def claude_mac_records():
             startTime=1790852400000,
             totalCostUSD=0.01,
         ),  # 19
+        dict(
+            c,
+            type="system",
+            uuid="s20",
+            timestamp=ts("55"),
+            subtype="local_command",
+            commandRun="help",
+            content=_claude_command("help"),
+            level="info",
+        ),  # 20: `/help`, a `local_command:` row with empty args
+    ]
+
+
+def claude_mac_cleared_records():
+    """The file a `/clear` in `claude_mac_records`'s session opens
+    (2.1.310 macOS, row 24a): its first lines are the `/clear` command in
+    tag form and its output, under the new session's id."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=CLAUDE_MAC_CLEARED_SESSION, version="2.1.310", entrypoint="cli")
+    return [
+        dict(
+            _claude_user(c, "k1", "57", _claude_command("clear")),
+            timestamp="2026-10-01T11:00:57.000Z",
+        ),
+        dict(
+            _claude_user(c, "k2", "57", "<local-command-stdout></local-command-stdout>"),
+            timestamp="2026-10-01T11:00:57.000Z",
+        ),
     ]
 
 
@@ -1417,7 +1458,10 @@ def claude_mac_history_records():
     """`history.jsonl` lines of the events of `claude_mac_records`: the
     commands as typed, the short paste inline and the long one by hash
     (`paste-cache/<CLAUDE_MAC_PASTE_HASH>.txt`, written by the test), and
-    `/exit`, which no transcript line records."""
+    the three lines no transcript record matches: `/clear` under the ended
+    session's id (its record is in `claude_mac_cleared_records`' file),
+    `/logout` (the process ends before any line) and `/exit` typed while a
+    turn ran (no line written)."""
     sid = CLAUDE_MAC_SESSION
 
     def line(t, display, **pasted):
@@ -1438,13 +1482,16 @@ def claude_mac_history_records():
             "[Pasted text #1 +3 lines] Summarise the pasted text in one sentence.",
             **{"1": {"content": "one\ntwo\nthree\nfour", "id": 1, "type": "text"}},
         ),
+        line("23", "/model"),
         line("30", "/rename lab-round"),
         line(
             "40",
             "[Pasted text #2 +4 lines] Summarise again.",
             **{"2": {"contentHash": CLAUDE_MAC_PASTE_HASH, "id": 2, "type": "text"}},
         ),
-        line("50", "/model"),
+        line("55", "/help"),
+        line("57", "/clear"),
+        line("58", "/logout"),
         line("59", "/exit"),
     ]
 

@@ -1552,7 +1552,10 @@ class ClaudeCode310Tests(ParserBase):
         self.assertEqual(rows[-1].session_id, CLAUDE_310_SESSION)
 
 
+from doubleagent.model import Row
+from doubleagent.parsers.claude_code import match_form, match_tolerance
 from fixtures import (
+    CLAUDE_MAC_CLEARED_SESSION,
     CLAUDE_MAC_CLOUD_SCRATCH,
     CLAUDE_MAC_LOCAL_SCRATCH,
     CLAUDE_MAC_LONG_PASTE,
@@ -1560,6 +1563,7 @@ from fixtures import (
     CLAUDE_MAC_SESSION,
     CLAUDE_MAC_SPAWN_SESSION,
     CLAUDE_MAC_TELEPORT_SESSION,
+    claude_mac_cleared_records,
     claude_mac_global_config,
     claude_mac_history_records,
     claude_mac_records,
@@ -1611,7 +1615,12 @@ class ClaudeCodeMacTests(ParserBase):
             "command output: <local-command-stdout>Set model to Fable 5.1 and saved as "
             "your default for new sessions</local-command-stdout>",
         ),
-        (10, "user", "one\ntwo\nthree\nfour\nSummarise the pasted text in one sentence."),
+        (
+            10,
+            "user",
+            '<pasted_content id="0bb3">\none\ntwo\nthree\nfour\n</pasted_content>'
+            " Summarise the pasted text in one sentence.",
+        ),
         (11, "system", "scheduled task fired: a1b2c3d4 cron=*/1 * * * *"),
         (12, "user", "echo hi"),
         (12, "system", "prompt trigger: promptSource=system turnOrigin=scheduled"),
@@ -1622,7 +1631,13 @@ class ClaudeCodeMacTests(ParserBase):
             "            <command-message>rename</command-message>\n"
             "            <command-args>lab-round</command-args>",
         ),
-        (17, "user", CLAUDE_MAC_LONG_PASTE + " Summarise again."),
+        (
+            17,
+            "user",
+            '<pasted_content id="a91f">\n'
+            + CLAUDE_MAC_LONG_PASTE
+            + "\n</pasted_content> Summarise again.",
+        ),
         (
             18,
             "system",
@@ -1630,7 +1645,16 @@ class ClaudeCodeMacTests(ParserBase):
             "            <command-message>model</command-message>\n"
             "            <command-args></command-args>",
         ),
+        (
+            20,
+            "system",
+            "local_command: <command-name>/help</command-name>\n"
+            "            <command-message>help</command-message>\n"
+            "            <command-args></command-args>",
+        ),
     ]
+    # The history lines no transcript record matches (rows 27a and 27b).
+    HISTORY_ONLY: ClassVar[list[str]] = ["/clear", "/logout", "/exit"]
 
     def _write(self, rel, records):
         path = self.home / rel
@@ -1684,10 +1708,11 @@ class ClaudeCodeMacTests(ParserBase):
                 "run python3 calc.py 2 3",
                 "/model",
                 "one\ntwo\nthree\nfour Summarise the pasted text in one sentence.",
+                "/model",
                 "/rename lab-round",
                 CLAUDE_MAC_LONG_PASTE + " Summarise again.",
-                "/model",
-                "/exit",
+                "/help",
+                *self.HISTORY_ONLY,
             ],
         )
 
@@ -1698,28 +1723,88 @@ class ClaudeCodeMacTests(ParserBase):
         target.write_text("not the paste", encoding="utf-8")
         (cache / ("%s.txt" % CLAUDE_MAC_PASTE_HASH)).symlink_to(target)
         rows = self._rows(".claude/history.jsonl", claude_mac_history_records())
-        self.assertEqual(rows[4].text, "[Pasted text #2 +4 lines] Summarise again.")
+        self.assertEqual(rows[5].text, "[Pasted text #2 +4 lines] Summarise again.")
+
+    def _primary(self):
+        rows = self._rows(self.REL, claude_mac_records())
+        return rows + self._rows(
+            self.PROJ + "%s.jsonl" % CLAUDE_MAC_CLEARED_SESSION, claude_mac_cleared_records()
+        )
 
     def test_history_matches_transcript_commands_and_pastes(self):
-        # Rows 27a and 27b of the round: every history line but `/exit` is the
-        # same event as a transcript record; the two `/model` lines, at their
-        # own times, pair with their own command records.
-        primary = self._rows(self.REL, claude_mac_records())
-        secondary = [(r, 2.0) for r in self._history()]
-        rows, dropped = deduplicate(primary, secondary)
+        # Rows 27a and 27b of the round: every history line but the three
+        # history-only ones is the same event as a transcript record; the
+        # two `/model` lines pair with their own command records, the
+        # second recorded 27 s after it was typed.
+        primary = self._primary()
+        rows, dropped = deduplicate(primary, [(r, 2.0) for r in self._history()])
         kept = rows[len(primary) :]
-        self.assertEqual([(r.text, r.recovered) for r in kept], [("/exit", "yes")])
-        self.assertEqual(dropped["claude-code"], 6)
+        self.assertEqual(
+            [(r.text, r.recovered) for r in kept], [(t, "yes") for t in self.HISTORY_ONLY]
+        )
+        self.assertEqual(dropped["claude-code"], 7)
+
+    def test_command_without_args_matches_both_labels(self):
+        # The real shape: a tag block with an empty `<command-args>`, under
+        # the `slash command:` label (a user record) or `local_command:` (a
+        # system record, `/help`); the match text has no trailing space.
+        block = (
+            "<command-name>/%s</command-name>\n            <command-message>%s"
+            "</command-message>\n            <command-args></command-args>"
+        )
+        for label, name in (("slash command: ", "model"), ("local_command: ", "help")):
+            form = match_form(Row(turn_type="system", text=label + block % (name, name)))
+            self.assertEqual(form, match_form(Row(turn_type="user", text="/" + name)))
+            self.assertEqual(form, ("user", "/" + name))
+        with_args = block.replace("<command-args></command-args>", "<command-args>x</command-args>")
+        self.assertEqual(
+            match_form(Row(turn_type="system", text="slash command: " + with_args % ("a", "a"))),
+            match_form(Row(turn_type="user", text="/a x")),
+        )
+        # A command line gets the wide window; a prompt keeps the source's.
+        self.assertEqual(match_tolerance(Row(turn_type="user", text="/model")), 600.0)
+        self.assertIsNone(match_tolerance(Row(turn_type="user", text="run /bin/ls")))
+        self.assertIsNone(match_tolerance(Row(turn_type="system", text="/model")))
+
+    def test_pasted_content_wrapper_matches_history_paste(self):
+        transcript = Row(
+            turn_type="user",
+            text='<pasted_content id="0bb3">\none\ntwo\n</pasted_content> Summarise it.',
+        )
+        history = Row(turn_type="user", text="one\ntwo Summarise it.")
+        self.assertEqual(match_form(transcript), match_form(history))
+        # Only the wrapper goes: other text still differs.
+        self.assertNotEqual(
+            match_form(transcript), match_form(Row(turn_type="user", text="one two Summarise"))
+        )
+
+    def test_history_only_lines_stay_recovered(self):
+        # `/exit` typed while a turn ran and `/logout` write no transcript
+        # line; `/clear` is under the ended session's id while its record
+        # is the first line of the new session's file.
+        primary = self._primary()
+        cleared = [
+            r
+            for r in primary
+            if r.session_id == CLAUDE_MAC_CLEARED_SESSION and r.text.startswith("slash command:")
+        ]
+        self.assertEqual([match_form(r) for r in cleared], [("user", "/clear")])
+        rows, _ = deduplicate(primary, [(r, 2.0) for r in self._history()])
+        kept = rows[len(primary) :]
+        self.assertEqual([r.text for r in kept], self.HISTORY_ONLY)
+        self.assertEqual({r.session_id for r in kept}, {CLAUDE_MAC_SESSION})
+        self.assertEqual({r.recovered for r in kept}, {"yes"})
 
     def test_history_command_without_transcript_is_recovered(self):
-        # With the second `/model` record gone, its history line stays.
-        primary = [r for r in self._rows(self.REL, claude_mac_records()) if r.source_line != 18]
+        # With the second `/model` record gone, its history line stays: the
+        # first record is taken by the first line, nearer in time.
+        primary = [r for r in self._primary() if r.source_line != 18]
         rows, _ = deduplicate(primary, [(r, 2.0) for r in self._history()])
         self.assertEqual(
             [r.text for r in rows[len(primary) :]],
-            ["/model", "/exit"],
+            ["/model", *self.HISTORY_ONLY],
         )
-        self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:50.000Z")
+        self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:23.000Z")
 
     def test_remote_control_spawn(self):
         rows = self._rows(self.SPAWN_REL, claude_mac_spawn_records())
