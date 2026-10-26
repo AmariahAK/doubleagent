@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The bundled catalog copy gains the Claude Code macOS lines of collector 1.19.0 (the `claude-cli` URL handler bundle under `~/Applications`, the relocated-home `ide/*.lock` and `bridge-spawn/*/mcp.json` entries), so detection follows them ([#256]).
 - The bundled catalog copy has the collector's Claude Code lines from the
   [Windows round](../research/claude-code.md#observed): the Windows temp
   root `AppData/Local/Temp/claude` and the

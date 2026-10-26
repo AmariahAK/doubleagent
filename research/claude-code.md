@@ -359,7 +359,12 @@ deleted ([What survives a delete](#what-survives-a-delete)), so the temp root is
 `cleanupPeriodDays` like the transcripts. `/tmp` on Ubuntu 26.04 is tmpfs, a file system held in
 memory and emptied at every boot, so the reboot removed the whole temp root, both project slugs,
 the `tasks/` files and symlink, `bash-edit-diff/` and the Bun module, while on Windows the temp root
-survived a reboot. A collection taken on Linux after a reboot finds none of it. The Claude Desktop
+survived a reboot. A collection taken on Linux after a reboot finds none of it. On macOS 26.6 a
+reboot emptied `/private/tmp` the same way (2.1.310, 2026-10-26: all nineteen process directories
+of the project slug, the scratchpad file, the `tasks/` outputs and `bash-edit-diff/`, and the
+`/tmp/cc-socks/` directory were gone after boot), which the vendor's scratchpad page states as the
+operating system clearing the temp location, such as on restart
+([Session scratchpad directory](https://code.claude.com/docs/en/claude-directory.md#session-scratchpad-directory)). The Claude Desktop
 Code tab's use of the same root is in [Where the project path is recorded in
 `claude-desktop.md`](claude-desktop.md#where-the-project-path-is-recorded); on Linux and macOS the
 temp root is not collected
@@ -929,9 +934,9 @@ Desktop exclusion `*/Claude*/Cache` does not prune it
 extension's copy of the CLI binary
 (`.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`, 291 MB on Linux
 2.1.310, most of the 273.3 MB extension directory on macOS 2.1.310,
-[VS Code extension files](#vs-code-extension-files)) is a copy of a published binary and is
-excluded since this round (`.vscode/extensions/anthropic.claude-code-*/resources/native-binary`),
-although the `vscode` catalog entry takes only `extensions.json` from the extensions directory.
+[VS Code extension files](#vs-code-extension-files)) is a copy of a published binary; no
+catalog entry reaches the extensions directory (the `vscode` entry takes only `extensions.json`
+from it), so the copy is not collected and needs no exclusion.
 
 ### Project-local files
 
@@ -1514,16 +1519,18 @@ timestamp, type, userType, uuid, version`) were written for `/rename`, `/exit`, 
 Remote Control start and stop, and not for `/model`, `/compact`, `/install-github-app`, `/loop` or
 `/schedule`, which left only their `user` command lines, nor for an `/exit` after a resume.
 `compact_boundary` carries `compactMetadata{cumulativeDroppedTokens, durationMs, postTokens,
-preCompactDiscoveredTools, preTokens, preservedMessages{allUuids, anchorUuid, headUuid, tailUuid,
-uuids}, preservedSegment, trigger}` beside `content`, `level` and `logicalParentUuid`, and an
+preCompactDiscoveredTools, preTokens, preservedMessages{allUuids, uuids},
+preservedSegment{headUuid, anchorUuid, tailUuid}, trigger}` beside `content`, `level` and
+`logicalParentUuid` (the shape tool's merged key list of the Linux round had put the three
+segment uuids under `preservedMessages`; the macOS record read directly places them under
+`preservedSegment`), and an
 `away_summary` written for an idle gap carries the branch of the time it was computed.
 `pendingBackgroundAgentCount` appeared on the `system` lines from the first backgrounded command.
 
 Observed on macOS 2.1.310: `compact_boundary` with the envelope and `compactMetadata, content,
 level, logicalParentUuid, slug, subtype`, `compactMetadata` holding `trigger, preTokens, postTokens,
 cumulativeDroppedTokens, durationMs, preCompactDiscoveredTools`, `preservedSegment{headUuid,
-anchorUuid, tailUuid}` and `preservedMessages{allUuids, uuids}`, which places the three segment
-uuids under `preservedSegment` where the Linux key list above has them under `preservedMessages`;
+anchorUuid, tailUuid}` and `preservedMessages{allUuids, uuids}`;
 `scheduled_task_fire` with `content, cron, prompt, taskId`; `turn_duration` with
 `pendingBackgroundAgentCount`; and, on the cloud turn a teleported session replayed,
 `stop_hook_summary` with the 2.1.295 keys, naming a hook of the cloud environment, and
@@ -2498,6 +2505,8 @@ Windows nor the Linux round was offered one. On macOS 2.1.310 (2026-10-26) the h
 ^\.claude(?:-[^/]+)?/sessions/\d+\.json$
 ^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$
 ^(?:\.claude-[^/]+/)?\.claude\.json$
+^\.claude(?:-[^/]+)?/projects/[^/]+/([^/]+)/ccr-tip\.json$
+^\.claude(?:-[^/]+)?/projects/[^/]+/bridge-pointer\.json$
 ```
 
 The `.claude-<name>` form is a config home moved with `CLAUDE_CONFIG_DIR`; what the catalog
@@ -2563,10 +2572,10 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | every other type ([Record schema](#record-schema) table) | skip |
 | `history.jsonl` line | `user` |
 | `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([Remote Control](#remote-control)), and the file then gives a second `system` row, `session synced: remote control bridge <bridgeSessionId> url - (from <path>, file mtime)`, at the file's modification time ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
-| `projects/<key>/<session id>/ccr-tip.json` | one `system` row at the file's modification time, `session synced: remote event <eventId> at <updatedAt> (from ccr-tip.json)`, `session_id` the directory's session ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
-| `projects/<key>/bridge-pointer.json` | one `system` row at the file's modification time, `remote control: environment <environmentId> session <sessionId> source=<source> (from bridge-pointer.json, file mtime)` |
+| `projects/<key>/<session id>/ccr-tip.json` | one `system` row at the file's modification time, `session synced: remote event <eventId> at <updatedAt> (from <path>, file mtime)`, `session_id` the directory's session ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
+| `projects/<key>/bridge-pointer.json` | one `system` row at the file's modification time, `remote control: environment <environmentId> session <sessionId> source=<source> (from <path>, file mtime)` |
 | `settings.json`, `settings.local.json` (user, `.claude-<name>`, or a project's) | one `system` row per `permissions.allow`, `deny`, `ask` and `additionalDirectories` entry, then one for `permissions.defaultMode` and `permissions.disableBypassPermissionsMode` when set: `permission setting: permissions.<key>=<value> (from <path relative to the home or project>, file mtime)`, a non-string value as compact JSON; `timestamp_utc` the manifest `mtime`, else the file's own; `session_id` empty; `project_path` the project directory for a `project` artifact, else empty; `source_line` 1; beside them, when `cleanupPeriodDays` is set, one `system` row `retention setting: cleanupPeriodDays=<n> (from <file>, file mtime)` at the same time, since the value decides what the retention sweep removes ([What survives a delete](#what-survives-a-delete)); when `model` is set, one `system` row `model setting: <alias> (from settings.json, file mtime)` ([Model rows](#model-rows)); no other key read; a file that is not a JSON object is one `system` row `parser: settings file is not a JSON object` |
-| `.claude.json`, `.claude-<name>/.claude.json` | per `projects.<path>`: one row per `allowedTools` entry, then one each for `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` when present, `permission setting: <key>=<value> (from .claude.json, file mtime)`, `project_path` the `<path>` key, times as above; when `githubWebConnectionStatusCache` is present (2.1.310), one `system` row `source host: github status=<status> (from .claude.json, file mtime)` at the file's modification time, its `accountUuid` and `orgUuid` never printed ([Sync, relay and origin rows](#sync-relay-and-origin-rows)); at the same time, `remote control: machine id set` when `remoteControlMachineId` is present, `remote control: spawn mode <mode> for <path>` per `projects.<path>.remoteControlSpawnMode`, and `cloud: hasRemoteEnvironment=<bool>`, no uuid printed; nothing else in the file is read (it holds the account's OAuth details); `.claude.json.backup*` is not wanted |
+| `.claude.json`, `.claude-<name>/.claude.json` | per `projects.<path>`: one row per `allowedTools` entry, then one each for `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` when present, `permission setting: <key>=<value> (from .claude.json, file mtime)`, `project_path` the `<path>` key, times as above; when `githubWebConnectionStatusCache` is present (2.1.310), one `system` row `source host: github status=<status> (from .claude.json, file mtime)` at the file's modification time, its `accountUuid` and `orgUuid` never printed ([Sync, relay and origin rows](#sync-relay-and-origin-rows)); at the same time, `remote control: machine id set` when `remoteControlMachineId` is present, `remote control: spawn mode <mode> for <path>` per `projects.<path>.remoteControlSpawnMode`, and `cloud: hasRemoteEnvironment=<value> (from .claude.json, file mtime)`, no uuid printed; nothing else in the file is read (it holds the account's OAuth details); `.claude.json.backup*` is not wanted |
 
 Columns:
 
@@ -2683,15 +2692,18 @@ The server form of Remote Control (macOS 2.1.310) writes no `bridge-session` lin
 files and keys. A session it spawned, whose lines carry `entrypoint` `sdk-cli` and whose prompt
 `promptSource` `sdk`, gets `session origin: remote (Remote Control, entrypoint sdk-cli)` at its
 first line; its `ccr-tip.json` gives
-`session synced: remote event <eventId> at <updatedAt> (from ccr-tip.json)` at the file's
-modification time; the project's `bridge-pointer.json` gives
-`remote control: environment <environmentId> session <sessionId> source=<source> (from
-bridge-pointer.json, file mtime)`; and `.claude.json` gives `remote control: machine id set` and
-`remote control: spawn mode <mode> for <path>`, with no uuid printed. A teleported cloud session
-gets `session origin: remote (teleport, remoteSourced)` once, at its first line with
-`remoteSourced`; its replayed `environment` attachment, naming the cloud machine's scratchpad, is a
-second mark of the same origin. A cloud session created with `--cloud` and never teleported leaves
-no local session, so its only row is `cloud: hasRemoteEnvironment=<bool>` from `.claude.json`; the
+`session synced: remote event <eventId> at <updatedAt> (from <path>, file mtime)` at the file's
+modification time, with the session's own id; the project's `bridge-pointer.json` gives
+`remote control: environment <environmentId> session <sessionId> source=<source> (from <path>,
+file mtime)` with an empty session id (`pid` and `procStart` are not printed); and `.claude.json`
+gives `remote control: machine id set (from .claude.json, file mtime)` and
+`remote control: spawn mode <mode> for <path> (from .claude.json, file mtime)`, with no uuid
+printed. A teleported cloud session gets `session origin: remote (teleport, remoteSourced)` once,
+at its first line with `remoteSourced`; its replayed `environment` attachment, naming the cloud
+machine's scratchpad, yields `session origin: remote (teleport, cloud scratchpad <path>)` in place
+of the `scratch directory:` row when that path's project slug is not the transcript's own. A
+cloud session created with `--cloud` and never teleported leaves no local session, so its only
+row is `cloud: hasRemoteEnvironment=<value> (from .claude.json, file mtime)`; the
 files the bundle names for one (`.session_ingress_token`, `remote/`, `server-sessions.json`,
 `remote-settings.json`) were not written. A VS Code extension session gets
 `session origin: local (VS Code extension)`. The parser sets `records_sync` and `records_origin`,
@@ -2856,9 +2868,9 @@ They yield, in the forms of the coverage table: the `tool_result` row and
 `scheduled task fired: task01 cron=* * * * *`;
 `session origin: remote (Remote Control, entrypoint sdk-cli)` before the claude.ai prompt's rows;
 `session synced: remote event 00000000-0000-4000-e000-000000000001 at 2026-10-26T17:11:00.000Z
-(from ccr-tip.json)`;
+(from <path>, file mtime)`;
 `remote control: environment env_0123456789abcdefghijkl session 0123456789abcdef0123456789abcdef
-source=standalone (from bridge-pointer.json, file mtime)`; and
+source=standalone (from <path>, file mtime)`; and
 `session origin: remote (teleport, remoteSourced)` before the replayed prompt's rows.
 
 #### Forked subagents
@@ -2955,5 +2967,4 @@ resolved.
   run in the session started with `cleanupPeriodDays` 0 was paused by the settings error or found
   nothing older than 30 days, and what the sweep removes there, which rests on the vendor's page;
   whether a process without access to the login keychain other than an ssh-launched one falls back
-  to `.credentials.json`; the file mode of `bridge-spawn/*/mcp.json`; and what
-  `append-system-prompt.txt` says, which was not read.
+  to `.credentials.json`; and what `append-system-prompt.txt` says, which was not read.
