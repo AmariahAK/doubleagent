@@ -182,7 +182,10 @@ cloud session and the VS Code extension; the evidence is in
     first `sdk-cli` record gets `session origin: remote (Remote Control,
     entrypoint sdk-cli)`. A record with `remoteSourced` true is a turn of a
     cloud session replayed by `claude --teleport`: the session's first one
-    gets `session origin: remote (teleport, remoteSourced)`; the cloud
+    gets `session origin: remote (teleport, remoteSourced)` and, beside
+    it, `session synced: cloud session (teleported: remoteSourced records
+    replayed from the vendor's copy)`, since the conversation is held on
+    the vendor's servers (`synced` `yes`, like a Remote Control spawn); the cloud
     `session_01...` id sits only inside URL and text values and is not
     extracted, and `entrypoint` stays `cli`. In a file with such a record,
     an `environment` attachment whose scratchpad's `<slug>` directory is
@@ -485,6 +488,13 @@ from .base import (
     iter_jsonl,
     setting_value,
     text_of,
+)
+
+# The sync row of a teleported cloud session, beside its origin row: the
+# vendor holds the conversation the `remoteSourced` records replay.
+TELEPORT_SYNCED = (
+    SYNCED_PREFIX
+    + " cloud session (teleported: remoteSourced records replayed from the vendor's copy)"
 )
 
 SESSION_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$")
@@ -1262,6 +1272,10 @@ class ClaudeCodeParser(Parser):
             if origin and (session_id, origin) not in seen_origin:
                 seen_origin.add((session_id, origin))
                 yield state_row(origin)
+                if origin.endswith("(teleport, remoteSourced)"):
+                    # The conversation is held on the vendor's servers and
+                    # replayed here, so the session is synced as well.
+                    yield state_row(TELEPORT_SYNCED)
 
             mode = rec.get("permissionMode") if rtype in ("user", "permission-mode") else None
             if isinstance(mode, str) and mode and modes.get(session_id) != mode:

@@ -364,8 +364,13 @@ def _bounds(secondary: list[tuple[Row, float]], widened: set[int]) -> dict[int, 
     for items in stamped.values():
         items.sort()
         for n, (ms, j) in enumerate(items):
-            if j in widened and n + 1 < len(items) and items[n + 1][0] > ms:
-                bounds[j] = items[n + 1][0]
+            if j not in widened:
+                continue
+            # The next strictly later time, past any copies of this row at
+            # the same time (the same line in two history files).
+            later = next((t for t, _ in items[n + 1 :] if t > ms), None)
+            if later is not None:
+                bounds[j] = later
     return bounds
 
 

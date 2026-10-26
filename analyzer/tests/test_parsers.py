@@ -1849,6 +1849,21 @@ class ClaudeCodeMacTests(ParserBase):
         )
         self.assertEqual(rows[len(primary)].timestamp_utc, "2026-10-01T11:00:07.000Z")
 
+    def test_history_bounds_skip_equal_time_copies(self):
+        # The same `/model` line in two history files, at the same time, is
+        # bounded by the next strictly later line, not by its copy: with the
+        # first record gone, the 23 line takes the 50 record, one 07 copy is
+        # dropped as a copy of the other, and the surviving 07 line keeps its
+        # own time.
+        primary = [r for r in self._primary() if r.source_line != 8]
+        copy = self._rows(".claude-work/history.jsonl", [claude_mac_history_records()[1]])
+        self.assertEqual([r.text for r in copy], ["/model"])
+        history = self._history() + copy
+        rows, _ = deduplicate(primary, [(r, 2.0) for r in history])
+        kept = rows[len(primary) :]
+        self.assertEqual([r.text for r in kept], ["/model", *self.HISTORY_ONLY])
+        self.assertEqual(kept[0].timestamp_utc, "2026-10-01T11:00:07.000Z")
+
     def test_history_command_window_is_forward_only(self):
         # A record is written after its line, never before: with the first
         # `/model` history line gone and only the first record left, the
@@ -1986,7 +2001,7 @@ class ClaudeCodeMacTests(ParserBase):
         rows = self._rows(self.TELEPORT_REL, claude_mac_teleport_records())
         got = [(r.source_line, r.turn_type, r.text) for r in rows]
         self.assertEqual(
-            got[:5],
+            got[:6],
             [
                 (1, "system", "session surface: cli"),
                 (
@@ -1996,6 +2011,12 @@ class ClaudeCodeMacTests(ParserBase):
                     % CLAUDE_MAC_CLOUD_SCRATCH,
                 ),
                 (2, "system", "session origin: remote (teleport, remoteSourced)"),
+                (
+                    2,
+                    "system",
+                    "session synced: cloud session (teleported: remoteSourced records "
+                    "replayed from the vendor's copy)",
+                ),
                 (2, "system", "permission mode: default"),
                 (2, "user", "Describe this repository in three sentences."),
             ],
@@ -2135,7 +2156,7 @@ class ClaudeCodeMacTests(ParserBase):
             {
                 CLAUDE_MAC_SESSION: ("local", "no"),
                 CLAUDE_MAC_SPAWN_SESSION: ("remote", "yes"),
-                CLAUDE_MAC_TELEPORT_SESSION: ("remote", "no"),
+                CLAUDE_MAC_TELEPORT_SESSION: ("remote", "yes"),
             },
         )
 

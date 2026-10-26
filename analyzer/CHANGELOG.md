@@ -112,6 +112,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its bridge has stopped, and `projects/<slug>/bridge-pointer.json` as
   `remote control: environment <environmentId> session <sessionId>
   source=<source> (from <file>, file mtime)` ([#256]).
+- A teleported cloud session (`remoteSourced` records) gets `session synced: cloud session (teleported: remoteSourced records replayed from the vendor's copy)` beside its origin row, so it reads `synced` `yes` like a Remote Control spawn: the conversation is held on Anthropic's servers ([#256]).
 - The `claude-code` parser writes `remote control: spawn mode <mode> for
   <path>`, `remote control: machine id set` and `cloud:
   hasRemoteEnvironment=<value>` rows from `.claude.json`, and `model

@@ -2550,7 +2550,7 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | `attachment` `plan_mode`, `plan_mode_exit`, `plan_mode_reentry`, `auto_mode`, `auto_mode_exit` | skip: their keys are now recorded ([`attachment` records](#attachment-records)); `auto_mode` is the turn's auto-mode configuration, not a decision, and every mode change they mark is also a `permissionMode` value or a `permission-mode` record, which the `permission mode:` rows read |
 | first record of a transcript file that carries `entrypoint` | before its rows, a `system` row `session surface: <entrypoint>` (values `cli`, `claude-vscode`, `claude-desktop` for the Code tab, `sdk-cli` for a session a Remote Control server spawned), and `session surface: <old> -> <new>` on a change; a subagent file gets its own row |
 | a session whose lines carry `entrypoint` `sdk-cli` and whose prompt has `promptSource` `sdk` | `system`, `session origin: remote (Remote Control, entrypoint sdk-cli)` at its first line ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
-| first line with `remoteSourced` true | `system`, `session origin: remote (teleport, remoteSourced)`, once per session; the cloud `session_01...` id, which sits inside URL and text values, is not extracted |
+| first line with `remoteSourced` true | `system`, `session origin: remote (teleport, remoteSourced)`, once per session, and beside it `session synced: cloud session (teleported: remoteSourced records replayed from the vendor's copy)`, since the vendor holds the conversation (`synced` `yes`); the cloud `session_01...` id, which sits inside URL and text values, is not extracted |
 | a session whose lines carry `entrypoint` `claude-vscode` | `system`, `session origin: local (VS Code extension)`; `promptSource` `sdk` on such a prompt is not a remote mark on its own |
 | `user` record with `promptSource` set and not `typed`, or `turnOrigin` set and not `human` | after the record's rows, a `system` row `prompt trigger: promptSource=<promptSource> turnOrigin=<turnOrigin>`, `-` for a missing key; the pairs seen on Windows 2.1.309 are `promptSource=suggestion_accepted turnOrigin=human`, `promptSource=system turnOrigin=task_notification` (a subagent's or a background command's end), `promptSource=queued turnOrigin=human` (the Remote Control phone), `promptSource=system turnOrigin=scheduled` (a `/loop` firing) and `promptSource=sdk turnOrigin=human` (the VS Code extension); `origin.kind` still picks the label above |
 | `continued-in` | `system`, `session continued in: <continuedInSessionId>`, at the record's `timestamp` |
@@ -2705,6 +2705,8 @@ file mtime)` with an empty session id (`pid` and `procStart` are not printed); a
 gives `remote control: machine id set (from .claude.json, file mtime)` and
 `remote control: spawn mode <mode> for <path> (from .claude.json, file mtime)`, with no uuid
 printed. A teleported cloud session gets `session origin: remote (teleport, remoteSourced)` once,
+with `session synced: cloud session (teleported: remoteSourced records replayed from the vendor's
+copy)` beside it (the vendor holds the conversation, so `synced` reads `yes`),
 at its first line with `remoteSourced`; its replayed `environment` attachment, naming the cloud
 machine's scratchpad, yields `session origin: remote (teleport, cloud scratchpad <path>)` in place
 of the `scratch directory:` row when that path's project slug is not the transcript's own. A
