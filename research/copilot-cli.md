@@ -222,6 +222,15 @@ XDG set may still have `$XDG_STATE_HOME/.copilot` and `$XDG_CONFIG_HOME/.copilot
 `~/.local/state/.copilot`, `~/.config/.copilot`), and symlinks are left behind (`symlinkSync` in the
 same function).
 
+VS Code writes into `~/.copilot` without the Copilot CLI. On Ubuntu 26.04.1 arm64 (2026-10-26),
+VS Code 1.143.1's first start, before any extension was installed and with no Copilot CLI on the
+host, wrote `~/.copilot/logs/.copilot-log.lock` and `logs/process-<epoch>-<pid>.log`, the logs of
+the Copilot agent that VS Code 1.143 bundles ([Process logs](#process-logs)); it was seen during
+a Claude Code round on that host ([Observed in `claude-code.md`](claude-code.md#observed)). The
+`copilot-cli|.copilot` catalog line collects them under this agent, so a `~/.copilot` that holds
+only `logs/`, with no `session-state/`, may be VS Code's rather than evidence that the Copilot CLI
+ran.
+
 #### Scratch directories
 
 VS Code's Copilot Chat extension can run a Copilot CLI session in a git worktree it creates at

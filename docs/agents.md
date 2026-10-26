@@ -37,7 +37,7 @@ agent name in each row links to its subsection.
 | [`autogen-studio`](#autogen-studio) | backlog | Source | [research](../research/autogen-studio.md); [issue 69](https://github.com/seanthegeek/doubleagent/issues/69); SQLite `autogen04203.db` with the `message`, `session` and `run` tables |
 | [`camel-ai`](#camel-ai) | collected | Source | [research](../research/camel-ai.md); no transcripts under the home; history is in the working directory |
 | [`chatgpt-desktop`](#chatgpt-desktop) | parsed | real installs: Windows, macOS (October 2026) | [research](../research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); ChatGPT conversations are listed only, their text is server-side; Codex threads parse as `codex-cli` |
-| [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS, Windows (October 2026) | [research](../research/claude-code.md) |
+| [`claude-code`](#claude-code) | parsed | real installs: Windows, Linux, macOS (October 2026) | [research](../research/claude-code.md) |
 | [`claude-desktop`](#claude-desktop) | parsed | real installs: Windows (MSIX), Linux, macOS (October 2026) | [research](../research/claude-desktop.md) |
 | [`cline`](#cline) | parsed | source; fixture only | [research](../research/cline.md) |
 | [`codex-cli`](#codex-cli) | parsed | real installs: Windows, macOS, Ubuntu (October 2026) | [research](../research/codex-cli.md) |
@@ -262,7 +262,12 @@ and `disableBypassPermissionsMode` in `.claude/settings.json` and
 `.claude/settings.local.json` (the user's, and a discovered project's with
 `project_path` the project) and from `projects.<path>.allowedTools`,
 `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` in
-`.claude.json`, no other key of either file being read; the same files
+`.claude.json`; a `retention setting: cleanupPeriodDays=<n> (from
+settings.json, file mtime)` row when a settings file sets the retention
+period, and a `source host: github status=<status> (from .claude.json,
+file mtime)` row from `.claude.json` `githubWebConnectionStatusCache`
+(2.1.310 and later; the account and organisation ids are not printed);
+no other key of either file being read; the same files
 under a `.claude-<name>` config home moved with `CLAUDE_CONFIG_DIR` (such
 as `.claude-work/projects/...`). The transcripts also give a `session
 surface: <entrypoint>` row per file (`cli`, `claude-vscode` for the VS
@@ -303,7 +308,19 @@ extension's session (`entrypoint` `claude-vscode`, `promptSource` `sdk`),
 `/clear` and a removed project; the rows new with this round (surface,
 trigger, handover, bridge, scratch directory) rest on that install's key
 names and are checked against fixtures, and a cloud session was not
-offered to the account.
+offered to the account. Claude Code 2.1.310 linux-arm64 from the native
+installer on Ubuntu 26.04.1 arm64, a clean VM, 2026-10-25 and 2026-10-26,
+one step at a time: the transcript layout under
+`projects/-home-<user>-...`, the same `permissionDecision` forms with the
+`reasonCode` `bashMiss:no-rule-match` and an allow-always grant as a
+`Bash(python3 *)` rule, the mode and model changes, subagents, persisted
+output, compaction, `--resume` and `--continue` appending to the
+session's own file with no session daemon, Remote Control from the phone
+app, `/loop`, the VS Code extension's session, `/clear`, the retention
+sweep deleting a transcript older than `cleanupPeriodDays` and keeping its
+`history.jsonl` line, and a removed project; the `source host:` and
+`retention setting:` rows rest on that install's key names and are
+checked against fixtures.
 
 ### `claude-desktop`
 
