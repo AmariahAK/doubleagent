@@ -858,7 +858,19 @@ what the bundle alone can show (key names, enum values, record shapes,
 path strings) or to confirm a string the page names. A grep over a
 minified bundle for a UI label costs minutes per pattern and still does
 not say where the control sits (the Cursor round of 2026-10-20 spent
-three such greps on a question one forum thread answered). Two habits for
+three such greps on a question one forum thread answered). The same
+holds for a question about the product's behaviour during a round
+(when a retention sweep runs, what it deletes, what a purge command
+leaves): the vendor's documentation is read first, and the VM
+experiment then tests the documented claim rather than replacing it.
+The Claude Code round on Linux (2026-10-26) spent three steps
+backdating files and rewriting a marker to provoke the sweep before
+reading the vendor page that lists every path it removes, the
+reference entry that says it is a background sweep after a session
+starts, and the monitoring page that says it runs at most once per
+session; the binary's strings then explained the timing in one grep.
+The vendor's documentation index (its `llms.txt`) is where to find
+the page. Two habits for
 minified bundles and compiled binaries:
 
 - Grep for the stable fragment of a message, never the whole sentence.
@@ -1193,7 +1205,11 @@ The round, in order:
    values and log lines with ids redacted.
 3. **Exercise every surface separately** and record what each one wrote:
    a session with a tool call, a read-only chat, a chat that writes a
-   file, a scheduled task, a resumed session, and one tool call approved
+   file, a scheduled task, a resumed session, a short paste and a long
+   one as prompts (an agent that caches large pastes may store a small
+   one inline in a history file instead: Claude Code 2.1.310 on Linux
+   kept a paste under its threshold as `content` in `history.jsonl` and
+   only the longer one as a `paste-cache/` file), and one tool call approved
    and one denied, with an "allow always" or equivalent standing grant,
    and a model switch in the middle of a session, so the permission and
    model records are on disk for the shape tool to show; a session
@@ -1244,7 +1260,13 @@ The round, in order:
    misses its target (a tool call on a no-tool question, a background
    task instead of a queued prompt, a count instead of the output) is
    kept and repeated with a sharper prompt under the next name; the miss
-   is a finding about the agent. The person reports what the screen
+   is a finding about the agent. An install or setup command in the
+   brief is copied from the vendor's own page or script, never retyped
+   from memory, and pipes to the shell the script's shebang names: the
+   Claude Code brief wrote `curl ... | sh` where the installer and its
+   documentation say `| bash`, and on Ubuntu, whose `sh` is dash, the
+   step failed with a syntax error before anything was written (the
+   Linux cell of 2026-10-25). The person reports what the screen
    showed for each step (the answer, the option wording as shown, an
    accidental choice), since the transcript may not record it.
 4. **Run the collector in the VM** as the user and pull the manifest, the

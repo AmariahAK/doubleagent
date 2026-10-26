@@ -1363,6 +1363,16 @@ Mk 'Users/alice/.claude/paste-cache/0123456789abcdef.txt' "pasted text`n"
 Mk 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json' "{`"plugins`":[]}`n"
 Mk "$g253/info/exclude" "# git ls-files --others --exclude-from=.git/info/exclude`n.claude/scheduled_tasks.lock`n"
 
+# 2026-10-26 claude-code Linux round (#256)
+# Claude Code 2.1.310 on Ubuntu 26.04 (real install, 2026-10-25/26) holds
+# .local/state/claude/locks/<version>.lock, a JSON lock with acquiredAt,
+# execPath, pid and version, while a session runs, and creates
+# .cache/claude/staging/ at install; both directories are home-relative on
+# Windows too and are collected as claude-code. Checks follow the default
+# run below; the same files are in smoke.sh under alice.
+Mk 'Users/alice/.local/state/claude/locks/2.1.310.lock' "{`"acquiredAt`":1792800000000,`"execPath`":`"/x`",`"pid`":1,`"version`":`"2.1.310`"}`n"
+Mk 'Users/alice/.cache/claude/staging/entry' "staged`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -2028,6 +2038,10 @@ Check '#256 Claude Code paste-cache collected' { Is113 'Users/alice/.claude/past
 Check '#256 Claude Code plugin directory cache excluded' { (StatusOf 'Users/alice/.claude/plugins/plugin-directory-cache-v2.json') -eq 'skipped_excluded' }
 Check '#256 project git info/exclude collected as project' { Is253 @('info/exclude') }
 
+# 2026-10-26 claude-code Linux round (#256)
+Check '#256 Claude Code version lock collected as claude-code' { Is113 'Users/alice/.local/state/claude/locks/2.1.310.lock' 'claude-code' $false }
+Check '#256 Claude Code cache staging collected as claude-code' { Is113 'Users/alice/.cache/claude/staging/entry' 'claude-code' $false }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -2390,7 +2404,7 @@ Check 'Inventory every later line is an agent line, keys in order' { $script:inv
 $r = InvAgent 'bob' 'ollama'
 Check 'Inventory ollama line: history and manifest, excluded blobs not counted' { $r -and $r.files -eq 2 -and $r.bytes -eq 23 -and (InvRaw 'bob' 'ollama').Contains('"first":"2026-09-14T00:00:00Z","last":"2026-09-15T01:02:03Z"') -and $r.evidence -eq '.ollama' }
 $r = InvAgent 'alice' 'claude-code'
-Check 'Inventory claude-code evidence in catalog order' { $r -and $r.evidence -eq '.claude,.claude.json*,.claude-*/projects,.claude-*/history.jsonl,.claude-*/.claude.json*,.claude-*/.credentials.json,.claude-*/sessions/*.*.key,.claude-*/daemon/control.key,.claude-*/daemon/roster.json,.claude-*/backups/.claude.json.*,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/*,AppData/Local/Temp/claude' }
+Check 'Inventory claude-code evidence in catalog order' { $r -and $r.evidence -eq '.claude,.claude.json*,.claude-*/projects,.claude-*/history.jsonl,.claude-*/.claude.json*,.claude-*/.credentials.json,.claude-*/sessions/*.*.key,.claude-*/daemon/control.key,.claude-*/daemon/roster.json,.claude-*/backups/.claude.json.*,.local/state/claude,.cache/claude,Library/Caches/claude-cli-nodejs,AppData/Local/claude-cli-nodejs/Cache/*,AppData/Local/Temp/claude' }
 Check 'Inventory first and last set for alice claude-code' { (InvRaw 'alice' 'claude-code') -match '"first":"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","last":"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ"' }
 Check 'Inventory: matched directory with no files of its own gives no line' { $null -eq (InvAgent 'bob' 'gemini-cli') -and ($b = InvAgent 'bob' 'antigravity') -and $b.files -eq 1 -and $b.bytes -eq 2 -and $b.evidence -eq '.gemini/antigravity-cli' }
 Check 'Inventory: no agent line has zero files' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { $_.files -eq 0 }) }
