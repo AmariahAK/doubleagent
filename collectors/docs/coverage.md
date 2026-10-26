@@ -1066,8 +1066,8 @@ and writes `~/.claude/.credentials.json` instead; the two are not shared,
 so a CLI started over ssh after a desktop sign-in is not signed in
 (observed with 2.1.310 on macOS 26.6, October 2026).
 
-The GitHub CLI's login store is collected as the `shared` agent and flagged, since several
-agents (Claude Code's `/install-github-app` and pull-request status, Copilot) act on GitHub
+The GitHub CLI's login store is attributed to the `shared` catalog agent, the cross-agent block,
+and flagged as a credential (`secret: true`), since several agents (Claude Code's `/install-github-app` and pull-request status, Copilot) act on GitHub
 through `gh`: `~/.config/gh/hosts.yml` on macOS and Linux, `AppData/Roaming/GitHub CLI/hosts.yml`
 on Windows. The file names the GitHub login an agent acted as, which is what a responder needs
 when work was pushed to a personal account; it holds the OAuth token only when `gh` could not
