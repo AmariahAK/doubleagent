@@ -799,9 +799,11 @@ Code, Kiro CLI) are not covered by `discover_projects`; the analyzer reads them.
 ## Validating catalog entries from source
 
 This is the process used for the v1.1 catalog, and the one to repeat when a
-tool is added or a tool's layout is suspected to have changed. It replaces
-installing the tool: source is authoritative, faster, and keeps the
-workstation clean.
+tool is added or a tool's layout is suspected to have changed. It comes
+before any install: source and documentation say where the agent can
+write, are faster to read than a round is to run, and keep the workstation
+clean; the real-install round that follows is what says what the agent
+wrote, and step 4 ranks the two.
 
 **1. Group the tools and fan out.** One researcher per platform group, run in
 parallel. Group forks of the same codebase together (Gemini CLI with Qwen
@@ -838,22 +840,62 @@ build named in an Observed bullet is the version the document's evidence
 rests on: an install of a different build is compared against it before the
 document is trusted, and a difference means a new round, not a note.
 
-**4. Evidence hierarchy for closed-source tools.** In order: the shipped npm
-tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
-literal path strings), the vendor's official public repository when it has
-one (even without the engine's code it holds the changelog, example plugins
-and hooks, built-in extensions and the plugin API's type declarations,
-versioned, so each fact is cited at a commit like source, as
-`anthropics/claude-code` is for the `AGENTS.md` instruction files; its
-licence or terms are read first and it is not used where they expressly
-forbid the use), official docs, vendor forums and issue trackers, then
-published DFIR or reverse-engineering write-ups. The report must say which
-level each claim came from, and the index table in
-[`research/README.md`](research/README.md) records it. The hierarchy ranks
+**4. Evidence order.** One order for every agent, best first; the report
+says which level each claim came from, and the index table in
+[`research/README.md`](research/README.md) records it in the evidence
+column.
+
+1. A real install: a per-step round, as [Real-install rounds](#real-install-rounds)
+   describes, on Windows, macOS and Linux, one listing diff per user
+   action, with the levels below read where the round needs them rather
+   than guessed. Source and documentation say where the agent can write;
+   only the round says what it wrote.
+2. Source code at a named commit, when the vendor publishes the code,
+   whatever its licence says about reuse, with the project's own
+   documentation read beside it; every claim links the line at the
+   reviewed commit (step 2).
+3. For an agent without public source, the vendor's documentation first:
+   the documentation site, and the vendor's official public repository
+   when it has one (even without the engine's code it holds the changelog,
+   release notes, example plugins and hooks, built-in extensions and the
+   plugin API's type declarations, versioned, so each fact is cited at a
+   commit like source, as `anthropics/claude-code` is for the `AGENTS.md`
+   instruction files; its licence or terms are read first and it is not
+   used where they expressly forbid the use). The documentation is read
+   first so that the shipped package or binary is read with its terms and
+   layout already known, which is what keeps a path string or a key from
+   being misread. Then the shipped package or binary itself (`npm pack`,
+   then grep or `strings`; minified bundles keep literal path strings),
+   always read, for what the documentation does not state or states
+   loosely: key names, record shapes, path strings, enum values, log
+   templates. A bundle string the documentation does not explain is
+   recorded with the page that comes closest and marked unexplained. Then
+   vendor forums and issue trackers, then published DFIR or
+   reverse-engineering write-ups.
+4. A vendor's own statement (an issue comment, a message, a pull request
+   from the vendor's developer) counts as documentation only where each
+   claim points at something a reader can check: a documentation page, a
+   release note, a bundle string or a path seen on a real install. An
+   uncited claim is recorded in the document's Source and evidence
+   section as a vendor statement with its author and date, and stays
+   marked so until a round checks it. A vendor's pull request writes the
+   research document, in the outline of
+   [Research document structure](#research-document-structure), and
+   never the tables; the integration step and the round stay with the
+   project, as they do for a research subagent.
+
+When sources disagree, a real install settles it; before one, the shipped
+package beats the page, because it is what ran, and the document records
+both. Every agent gets a round. Closed-source agents are queued first, in
+order of popularity, since an open-source agent's collector and parser are
+built from source with confidence; an open-source agent is added from
+source with its round filed as an issue, as
+[Adding an agent to the catalog](#adding-an-agent-to-the-catalog) says.
+The order ranks
 evidence, not effort: a question about the product's surface (where a menu
 item lives, how a chat is deleted, which window offers an export) is
 answered by a web search of the vendor's documentation and forum first,
-cited as the L2 or L3 source it is, and the bundle is grepped only for
+cited as the documentation or forum source it is, and the bundle is grepped only for
 what the bundle alone can show (key names, enum values, record shapes,
 path strings) or to confirm a string the page names. A grep over a
 minified bundle for a UI label costs minutes per pattern and still does
