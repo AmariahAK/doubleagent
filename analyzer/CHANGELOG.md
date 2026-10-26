@@ -84,6 +84,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   console session to the worker session that holds the later turns, and
   `remote control: bridge session <id or none> lastSequenceNum=<n>` for a
   Remote Control `bridge-session` record ([#256]).
+- The `claude-code` parser writes `retention setting:
+  cleanupPeriodDays=<n> (from <file>, file mtime)` from a settings file,
+  after its `permission setting:` rows, because the period decides which
+  transcripts Claude Code's own retention sweep has deleted; a session
+  known only from `history.jsonl` is what a swept session leaves
+  ([#256]).
+- The `claude-code` parser writes `source host: github status=<status>
+  (from .claude.json, file mtime)` from the `githubWebConnectionStatusCache`
+  that Claude Code 2.1.310 keeps in `.claude.json` once the GitHub app is
+  connected; the account and organization UUIDs beside it are not
+  printed ([#256]).
 
 ### Changed
 

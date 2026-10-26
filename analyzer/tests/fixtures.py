@@ -35,6 +35,10 @@ CLAUDE_309_BRIDGE = "cse_0a1b2c3d4e5f6a7b"
 CLAUDE_309_BRIDGE_URL = "https://claude.ai/code/session_0a1b2c3d4e5f6a7b"
 CLAUDE_309_TOOL_RESULT = "k3j9x2m1q.txt"
 CLAUDE_309_PERSISTED = "first line of the listing\nsecond line of the listing"
+# A 2.1.310 session of the Linux round (issue 256) and a VS Code extension
+# session of the same build; neither is written by build_home.
+CLAUDE_310_SESSION = "11111111-2222-4333-8444-dddddddddddd"
+CLAUDE_310_VSCODE_SESSION = "11111111-2222-4333-8444-eeeeeeeeeeee"
 # Modification time given to the settings fixtures: 2026-10-01T09:00:00Z.
 CLAUDE_SETTINGS_MTIME = 1790845200
 CLAUDE_REGISTRY_KEY = "4242." + "ab" * 32 + ".key"
@@ -940,6 +944,305 @@ def claude_309_history_records():
             "sessionId": CLAUDE_309_SESSION,
         },
     ]
+
+
+def claude_310_records():
+    """A Claude Code 2.1.310 session with the line types and keys of the
+    Linux round (issue 256; research/claude-code.md, Record schema): the
+    rule-miss `reasonCode` on a one-time approval, a denial and an
+    allow-always answer, a compaction that re-emits the session-state
+    records, the attachments a compaction re-injects, a prompt on a
+    detached head, and the 2.1.310 keys the parser does not read. Values
+    are invented; the session-state records carry only the keys the
+    parser reads. Line numbers are what ClaudeCode310Tests asserts."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=CLAUDE_310_SESSION, version="2.1.310", entrypoint="cli", slug="lab-round")
+    sid = CLAUDE_310_SESSION
+
+    def ts(t):
+        return "2026-10-01T10:00:%s.000Z" % t
+
+    def prompt(uuid, t, text, **keys):
+        return dict(
+            c,
+            type="user",
+            uuid=uuid,
+            timestamp=ts(t),
+            message={"role": "user", "content": text},
+            origin={"kind": "human"},
+            promptSource="typed",
+            turnOrigin="human",
+            turnPosition=0,
+            session_id=sid,
+            **keys,
+        )
+
+    def call(uuid, t, tool_id, command):
+        return _claude_assistant(
+            c,
+            uuid,
+            t,
+            [{"type": "tool_use", "id": tool_id, "name": "Bash", "input": {"command": command}}],
+            model="claude-sonnet-5-5",
+            requestedModel="claude-sonnet-5-5",
+        )
+
+    def result(uuid, t, tool_id, content, decision, **keys):
+        return dict(
+            c,
+            type="user",
+            uuid=uuid,
+            timestamp=ts(t),
+            message={
+                "role": "user",
+                "content": [{"tool_use_id": tool_id, "type": "tool_result", "content": content}],
+            },
+            sourceToolAssistantUUID="a" + uuid,
+            permissionDecision=decision,
+            **keys,
+        )
+
+    shell = {
+        "interrupted": False,
+        "isImage": False,
+        "noOutputExpected": False,
+        "stderr": "",
+        "type": "text",
+    }
+    miss = "bashMiss:no-rule-match"
+    snapshot = {
+        "type": "file-history-snapshot",
+        "isSnapshotUpdate": False,
+        "messageId": "u1",
+        "snapshot": {"messageId": "u1", "timestamp": ts("01"), "trackedFileBackups": {}},
+    }
+    return [
+        dict(type="mode", mode="normal", sessionId=sid),  # 1
+        dict(type="permission-mode", permissionMode="auto", sessionId=sid),  # 2
+        prompt("u1", "01", "Run python calc.py 2 3", permissionMode="default"),  # 3
+        call("a2", "02", "toolu_310a", "python3 calc.py 2 3"),  # 4
+        result(
+            "u2",
+            "03",
+            "toolu_310a",
+            "5",
+            {
+                "decision": "accept",
+                "source": "user_temporary",
+                "grantScope": "once",
+                "reasonCode": miss,
+            },
+            sandboxed=False,
+            toolUseResult=dict(shell, stdout="5"),
+        ),  # 5
+        call("a3", "04", "toolu_310b", "python3 calc.py 5 7"),  # 6
+        result(
+            "u3",
+            "05",
+            "toolu_310b",
+            "The user doesn't want to proceed with this tool use.",
+            {"decision": "reject", "source": "user_reject", "reasonCode": miss},
+            toolUseResult="User rejected tool use",
+            toolDenialKind="user-rejected",
+            userFeedback="I changed my mind",
+        ),  # 7
+        call("a4", "06", "toolu_310c", "python3 calc.py 1 1"),  # 8
+        result(
+            "u4",
+            "07",
+            "toolu_310c",
+            "2",
+            {"decision": "accept", "source": "user_permanent", "reasonCode": miss},
+            sandboxed=False,
+            toolUseResult=dict(shell, stdout="2"),
+        ),  # 9
+        dict(type="ai-title", aiTitle="Run calc.py", sessionId=sid),  # 10
+        dict(
+            c,
+            type="system",
+            uuid="s5",
+            timestamp=ts("08"),
+            subtype="compact_boundary",
+            content="Conversation compacted",
+            logicalParentUuid="u4",
+            level="info",
+            compactMetadata={
+                "cumulativeDroppedTokens": 0,
+                "durationMs": 9000,
+                "postTokens": 4000,
+                "preCompactDiscoveredTools": [],
+                "preTokens": 40000,
+                "preservedMessages": {
+                    "allUuids": [],
+                    "anchorUuid": "u4",
+                    "headUuid": "u1",
+                    "tailUuid": "u4",
+                    "uuids": [],
+                },
+                "preservedSegment": {},
+                "trigger": "manual",
+            },
+        ),  # 11
+        prompt(
+            "u6",
+            "09",
+            "We ran calc.py three times.",
+            isCompactSummary=True,
+            isVisibleInTranscriptOnly=True,
+        ),  # 12
+        _claude_attachment(
+            c,
+            "t7",
+            "09",
+            {
+                "type": "compact_file_reference",
+                "displayPath": "calc.py",
+                "filename": "/srv/proj/calc.py",
+            },
+        ),  # 13
+        _claude_attachment(
+            c,
+            "t8",
+            "09",
+            {
+                "type": "plan_file_reference",
+                "planContent": "1. add subtract",
+                "planFilePath": "/home/alice/.claude/plans/functional-painting-curry.md",
+            },
+        ),  # 14
+        _claude_attachment(
+            c,
+            "t9",
+            "09",
+            {
+                "type": "file",
+                "content": {"file": {}, "type": "text"},
+                "displayPath": "calc.py",
+                "filename": "/srv/proj/calc.py",
+            },
+        ),  # 15
+        # The compaction re-emits the session-state records with unchanged values.
+        dict(type="mode", mode="normal", sessionId=sid),  # 16
+        dict(type="permission-mode", permissionMode="default", sessionId=sid),  # 17
+        dict(type="ai-title", aiTitle="Run calc.py", sessionId=sid),  # 18
+        dict(type="last-prompt", sessionId=sid),  # 19
+        dict(type="atis-latch", sessionId=sid),  # 20
+        snapshot,  # 21
+        dict(type="permission-mode", permissionMode="default", sessionId=sid),  # 22
+        dict(type="ai-title", aiTitle="Run calc.py", sessionId=sid),  # 23
+        prompt(
+            "u10",
+            "10",
+            "What git branch is checked out?",
+            permissionMode="default",
+            gitBranch="HEAD",
+            queueSkipAttachments=True,
+        ),  # 24: a detached head, a prompt typed while another turn ran
+        _claude_attachment(
+            dict(c, gitBranch="HEAD"),
+            "t11",
+            "10",
+            {"type": "plan_mode_reentry", "planFilePath": "/home/alice/.claude/plans/x.md"},
+        ),  # 25
+        _claude_attachment(
+            dict(c, gitBranch="HEAD"),
+            "t12",
+            "10",
+            {"type": "deferred_tools_delta", "needsAuthMcpServers": []},
+        ),  # 26
+        _claude_assistant(
+            dict(c, gitBranch="HEAD"),
+            "a13",
+            "11",
+            [{"type": "text", "text": "HEAD is detached."}],
+            model="claude-sonnet-5-5",
+            requestedModel="claude-sonnet-5-5",
+            wireIngestContext={},
+        ),  # 27
+        dict(
+            c,
+            type="system",
+            uuid="s14",
+            timestamp=ts("12"),
+            gitBranch="HEAD",
+            subtype="turn_duration",
+            durationMs=4000,
+            messageCount=3,
+            pendingBackgroundAgentCount=0,
+            isMeta=False,
+        ),  # 28
+    ]
+
+
+def claude_310_vscode_records():
+    """A 2.1.310 VS Code extension session file: `entrypoint` claude-vscode,
+    no `mode` or `permission-mode` lines, `queue-operation` lines without
+    `content` and a `cost-state` line (research/claude-code.md, Record
+    schema). Line numbers are what ClaudeCode310Tests asserts."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=CLAUDE_310_VSCODE_SESSION, version="2.1.310", entrypoint="claude-vscode")
+    sid = CLAUDE_310_VSCODE_SESSION
+    return [
+        dict(
+            type="queue-operation",
+            operation="enqueue",
+            sessionId=sid,
+            timestamp="2026-10-01T10:00:20.000Z",
+        ),  # 1
+        dict(
+            type="queue-operation",
+            operation="dequeue",
+            sessionId=sid,
+            timestamp="2026-10-01T10:00:20.000Z",
+        ),  # 2
+        _claude_user(
+            c,
+            "v3",
+            "21",
+            "Run python3 calc.py 6 1",
+            origin={"kind": "human"},
+            promptSource="sdk",
+            turnOrigin="human",
+            permissionMode="auto",
+        ),  # 3
+        dict(
+            type="cost-state",
+            hasUnknownModelCost=False,
+            modelUsage={},
+            sessionId=sid,
+            startTime=1790935200000,
+            totalAPIDuration=3000,
+            totalAPIDurationWithoutRetries=3000,
+            totalCostUSD=0.01,
+            totalDuration=5000,
+            totalLinesAdded=0,
+            totalLinesRemoved=0,
+            totalToolDuration=800,
+        ),  # 4
+    ]
+
+
+def claude_310_user_settings():
+    """`~/.claude/settings.json` as 2.1.310 left it on Linux after the
+    retention steps: no `permissions`, the model alias, the phone's push
+    opt-in and a one-day retention period."""
+    return {"theme": "dark", "model": "opus", "agentPushNotifEnabled": True, "cleanupPeriodDays": 1}
+
+
+def claude_310_global_config():
+    """`~/.claude.json` of 2.1.310 after `/install-github-app`: the GitHub
+    connection cache, whose UUIDs must never be printed, beside the
+    project entry and `githubRepoPaths`, which is not read."""
+    return {
+        "oauthAccount": {"emailAddress": "user@example.invalid"},
+        "projects": {"/srv/proj": {"allowedTools": [], "hasTrustDialogAccepted": True}},
+        "githubRepoPaths": {"example/logs": ["/srv/proj"]},
+        "githubWebConnectionStatusCache": {
+            "accountUuid": "00000000-0000-4000-8000-0000000000aa",
+            "orgUuid": "00000000-0000-4000-8000-0000000000bb",
+            "status": "connected",
+        },
+    }
 
 
 def claude_user_settings():
