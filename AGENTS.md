@@ -1211,9 +1211,20 @@ a different build is a new cell to survey, not a confirmation of the old one.
 
 The round, in order:
 
-1. **Survey names first, one step at a time.** The person at the VM
-   performs one step and says so; the main session takes a listing of
-   the agent's directories (names, sizes and mtimes only, a PowerShell or
+1. **Survey names first, one step at a time.** For a CLI agent the
+   main session performs the step itself: it runs the agent inside a
+   detached `screen` session in the VM over SSH, sends each keystroke
+   with `screen -S <name> -p 0 -X stuff`, feeds a paste through a
+   register file that carries the bracketed-paste markers (`stuff`
+   truncates long strings), and reads the terminal with `hardcopy`; the
+   person does only what needs a browser, a phone or the VM's GUI (a
+   sign-in, a device pairing, a GitHub app install, a desktop app or an
+   editor extension) and says when it is done. A browser step is the
+   person's step, never a stop point: the Claude Code macOS cell
+   (2026-10-26) cancelled `/install-github-app` at the browser although
+   the throwaway account could have completed it. A GUI agent is still
+   the person's to drive. After each step the main session takes a
+   listing of the agent's directories (names, sizes and mtimes only, a PowerShell or
    sh script kept in the VM's lab directory and run over SSH) and diffs
    it against the previous one before the next step begins. The diff is
    the evidence of what that step wrote, and the sequence of diffs is the
@@ -1248,10 +1259,12 @@ The round, in order:
 3. **Exercise every surface separately** and record what each one wrote:
    a session with a tool call, a read-only chat, a chat that writes a
    file, a scheduled task, a resumed session, a short paste and a long
-   one as prompts (an agent that caches large pastes may store a small
-   one inline in a history file instead: Claude Code 2.1.310 on Linux
-   kept a paste under its threshold as `content` in `history.jsonl` and
-   only the longer one as a `paste-cache/` file), and one tool call approved
+   one as prompts, each paste its own step with its own listing (an
+   agent that caches large pastes may store a small one inline in a
+   history file instead: Claude Code 2.1.310 on Linux kept a paste under
+   its threshold as `content` in `history.jsonl` and only the longer one
+   as a `paste-cache/` file; the macOS cell nearly ran only the long
+   one), and one tool call approved
    and one denied, with an "allow always" or equivalent standing grant,
    and a model switch in the middle of a session, so the permission and
    model records are on disk for the shape tool to show; a session
@@ -1263,7 +1276,24 @@ The round, in order:
    source-host integration as its own steps, each with a listing diff:
    connect the account through the agent's own integration (and, in an
    editor, sign in through the editor's own provider as well, since the
-   two store differently), then run a remote agent on a repository with
+   two store differently); where the agent leans on a source-host CLI
+   (`gh` for Claude Code's `/install-github-app` and pull-request
+   status), log that CLI in first as its own step, with a listing that
+   shows where its token landed on that platform (its plaintext
+   `hosts.yml` when launched over SSH, the OS keychain from the GUI),
+   and complete the agent's own flow in the browser rather than
+   stopping at it. Log `gh` in with `gh auth login --expiring` (gh
+   2.103.0 or later), which issues a short-lived access token with a
+   rotating refresh token instead of one that lasts indefinitely, and
+   run `gh auth logout` before the VM is released: the logout only
+   removes the local token, so the expiring form is what keeps the
+   throwaway account from accumulating live tokens, and the GitHub CLI
+   grant itself is one entry under the account's authorized OAuth apps,
+   revocable there for every device at once. The lab repository is public, so reading it (a
+   pull-request listing, a clone, a cloud session's checkout) needs no
+   login; the login is for the steps that act on the repository (the
+   app install, a pull request) and for the one-time store observation
+   above; then run a remote agent on a repository with
    a read-only task ("describe this repository, change nothing, open no
    pull request") so the lab repository stays as it is for the next
    agent, then reopen that remote conversation after a relaunch; the
@@ -1310,7 +1340,33 @@ The round, in order:
    step failed with a syntax error before anything was written (the
    Linux cell of 2026-10-25). The person reports what the screen
    showed for each step (the answer, the option wording as shown, an
-   accidental choice), since the transcript may not record it.
+   accidental choice), since the transcript may not record it. Before
+   the first prompt of a cell, press `?` in the agent's REPL and record
+   its shortcut list, then run its help command (`/help`), so the round
+   knows every surface the build offers before the steps begin. At every
+   dialog, move the selection through each option and read the screen
+   after each move before confirming: the option wording and the footer
+   hints (`Tab to amend`, `shift+tab to approve with this feedback`,
+   `Esc to cancel`) are findings about the surface, and they are how the
+   extra options (a reason field, a directory-scoped grant) are reached;
+   the macOS cell recorded two denials before reading the `Tab` hint.
+   A process started from an SSH session cannot reach the macOS login
+   keychain, so an agent driven this way writes its credential fallback
+   (Claude Code 2.1.310: `~/.claude/.credentials.json`, mode 0600) where
+   a GUI-launched one would use the keychain: the round records the
+   fallback file, then signs the agent out and has the person sign in
+   from a Terminal in the VM's GUI session, with a listing before and
+   after, so both forms are observed; the same applies to any agent or
+   tool (`gh`) that prefers an OS credential store. A store whose
+   location and shape the research document already records for that
+   tool on that platform is not observed again: the sign-out and GUI
+   sign-in are a one-time step per tool and platform, and a later cell
+   cites the document (Claude Code and `gh` on macOS: the macOS cell of
+   2026-10-26). Before the baseline,
+   diff the brief's step table against this list and the previous
+   cell's lessons and fix the table first: the macOS cell ran from a
+   table that still had one paste step after the Linux cell had made
+   it two, and the short paste was nearly skipped.
 4. **Run the collector in the VM** as the user and pull the manifest, the
    summary and the log; read the error rows, the `skipped_excluded`
    rows and the unflagged-key list from "Validation and testing". Then
